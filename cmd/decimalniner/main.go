@@ -12,7 +12,7 @@ import (
 // --- Configuration Constants ---
 const (
     XPlaneIP   = "127.0.0.1" // Change this if X-Plane is on a different machine
-    XPlanePort = "49010"     // Standard X-Plane UDP port
+    XPlanePort = "49000"     // Standard X-Plane UDP port
     ListenPort = "49005"     // Port for Go application to listen for data
 )
 
