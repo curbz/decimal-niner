@@ -1,197 +1,242 @@
 package main
 
 import (
-    "bytes"
-    "encoding/binary"
-    "fmt"
-    "log"
-    "net"
-    "time"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/url"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-// --- Configuration Constants ---
+// --- Configuration ---
 const (
-    XPlaneIP   = "127.0.0.1" // Change this if X-Plane is on a different machine
-    XPlanePort = "49000"     // Standard X-Plane UDP port
-    ListenPort = "49005"     // Port for Go application to listen for data
+	XPlaneWSURL      = "ws://127.0.0.1:8086/api/v2" 
+	
+	// Datarefs for monitoring
+	ContinuousDataref = "sim/flightmodel/forces/indicated_airspeed"
+	EventDataref      = "sim/cockpit2/radios/actuators/com1_standby_frequency_hz"
+	
+	// Frequencies (in Hz)
+	ContinuousFreq = 10.0 
+	EventFreq      = 1.0  
 )
 
-// The dataref we want to read (e.g., indicated airspeed)
-const datarefToRequest = "sim/flightmodel/position/indicated_airspeed"
-// A unique ID we assign to this dataref. X-Plane sends this back.
-const datarefID = 1
+// Atomic counter to generate unique, sequential request IDs (req_id)
+var requestCounter atomic.Int64 
 
-// --- Main Functions ---
+// --- Data Structures for Official JSON RPC Protocol (OUTGOING) ---
+
+// APIRequest is the top-level structure for all outgoing requests.
+type APIRequest struct {
+	RequestID int64       `json:"req_id"`
+	Type      string      `json:"type"` // e.g., "sub_dataref", "sub_command"
+	Params    interface{} `json:"params"`
+}
+
+// SubDatarefParams defines the structure for subscribing to Datarefs (used in "params").
+type SubDatarefParams struct {
+	Dataref   string  `json:"dataref"`
+	Frequency float64 `json:"frequency"`
+}
+
+// SubCommandParams defines the structure for subscribing to Command feedback (used in "params").
+// This is empty, as "sub_command" does not require specific parameters.
+type SubCommandParams struct{}
+
+// --- Data Structures for Official JSON RPC Protocol (INCOMING) ---
+
+// APIResponse is the top-level structure for all incoming messages.
+type APIResponse struct {
+	RequestID int64             `json:"req_id"` 
+	Type      string            `json:"type"` // e.g., "dataref_update", "command_update", "error"
+	Payload   json.RawMessage `json:"payload"` // Use RawMessage to defer parsing
+}
+
+// ErrorPayload is used if Type is "error".
+type ErrorPayload struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// DatarefUpdatePayload is used when Type is "dataref_update".
+type DatarefUpdatePayload struct {
+	Value float64 `json:"value"`
+	Dataref string `json:"dataref"`
+}
+
+// CommandUpdatePayload is used when Type is "command_update".
+type CommandUpdatePayload struct {
+	CommandName string `json:"command_name"`
+	Status      string `json:"status"` // e.g., "executed"
+}
+
+
+// --- Main Application ---
 
 func main() {
-    // 1. Setup Listener
-    conn, err := setupListener()
-    if err != nil {
-        log.Fatalf("Error setting up UDP listener: %v", err)
-    }
-    defer conn.Close()
-    log.Printf("Listening for X-Plane data on UDP port %s...", ListenPort)
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
-    // 2. Start Data Receiver Goroutine
-    go receiveData(conn)
+	// 1. Establish connection
+	u, _ := url.Parse(XPlaneWSURL)
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatalf("\nFATAL CONNECTION ERROR: Could not connect to X-Plane at %s.\n"+
+			"Please ensure X-Plane 12 is running and the Web API is listening on TCP port 8086.\nError: %v", XPlaneWSURL, err)
+	}
+	defer conn.Close()
+    log.Printf("Successfully connected to X-Plane Web API at %s.", XPlaneWSURL)
 
-    // 3. Send RREF Request
-    sendRREFRequest()
+	done := make(chan struct{})
 
-    // 4. Keep Main Thread Alive
-    // Wait for the receiver to do its job.
-    log.Println("Sent RREF request. Press Ctrl+C to stop.")
-    select {} // Block forever
+	// 2. Start listener
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					log.Println("Connection closed.")
+					return
+				}
+				log.Println("Fatal read error:", err)
+				return
+			}
+			processMessage(message)
+		}
+	}()
+
+	// 3. Send subscription requests
+	log.Println("--- Sending Subscription Requests ---")
+	sendDatarefSubscription(conn, ContinuousDataref, ContinuousFreq)
+	sendDatarefSubscription(conn, EventDataref, EventFreq)
+	sendCommandSubscription(conn)
+
+	// 4. Block until interrupt signal
+	<-interrupt
+	log.Println("\nInterrupt received. Closing connection...")
+
+	err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err != nil {
+		log.Println("Write close error:", err)
+	}
+	<-time.After(time.Second) 
 }
 
-// --- Network Setup and Request Function ---
+// --- Subscription Functions ---
 
-// setupListener creates a UDP socket for receiving data from X-Plane.
-func setupListener() (*net.UDPConn, error) {
-    addr, err := net.ResolveUDPAddr("udp", ":"+ListenPort)
-    if err != nil {
-        return nil, err
-    }
-    return net.ListenUDP("udp", addr)
+// sendDatarefSubscription sends a request to subscribe to a dataref.
+func sendDatarefSubscription(conn *websocket.Conn, dataref string, freq float64) {
+	reqID := requestCounter.Add(1)
+	params := SubDatarefParams{
+		Dataref:   dataref,
+		Frequency: freq,
+	}
+
+	request := APIRequest{
+		RequestID: reqID,
+		Type:      "sub_dataref",
+		Params:    params,
+	}
+
+	sendJSON(conn, request)
+	log.Printf("-> Sent Request ID %d: Subscribing to %s (%.0f Hz)", reqID, dataref, freq)
 }
 
-// sendRREFRequest sends the RREF packet to X-Plane to start the data stream.
-// 
-func sendRREFRequest() {
-    // Format: "RREF\0" (5 bytes) + Frequency (4 bytes) + Dataref Name (500 bytes max)
-    
-    // 1. Resolve X-Plane address
-    xplaneAddr, err := net.ResolveUDPAddr("udp", XPlaneIP+":"+XPlanePort)
-    if err != nil {
-        log.Fatalf("Could not resolve X-Plane address: %v", err)
-    }
+// sendCommandSubscription sends a request to subscribe to all command execution events.
+func sendCommandSubscription(conn *websocket.Conn) {
+	reqID := requestCounter.Add(1)
+	params := SubCommandParams{}
 
-    // 2. Prepare the request packet buffer
-    // The X-Plane protocol expects a specific structure.
-    buf := new(bytes.Buffer)
+	request := APIRequest{
+		RequestID: reqID,
+		Type:      "sub_command",
+		Params:    params,
+	}
 
-    // A. Header: "RREF\0" (5 bytes)
-    buf.Write([]byte("RREF\x00")) 
-
-    // B. Frequency: 4 bytes (e.g., 20.0 Hz)
-    // We send data 20 times per second. 
-    // The ID for the dataref is prepended to the frequency for the RREF request.
-    // X-Plane expects the dataref ID (int32) and frequency (float32) together.
-    
-    // The RREF packet structure is tricky. X-Plane expects:
-    // RREF\0 (5 bytes)
-    // ID (int32, e.g., 1)
-    // Frequency (float32, e.g., 20.0)
-    // Name (dataref string + null padding to 500 bytes)
-    
-    // Write ID (1)
-    if err := binary.Write(buf, binary.LittleEndian, int32(datarefID)); err != nil {
-        log.Fatal(err)
-    }
-
-    // Write Frequency (20.0)
-    if err := binary.Write(buf, binary.LittleEndian, float32(20.0)); err != nil {
-        log.Fatal(err)
-    }
-    
-    // C. Dataref Name: Write the dataref string and pad it to the expected length (500 bytes)
-    nameBytes := []byte(datarefToRequest)
-    // Ensure we don't overflow the buffer if the name is too long, though 500 is generous
-    if len(nameBytes) > 500 {
-        nameBytes = nameBytes[:500] 
-    }
-    buf.Write(nameBytes)
-
-    // Padding with null bytes (0) to reach 500 bytes for the dataref string space
-    paddingSize := 500 - len(nameBytes) 
-    buf.Write(bytes.Repeat([]byte{0}, paddingSize))
-
-    // 3. Send the UDP packet
-    conn, err := net.DialUDP("udp", nil, xplaneAddr)
-    if err != nil {
-        log.Fatalf("Failed to dial X-Plane: %v", err)
-    }
-    defer conn.Close()
-
-    log.Printf("Sending RREF request for '%s' to %s...", datarefToRequest, xplaneAddr.String())
-    _, err = conn.Write(buf.Bytes())
-    if err != nil {
-        log.Fatalf("Error sending RREF request: %v", err)
-    }
+	sendJSON(conn, request)
+	log.Printf("-> Sent Request ID %d: Subscribing to Command Events", reqID)
 }
 
-// --- Data Receiver Function ---
-
-// receiveData continuously reads and parses incoming UDP packets from X-Plane.
-func receiveData(conn *net.UDPConn) {
-    buffer := make([]byte, 1500) // Standard UDP max size
-
-    for {
-        n, _, err := conn.ReadFromUDP(buffer)
-        if err != nil {
-            log.Printf("Error reading UDP: %v", err)
-            continue
-        }
-
-        // X-Plane UDP packets start with "DATA\0" (5 bytes)
-        if n >= 5 && string(buffer[:4]) == "DATA" {
-            parseDataPacket(buffer[:n])
-        } else {
-            // Ignore other packets or log an unknown packet
-            log.Printf("Received %d bytes of unknown data.", n)
-        }
-    }
+// sendJSON is a utility function to marshal and write the JSON message.
+func sendJSON(conn *websocket.Conn, data interface{}) {
+	msg, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalf("Error marshaling JSON: %v", err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+		log.Fatalf("Error writing message: %v", err)
+	}
 }
 
-// parseDataPacket processes the "DATA" packet structure.
-// 
-func parseDataPacket(data []byte) {
-    // The DATA packet has a header ("DATA\0", 5 bytes), followed by 8-byte chunks.
-    // Each chunk contains:
-    // 1. ID (4 bytes, int32) - The unique ID we assigned in the RREF request.
-    // 2. Value (4 bytes, float32) - The actual dataref value.
-    
-    if len(data) < 5 {
-        return // Too small
-    }
-    
-    // Data starts after the "DATA\0" header (index 5)
-    data = data[5:]
+// --- Message Processing ---
 
-    // Process all 8-byte chunks in the rest of the packet
-    for i := 0; i < len(data); i += 8 {
-        if i+8 > len(data) {
-            break // Incomplete chunk
-        }
+// processMessage handles and dispatches the incoming JSON data from X-Plane.
+func processMessage(message []byte) {
+	var response APIResponse
+	if err := json.Unmarshal(message, &response); err != nil {
+		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
+		return
+	}
+	
+	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API 
+	// would make this section clearer. 
 
-        chunk := data[i : i+8]
-        
-        // Read ID (int32)
-        var id int32
-        err := binary.Read(bytes.NewReader(chunk[:4]), binary.LittleEndian, &id)
-        if err != nil {
-            log.Printf("Error reading ID: %v", err)
-            continue
-        }
+	switch response.Type {
+	case "dataref_update":
+		handleDatarefUpdate(response.Payload)
+	case "command_update":
+		handleCommandUpdate(response.Payload)
+	case "error":
+		handleAPIError(response.RequestID, response.Payload)
+	case "message":
+		// This is a general confirmation message, usually harmless.
+		// log.Printf("[API MESSAGE] Req ID: %d, Payload: %s", response.RequestID, string(response.Payload))
+	default:
+		// Catch all other messages
+		log.Printf("[UNKNOWN] Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(response.Payload))
+	}
+}
 
-        // Read Value (float32)
-        var value float32
-        err = binary.Read(bytes.NewReader(chunk[4:]), binary.LittleEndian, &value)
-        if err != nil {
-            log.Printf("Error reading value: %v", err)
-            continue
-        }
+func handleDatarefUpdate(rawPayload json.RawMessage) {
+	var update DatarefUpdatePayload
+	if err := json.Unmarshal(rawPayload, &update); err != nil {
+		log.Printf("Error unmarshaling dataref update: %v", err)
+		return
+	}
 
-        // Check if the ID matches the dataref we requested
-        if id == datarefID {
-            // Success! Print the value.
-            fmt.Printf("[%s] %s: %.2f kts\n", 
-                time.Now().Format("15:04:05.000"), 
-                datarefToRequest, 
-                value)
-        } else {
-            // This is for another dataref (if you requested multiple)
-            log.Printf("Received data for unexpected ID %d: %.2f", id, value)
-        }
-    }
+	if update.Dataref == ContinuousDataref {
+		// Fast-changing data
+		fmt.Printf("[DATA: %.1f Hz] Airspeed: %.2f kts\n", ContinuousFreq, update.Value)
+	} else if update.Dataref == EventDataref {
+		// Event-driven data (pushed only when the value changes)
+		fmt.Printf(">>> EVENT DETECTED: COM1 Standby Freq Changed to %.0f Hz\n", update.Value)
+	}
+}
+
+func handleCommandUpdate(rawPayload json.RawMessage) {
+	var update CommandUpdatePayload
+	if err := json.Unmarshal(rawPayload, &update); err != nil {
+		log.Printf("Error unmarshaling command update: %v", err)
+		return
+	}
+	
+	// Log command executions
+	if update.Status == "executed" {
+		fmt.Printf("--- COMMAND EVENT: Command '%s' was executed.\n", update.CommandName)
+	}
+}
+
+func handleAPIError(reqID int64, rawPayload json.RawMessage) {
+	var errPayload ErrorPayload
+	if err := json.Unmarshal(rawPayload, &errPayload); err != nil {
+		log.Printf("[API ERROR] Req ID: %d, Unmarshal failed: %v", reqID, err)
+		return
+	}
+	log.Printf("[API ERROR] Req ID: %d, Code: %d, Message: %s", reqID, errPayload.Code, errPayload.Message)
 }
