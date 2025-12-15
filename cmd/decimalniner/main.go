@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -15,155 +17,166 @@ import (
 
 // --- Configuration ---
 const (
-	XPlaneWSURL      = "ws://127.0.0.1:8086/api/v2" 
+	// X-Plane 12 default Web API port for BOTH REST and WebSocket is 8086.
+	XPlaneAPIPort = "8086"
+
+    // XPlaneRESTBaseURL is the base endpoint for retrieving indices via HTTP GET.
+	XPlaneRESTBaseURL = "http://127.0.0.1:" + XPlaneAPIPort + "/api/v2/datarefs" 
 	
-	// Datarefs for monitoring
-	ContinuousDataref = "sim/flightmodel/forces/indicated_airspeed"
-	EventDataref      = "sim/cockpit2/radios/actuators/com1_standby_frequency_hz"
-	
-	// Frequencies (in Hz)
-	ContinuousFreq = 10.0 
-	EventFreq      = 1.0  
+	// XPlaneWSURL is the endpoint for the WebSocket connection.
+	XPlaneWSURL   = "ws://127.0.0.1:" + XPlaneAPIPort + "/api/v2" 
 )
 
-// Atomic counter to generate unique, sequential request IDs (req_id)
-var requestCounter atomic.Int64 
+// List of datarefs we want to look up indices for.
+var datarefsToLookup = []string{
+	"sim/aircraft/controls/acf_slat_inc",
+	"sim/aircraft/electrical/acf_nom_gen_volt",
+}
 
-// --- Data Structures for Official JSON RPC Protocol (OUTGOING) ---
+// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
+var dataRefIndexMap = make(map[string]int)
 
-// APIRequest is the top-level structure for all outgoing requests.
+// --- Data Structures ---
+
+type APIResponseDatarefs struct {
+	Data []DatarefInfo `json:"data"`
+}
+
+type DatarefInfo struct {
+	ID         int64  `json:"id"`
+	IsWritable bool   `json:"is_writable"`
+	Name       string `json:"name"`
+	ValueType  string `json:"value_type"`
+}
+
+// Placeholder for WebSocket request structure (only used for confirmation)
 type APIRequest struct {
 	RequestID int64       `json:"req_id"`
-	Type      string      `json:"type"` // e.g., "sub_dataref", "sub_command"
+	Type      string      `json:"type"` 
 	Params    interface{} `json:"params"`
 }
 
-// SubDatarefParams defines the structure for subscribing to Datarefs (used in "params").
-type SubDatarefParams struct {
-	Dataref   string  `json:"dataref"`
-	Frequency float64 `json:"frequency"`
-}
-
-// SubCommandParams defines the structure for subscribing to Command feedback (used in "params").
-// This is empty, as "sub_command" does not require specific parameters.
-type SubCommandParams struct{}
-
-// --- Data Structures for Official JSON RPC Protocol (INCOMING) ---
-
-// APIResponse is the top-level structure for all incoming messages.
-type APIResponse struct {
-	RequestID int64             `json:"req_id"` 
-	Type      string            `json:"type"` // e.g., "dataref_update", "command_update", "error"
-	Payload   json.RawMessage `json:"payload"` // Use RawMessage to defer parsing
-}
-
-// ErrorPayload is used if Type is "error".
-type ErrorPayload struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// DatarefUpdatePayload is used when Type is "dataref_update".
-type DatarefUpdatePayload struct {
-	Value float64 `json:"value"`
-	Dataref string `json:"dataref"`
-}
-
-// CommandUpdatePayload is used when Type is "command_update".
-type CommandUpdatePayload struct {
-	CommandName string `json:"command_name"`
-	Status      string `json:"status"` // e.g., "executed"
-}
-
+var requestCounter atomic.Int64 
 
 // --- Main Application ---
 
 func main() {
+	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
+	
+	// 1. Get Indices via REST
+	if err := getDataRefIndices(); err != nil {
+		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
+	}
+
+	// 2. Output Results
+	fmt.Println("\n==================================")
+	if len(dataRefIndexMap) == len(datarefsToLookup) {
+		log.Println("SUCCESS: All DataRef Indices received.")
+		fmt.Println("Retrieved DataRef Indices:")
+		for name, id := range dataRefIndexMap {
+			fmt.Printf("  - %-40s -> ID: %d\n", name, id)
+		}
+	} else if len(dataRefIndexMap) > 0 {
+		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(dataRefIndexMap), len(datarefsToLookup))
+	} else {
+		log.Fatal("FATAL: Received no indices. Check X-Plane REST configuration (Port " + XPlaneAPIPort + ") and firewall.")
+	}
+	fmt.Println("==================================\n")
+
+	// 3. Connect to WebSocket (Confirm successful setup)
+	log.Println("--- Stage 2: Connect to WebSocket (Confirmation) ---")
+	
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
-
-	// 1. Establish connection
+	
 	u, _ := url.Parse(XPlaneWSURL)
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		log.Fatalf("\nFATAL CONNECTION ERROR: Could not connect to X-Plane at %s.\n"+
-			"Please ensure X-Plane 12 is running and the Web API is listening on TCP port 8086.\nError: %v", XPlaneWSURL, err)
+		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket at %s. Ensure X-Plane 12 is running and the Web API is listening on TCP port %s.\nError: %v", XPlaneWSURL, XPlaneAPIPort, err)
 	}
 	defer conn.Close()
-    log.Printf("Successfully connected to X-Plane Web API at %s.", XPlaneWSURL)
-
-	done := make(chan struct{})
-
-	// 2. Start listener
-	go func() {
-		defer close(done)
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					log.Println("Connection closed.")
-					return
-				}
-				log.Println("Fatal read error:", err)
-				return
-			}
-			processMessage(message)
-		}
-	}()
-
-	// 3. Send subscription requests
-	log.Println("--- Sending Subscription Requests ---")
-	sendDatarefSubscription(conn, ContinuousDataref, ContinuousFreq)
-	sendDatarefSubscription(conn, EventDataref, EventFreq)
-	sendCommandSubscription(conn)
-
-	// 4. Block until interrupt signal
+	log.Println("SUCCESS: WebSocket connection established.")
+    
+	// 4. Keep connection alive until interrupt
+	log.Println("Application paused. Press Ctrl+C to disconnect.")
 	<-interrupt
-	log.Println("\nInterrupt received. Closing connection...")
 
-	err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	// 5. Graceful Close
+	log.Println("\nInterrupt received. Disconnecting...")
+	conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+}
+
+// --- REST API Functions (Stage 1) ---
+
+// buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
+func buildURLWithFilters() (string, error) {
+    // 1. Parse the base URL
+    u, err := url.Parse(XPlaneRESTBaseURL)
+    if err != nil {
+        return "", fmt.Errorf("error parsing base URL: %w", err)
+    }
+
+    // 2. Add filter parameters
+    q := u.Query()
+    for _, dataref := range datarefsToLookup {
+        // The spec requires filter[name] for each dataref
+        q.Add("filter[name]", dataref) 
+    }
+    u.RawQuery = q.Encode()
+
+    return u.String(), nil
+}
+
+// getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
+func getDataRefIndices() error {
+    // A. Build the full URL with GET parameters
+    fullURL, err := buildURLWithFilters()
+    if err != nil {
+        return err
+    }
+    log.Printf("Querying: %s", fullURL)
+
+    // B. Create the HTTP Request object
+    req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+    if err != nil {
+        return fmt.Errorf("error creating HTTP request: %w", err)
+    }
+
+	// Set required header
+    req.Header.Set("Accept", "application/json") 
+
+	// C. Send the HTTP GET request
+    client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("Write close error:", err)
+		return fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
 	}
-	<-time.After(time.Second) 
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read body for detailed X-Plane error message
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
+	}
+
+	// D. Decode the response body
+    // The response body structure is expected to be {"indices": {"dataref/name": id, ...}}
+	var response APIResponseDatarefs
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("error decoding response body: %w", err)
+	}
+
+	// E. Store the received indices
+	for _, dataref := range response.Data {
+		dataRefIndexMap[dataref.Name] = int(dataref.ID)
+	}
+
+	return err
 }
 
-// --- Subscription Functions ---
+// --- WebSocket Utility (Stage 2) ---
 
-// sendDatarefSubscription sends a request to subscribe to a dataref.
-func sendDatarefSubscription(conn *websocket.Conn, dataref string, freq float64) {
-	reqID := requestCounter.Add(1)
-	params := SubDatarefParams{
-		Dataref:   dataref,
-		Frequency: freq,
-	}
-
-	request := APIRequest{
-		RequestID: reqID,
-		Type:      "sub_dataref",
-		Params:    params,
-	}
-
-	sendJSON(conn, request)
-	log.Printf("-> Sent Request ID %d: Subscribing to %s (%.0f Hz)", reqID, dataref, freq)
-}
-
-// sendCommandSubscription sends a request to subscribe to all command execution events.
-func sendCommandSubscription(conn *websocket.Conn) {
-	reqID := requestCounter.Add(1)
-	params := SubCommandParams{}
-
-	request := APIRequest{
-		RequestID: reqID,
-		Type:      "sub_command",
-		Params:    params,
-	}
-
-	sendJSON(conn, request)
-	log.Printf("-> Sent Request ID %d: Subscribing to Command Events", reqID)
-}
-
-// sendJSON is a utility function to marshal and write the JSON message.
+// sendJSON is a utility function for the WebSocket connection (not used for REST).
 func sendJSON(conn *websocket.Conn, data interface{}) {
 	msg, err := json.Marshal(data)
 	if err != nil {
@@ -172,71 +185,4 @@ func sendJSON(conn *websocket.Conn, data interface{}) {
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 		log.Fatalf("Error writing message: %v", err)
 	}
-}
-
-// --- Message Processing ---
-
-// processMessage handles and dispatches the incoming JSON data from X-Plane.
-func processMessage(message []byte) {
-	var response APIResponse
-	if err := json.Unmarshal(message, &response); err != nil {
-		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
-		return
-	}
-	
-	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API 
-	// would make this section clearer. 
-
-	switch response.Type {
-	case "dataref_update":
-		handleDatarefUpdate(response.Payload)
-	case "command_update":
-		handleCommandUpdate(response.Payload)
-	case "error":
-		handleAPIError(response.RequestID, response.Payload)
-	case "message":
-		// This is a general confirmation message, usually harmless.
-		// log.Printf("[API MESSAGE] Req ID: %d, Payload: %s", response.RequestID, string(response.Payload))
-	default:
-		// Catch all other messages
-		log.Printf("[UNKNOWN] Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(response.Payload))
-	}
-}
-
-func handleDatarefUpdate(rawPayload json.RawMessage) {
-	var update DatarefUpdatePayload
-	if err := json.Unmarshal(rawPayload, &update); err != nil {
-		log.Printf("Error unmarshaling dataref update: %v", err)
-		return
-	}
-
-	if update.Dataref == ContinuousDataref {
-		// Fast-changing data
-		fmt.Printf("[DATA: %.1f Hz] Airspeed: %.2f kts\n", ContinuousFreq, update.Value)
-	} else if update.Dataref == EventDataref {
-		// Event-driven data (pushed only when the value changes)
-		fmt.Printf(">>> EVENT DETECTED: COM1 Standby Freq Changed to %.0f Hz\n", update.Value)
-	}
-}
-
-func handleCommandUpdate(rawPayload json.RawMessage) {
-	var update CommandUpdatePayload
-	if err := json.Unmarshal(rawPayload, &update); err != nil {
-		log.Printf("Error unmarshaling command update: %v", err)
-		return
-	}
-	
-	// Log command executions
-	if update.Status == "executed" {
-		fmt.Printf("--- COMMAND EVENT: Command '%s' was executed.\n", update.CommandName)
-	}
-}
-
-func handleAPIError(reqID int64, rawPayload json.RawMessage) {
-	var errPayload ErrorPayload
-	if err := json.Unmarshal(rawPayload, &errPayload); err != nil {
-		log.Printf("[API ERROR] Req ID: %d, Unmarshal failed: %v", reqID, err)
-		return
-	}
-	log.Printf("[API ERROR] Req ID: %d, Code: %d, Message: %s", reqID, errPayload.Code, errPayload.Message)
 }
