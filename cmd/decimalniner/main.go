@@ -27,11 +27,79 @@ const (
 	XPlaneWSURL   = "ws://127.0.0.1:" + XPlaneAPIPort + "/api/v2" 
 )
 
+/*
+
+M2NMILES(a) ((a) / 1852.0)
+
+enum TrafficType
+{
+	PT_Airline = 0,
+	PT_Cargo,
+	PT_GA,
+	PT_Military,
+};
+
+enum SizeClass
+{
+	Class_A = 0,
+	Class_B,
+	Class_C,
+	Class_D,
+	Class_E,
+	Class_F
+};
+
+enum FlightPhase
+{
+	FP_Unknown = -1,
+	FP_Cruise = 0,
+	FP_Approach,			// Positioning from cruise to the runway.
+	FP_Final,				// Gear down on final approach.
+	FP_TaxiIn,				// Any ground movement after touchdown.
+	FP_Shutdown,			// Short period of spooling down engines/electrics.
+	FP_Parked,				// Long period parked.
+	FP_Startup,				// Short period of spooling up engines/electrics.
+	FP_TaxiOut,				// Any ground movement from the gate to the runway.
+	FP_Depart,				// Initial ground roll and first part of climb.
+	FP_GoAround,			// Unplanned transition from approach to cruise.
+	FP_Climbout,			// Remainder of climb, gear up.
+	FP_Braking,				// Short period from touchdown to when fast-taxi speed is reached.
+	FP_Holding,				// Holding, waiting for a flow to complete changing.
+};
+*/
+
 // List of datarefs we want to look up indices for.
 var datarefsToLookup = []string{
-	"sim/aircraft/controls/acf_slat_inc",
-	"sim/aircraft/electrical/acf_nom_gen_volt",
+	"trafficglobal/ai/position_lat", 	// Float array
+	"trafficglobal/ai/position_long", 	// Float array
+	"trafficglobal/ai/position_heading", // Float array
+	"trafficglobal/ai/position_elev", // Float array, Altitude in meters
+	"trafficglobal/ai/aircraft_code",  		// Binary array of zero-terminated char strings
+	"trafficglobal/ai/airline_code", 		// Binary array of zero-terminated char strings
+	"trafficglobal/ai/tail_number", 		// Binary array of zero-terminated char strings
+	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum)
+	 "trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum)
+	"trafficglobal/ai/flight_num" ,		// Int array of flight numbers
+	"trafficglobal/ai/source_icao",	// Binary array of zero-terminated char strings, and int array of XPLMNavRef
+ 	"trafficglobal/ai/dest_icao",		// Binary array of zero-terminated char strings, and int array of XPLMNavRef
+	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings
+	"trafficglobal/ai/flight_phase" ,	// Int array of phase type (FlightPhase enum)
+	// The runway is the designator at the source airport if the flight phase is one of:
+	//   FP_TaxiOut, FP_Depart, FP_Climbout
+	// ... and at the destination airport if the flight phase is one of:
+	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
+ 	"trafficglobal/ai/runway",	// Int array of runway identifiers i.e. (uint32_t)'08R'
+	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
+ 	"trafficglobal/ai/taxi_route",
+ 	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
+	"trafficglobal/airport_flows",
+	// Set or get the user's parking allocation as a string formatted as ICAO/Parking Slot i.e. "EGLL/555" or "KORD/Terminal 1 Gate C15".
+	// The ICAO code should be uppercase and the parking slot name should match the one in the apt.dat EXACTLY, case sensitive.
+	// If you want to check it was reserved OK, get the data after you set it.
+	// Note that any AI in the user's slot OR ANY THAT OVERLAP IT are immediately deleted.
+ 	"trafficglobal/user_parking",
 }
+
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 var dataRefIndexMap = make(map[string]int)
