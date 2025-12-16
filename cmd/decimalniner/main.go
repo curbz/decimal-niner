@@ -118,10 +118,28 @@ type DatarefInfo struct {
 }
 
 // Placeholder for WebSocket request structure (only used for confirmation)
-type APIRequest struct {
+type DatarefSubscriptionRequest struct {
 	RequestID int64       `json:"req_id"`
 	Type      string      `json:"type"` 
-	Params    interface{} `json:"params"`
+	Params    []SubDataref `json:"params"`
+}
+
+type SubDataref struct {
+	Id    int `json:"id"`
+	Index int `json:"index,omitempty`
+}
+
+type SubscriptionResponse struct {
+	RequestID int64           `json:"req_id"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data,omitempty"`
+	Success   bool            `json:"success,omitempty"`
+}
+
+// ErrorPayload is used if Type is "error".
+type ErrorPayload struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 var requestCounter atomic.Int64 
@@ -149,7 +167,7 @@ func main() {
 	} else {
 		log.Fatal("FATAL: Received no indices. Check X-Plane REST configuration (Port " + XPlaneAPIPort + ") and firewall.")
 	}
-	fmt.Println("==================================\n")
+	fmt.Println("==================================")
 
 	// 3. Connect to WebSocket (Confirm successful setup)
 	log.Println("--- Stage 2: Connect to WebSocket (Confirmation) ---")
@@ -165,8 +183,31 @@ func main() {
 	defer conn.Close()
 	log.Println("SUCCESS: WebSocket connection established.")
     
+	done := make(chan struct{})
+
+	// 2. Start listener
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					log.Println("Connection closed.")
+					return
+				}
+				log.Println("Fatal read error:", err)
+				return
+			}
+			processMessage(message)
+		}
+	}()
+
+	// 3. Send subscription requests
+	log.Println("--- Sending Subscription Requests ---")
+	sendDatarefSubscription(conn, dataRefIndexMap)
+
 	// 4. Keep connection alive until interrupt
-	log.Println("Application paused. Press Ctrl+C to disconnect.")
+	log.Println("Press Ctrl+C to disconnect.")
 	<-interrupt
 
 	// 5. Graceful Close
@@ -253,4 +294,59 @@ func sendJSON(conn *websocket.Conn, data interface{}) {
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 		log.Fatalf("Error writing message: %v", err)
 	}
+}
+
+
+// sendDatarefSubscription sends a request to subscribe to a dataref.
+func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
+	reqID := requestCounter.Add(1)
+
+// loop through each dataref in map and create a SubDataref for each
+
+	params := make([]SubDataref, 0, len(datarefMap))
+	for _, index := range datarefMap {
+		subDataref := SubDataref{
+			Id:   index,
+		}
+		params = append(params, subDataref)
+	}
+
+	request := DatarefSubscriptionRequest{
+		RequestID: reqID,
+		Type:      "dataref_subscribe_values",
+		Params:    params,
+	}
+
+	sendJSON(conn, request)
+	log.Printf("-> Sent Request ID %d: Subscribing to datarefs", reqID)
+}
+
+// --- Message Processing ---
+
+// processMessage handles and dispatches the incoming JSON data from X-Plane.
+func processMessage(message []byte) {
+	var response SubscriptionResponse
+	if err := json.Unmarshal(message, &response); err != nil {
+		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
+		return
+	}
+	
+	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API 
+	// would make this section clearer. 
+
+	switch response.Type {
+	case "dataref_update_values":
+		handleDatarefUpdate(response.Data)
+	case "result":
+		log.Println("Dataref subscription successful")
+	default:
+		// Catch all other messages
+		log.Printf("[UNKNOWN] Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
+	}
+}
+
+func handleDatarefUpdate(rawPayload json.RawMessage) {
+
+	log.Printf("TODO: Handle dataref update payload %v", string(rawPayload) )
+
 }
