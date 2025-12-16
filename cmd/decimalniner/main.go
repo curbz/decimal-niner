@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,7 @@ enum FlightPhase
 */
 
 // List of datarefs we want to look up indices for.
+/*
 var datarefsToLookup = []string{
 	"trafficglobal/ai/position_lat", 	// Float array
 	"trafficglobal/ai/position_long", 	// Float array
@@ -99,7 +101,11 @@ var datarefsToLookup = []string{
 	// Note that any AI in the user's slot OR ANY THAT OVERLAP IT are immediately deleted.
  	"trafficglobal/user_parking",
 }
+	*/
 
+var datarefsToLookup = []string{
+	"trafficglobal/ai/aircraft_code",    
+}
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 var dataRefIndexMap = make(map[string]int)
@@ -121,12 +127,15 @@ type DatarefInfo struct {
 type DatarefSubscriptionRequest struct {
 	RequestID int64       `json:"req_id"`
 	Type      string      `json:"type"` 
-	Params    []SubDataref `json:"params"`
+	Params    ParamDatarefs `json:"params"`
+}
+
+type ParamDatarefs struct {
+	Datarefs []SubDataref `json:"datarefs"`
 }
 
 type SubDataref struct {
 	Id    int `json:"id"`
-	Index int `json:"index,omitempty`
 }
 
 type SubscriptionResponse struct {
@@ -288,6 +297,7 @@ func getDataRefIndices() error {
 // sendJSON is a utility function for the WebSocket connection (not used for REST).
 func sendJSON(conn *websocket.Conn, data interface{}) {
 	msg, err := json.Marshal(data)
+	log.Printf("-> Sending: %s", string(msg))
 	if err != nil {
 		log.Fatalf("Error marshaling JSON: %v", err)
 	}
@@ -303,12 +313,16 @@ func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
 
 // loop through each dataref in map and create a SubDataref for each
 
-	params := make([]SubDataref, 0, len(datarefMap))
+	paramDatarefs := make([]SubDataref, 0, len(datarefMap))
 	for _, index := range datarefMap {
 		subDataref := SubDataref{
 			Id:   index,
 		}
-		params = append(params, subDataref)
+		paramDatarefs = append(paramDatarefs, subDataref)
+	}
+
+	params := ParamDatarefs{
+		Datarefs: paramDatarefs,
 	}
 
 	request := DatarefSubscriptionRequest{
@@ -338,7 +352,11 @@ func processMessage(message []byte) {
 	case "dataref_update_values":
 		handleDatarefUpdate(response.Data)
 	case "result":
-		log.Println("Dataref subscription successful")
+		if response.Success {
+			log.Printf("<- Received Response ID %d: Success", response.RequestID)
+		} else {
+			log.Printf("<- Received Response ID %d: Failure", response.RequestID)
+		}
 	default:
 		// Catch all other messages
 		log.Printf("[UNKNOWN] Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
@@ -348,5 +366,71 @@ func processMessage(message []byte) {
 func handleDatarefUpdate(rawPayload json.RawMessage) {
 
 	log.Printf("TODO: Handle dataref update payload %v", string(rawPayload) )
+	
+	// TODO: need to determine the payload content and which dataref(s) this update is for, then decode accordingly
 
+	// for now assume payload is: {"<dateref_id>": "<base64_encoded_null_terminated_strings>"}
+
+	//get the base64 encoded string from the payload
+	var payloadMap map[string]string
+	if err := json.Unmarshal(rawPayload, &payloadMap); err != nil {
+		log.Printf("Error unmarshaling dataref update payload: %v. Raw: %s", err, string(rawPayload))
+		return
+	}
+
+	// For this example, just process the first entry in the map
+	var base64EncodedDataString string
+	for _, v := range payloadMap {
+		base64EncodedDataString = v
+		break
+	}
+	
+	// Decode the null-terminated strings from the base64 encoded data
+	aircraftCodes, err := decodeNullTerminatedString(base64EncodedDataString)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Decoded %d Aircraft Codes:\n", len(aircraftCodes))
+	for i, code := range aircraftCodes {
+		fmt.Printf("%d: %s\n", i+1, code)
+	}
+
+
+}
+
+// decodeNullTerminatedString decodes the base64 string and splits the resulting
+// binary data into a slice of strings using the null byte (\x00) as a delimiter.
+func decodeNullTerminatedString(encodedData string) ([]string, error) {
+	// 1. Base64 Decode the data
+	rawBytes, err := base64.StdEncoding.DecodeString(encodedData)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding base64: %w", err)
+	}
+
+	// 2. Split the raw bytes by the null terminator (\x00)
+	var decodedStrings []string
+	start := 0
+
+	for i, b := range rawBytes {
+		if b == 0x00 { // Check for the null byte
+			// Extract the substring between the last null byte (or start of data) and the current null byte
+			s := string(rawBytes[start:i])
+			decodedStrings = append(decodedStrings, s)
+
+			// Set the new start position to the byte *after* the null byte
+			start = i + 1
+		}
+	}
+
+	// Handle the final string if the data is not terminated by a null byte.
+	// This is important because C-style strings usually terminate with \x00,
+	// but the binary data chunk might not end precisely on a \x00.
+	if start < len(rawBytes) {
+		s := string(rawBytes[start:])
+		decodedStrings = append(decodedStrings, s)
+	}
+
+	return decodedStrings, nil
 }
