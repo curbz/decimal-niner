@@ -72,39 +72,53 @@ enum FlightPhase
 // List of datarefs we want to look up indices for.
 /*
 var datarefsToLookup = []string{
-	"trafficglobal/ai/position_lat", 	// Float array
-	"trafficglobal/ai/position_long", 	// Float array
-	"trafficglobal/ai/position_heading", // Float array
-	"trafficglobal/ai/position_elev", // Float array, Altitude in meters
+	"trafficglobal/ai/position_lat", 	// Float array <-- [35.216327667236328,35.216327667236328,35.216327667236328] failed to retrieve when high count 
+	"trafficglobal/ai/position_long", 	// Float array <-- failed to retrieve this one
+	"trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
+	"trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- failed to retrieve this one
+
 	"trafficglobal/ai/aircraft_code",  		// Binary array of zero-terminated char strings
 	"trafficglobal/ai/airline_code", 		// Binary array of zero-terminated char strings
 	"trafficglobal/ai/tail_number", 		// Binary array of zero-terminated char strings
-	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum)
-	 "trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum)
-	"trafficglobal/ai/flight_num" ,		// Int array of flight numbers
-	"trafficglobal/ai/source_icao",	// Binary array of zero-terminated char strings, and int array of XPLMNavRef
- 	"trafficglobal/ai/dest_icao",		// Binary array of zero-terminated char strings, and int array of XPLMNavRef
-	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings
-	"trafficglobal/ai/flight_phase" ,	// Int array of phase type (FlightPhase enum)
+
+	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum) <-- failed to retrieve this one
+	"trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum)
+
+	"trafficglobal/ai/flight_num" ,		    // Int array of flight numbers <-- [44,44,44]
+
+	"trafficglobal/ai/source_icao",	// Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns in array [16803074,16803074,16803074]
+ 	"trafficglobal/ai/dest_icao",		// Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns in array [16803074,16803074,16803074]
+
+	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings <-- "APRON A1", "APRON B", etc.
+
+	"trafficglobal/ai/flight_phase" ,	// Int array of phase type (FlightPhase enum) <-- [5,5,5]
+
 	// The runway is the designator at the source airport if the flight phase is one of:
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
+
  	"trafficglobal/ai/runway",	// Int array of runway identifiers i.e. (uint32_t)'08R'
+
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
- 	"trafficglobal/ai/taxi_route",
+
+ 	"trafficglobal/ai/taxi_route",   // 
+
  	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
-	"trafficglobal/airport_flows",
+
+	"trafficglobal/airport_flows",  // <-- decoding resulted in special character - raw data: "CwAGAA=="
+
 	// Set or get the user's parking allocation as a string formatted as ICAO/Parking Slot i.e. "EGLL/555" or "KORD/Terminal 1 Gate C15".
 	// The ICAO code should be uppercase and the parking slot name should match the one in the apt.dat EXACTLY, case sensitive.
 	// If you want to check it was reserved OK, get the data after you set it.
 	// Note that any AI in the user's slot OR ANY THAT OVERLAP IT are immediately deleted.
- 	"trafficglobal/user_parking",
+
+ 	"trafficglobal/user_parking",  //  wasn't parked at time of query (on runway) got "AA=="
 }
 	*/
 
 var datarefsToLookup = []string{
-	"trafficglobal/ai/aircraft_code",    
+	"trafficglobal/ai/position_lat",    
 }
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
@@ -403,33 +417,37 @@ func handleDatarefUpdate(rawPayload json.RawMessage) {
 // decodeNullTerminatedString decodes the base64 string and splits the resulting
 // binary data into a slice of strings using the null byte (\x00) as a delimiter.
 func decodeNullTerminatedString(encodedData string) ([]string, error) {
-	// 1. Base64 Decode the data
+	// 1. Base64 Decode
 	rawBytes, err := base64.StdEncoding.DecodeString(encodedData)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding base64: %w", err)
 	}
 
-	// 2. Split the raw bytes by the null terminator (\x00)
 	var decodedStrings []string
 	start := 0
 
 	for i, b := range rawBytes {
-		if b == 0x00 { // Check for the null byte
-			// Extract the substring between the last null byte (or start of data) and the current null byte
+		if b == 0x00 {
+			// Extract the string
 			s := string(rawBytes[start:i])
-			decodedStrings = append(decodedStrings, s)
 
-			// Set the new start position to the byte *after* the null byte
+			// FIX: Only append if the string is NOT empty.
+			// This prevents adding empty elements caused by double nulls 
+			// (\x00\x00) or trailing padding at the end of the buffer.
+			if len(s) > 0 {
+				decodedStrings = append(decodedStrings, s)
+			}
+
 			start = i + 1
 		}
 	}
 
-	// Handle the final string if the data is not terminated by a null byte.
-	// This is important because C-style strings usually terminate with \x00,
-	// but the binary data chunk might not end precisely on a \x00.
+	// Handle any remaining data (if it doesn't end with \x00)
 	if start < len(rawBytes) {
 		s := string(rawBytes[start:])
-		decodedStrings = append(decodedStrings, s)
+		if len(s) > 0 {
+			decodedStrings = append(decodedStrings, s)
+		}
 	}
 
 	return decodedStrings, nil
