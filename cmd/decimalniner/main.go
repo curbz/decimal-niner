@@ -1,5 +1,19 @@
 package main
 
+/*
+
+Issue 1: websocket does not return the correct values for numberic trafficglobal datarefs. Element 0 is repeated for all elements.
+Issue 2: When subscribed, if the number of elements changes, this is not reflected in the updates.
+Issue 3: When traffic global AI aircraft count is greater than 255, X-Plane crashes
+
+To replicate:
+1. Run this program subscribing to multiple trafficglobal/ai/position_lat dataref
+2. Note the dataref id and use it to manually query the dataref via REST API:
+   	e.g. http://localhost:8086/api/v2/datarefs/1988818324744/value
+3. Compare values returned via REST and WebSocket.
+
+*/
+
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -70,55 +84,46 @@ enum FlightPhase
 */
 
 // List of datarefs we want to look up indices for.
-/*
 var datarefsToLookup = []string{
-	"trafficglobal/ai/position_lat", 	// Float array <-- [35.216327667236328,35.216327667236328,35.216327667236328] failed to retrieve when high count 
-	"trafficglobal/ai/position_long", 	// Float array <-- failed to retrieve this one
-	"trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
-	"trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- failed to retrieve this one
+/*
+	"trafficglobal/ai/position_lat", 	   // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+	"trafficglobal/ai/position_long", 	   // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+	"trafficglobal/ai/position_heading",   // Float array <-- failed to retrieve this one
+	"trafficglobal/ai/position_elev",      // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
 
-	"trafficglobal/ai/aircraft_code",  		// Binary array of zero-terminated char strings
-	"trafficglobal/ai/airline_code", 		// Binary array of zero-terminated char strings
-	"trafficglobal/ai/tail_number", 		// Binary array of zero-terminated char strings
+	"trafficglobal/ai/aircraft_code",  		// Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+	"trafficglobal/ai/airline_code", 		// Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+	"trafficglobal/ai/tail_number", 		// Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 
-	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum) <-- failed to retrieve this one
-	"trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum)
+	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
+	"trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
 
-	"trafficglobal/ai/flight_num" ,		    // Int array of flight numbers <-- [44,44,44]
+	"trafficglobal/ai/flight_num" ,		    // Int array of flight numbers <-- [471,471,471,471,471]
 
-	"trafficglobal/ai/source_icao",	// Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns in array [16803074,16803074,16803074]
- 	"trafficglobal/ai/dest_icao",		// Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns in array [16803074,16803074,16803074]
+	"trafficglobal/ai/source_icao",	        // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+ 	"trafficglobal/ai/dest_icao",		    // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
 
-	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings <-- "APRON A1", "APRON B", etc.
+	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 
-	"trafficglobal/ai/flight_phase" ,	// Int array of phase type (FlightPhase enum) <-- [5,5,5]
+	"trafficglobal/ai/flight_phase" ,	    // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 
 	// The runway is the designator at the source airport if the flight phase is one of:
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
 
- 	"trafficglobal/ai/runway",	// Int array of runway identifiers i.e. (uint32_t)'08R'
+ 	"trafficglobal/ai/runway",	// Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
 
- 	"trafficglobal/ai/taxi_route",   // 
+ 	"trafficglobal/ai/taxi_route",   // <-- "" (no aircraft was taxiing at time of query)
 
  	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
 
-	"trafficglobal/airport_flows",  // <-- decoding resulted in special character - raw data: "CwAGAA=="
+	"trafficglobal/airport_flows",  // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
+*/
 
-	// Set or get the user's parking allocation as a string formatted as ICAO/Parking Slot i.e. "EGLL/555" or "KORD/Terminal 1 Gate C15".
-	// The ICAO code should be uppercase and the parking slot name should match the one in the apt.dat EXACTLY, case sensitive.
-	// If you want to check it was reserved OK, get the data after you set it.
-	// Note that any AI in the user's slot OR ANY THAT OVERLAP IT are immediately deleted.
-
- 	"trafficglobal/user_parking",  //  wasn't parked at time of query (on runway) got "AA=="
-}
-	*/
-
-var datarefsToLookup = []string{
-	"trafficglobal/ai/position_lat",    
+	"trafficglobal/ai/position_lat",
 }
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
@@ -451,4 +456,33 @@ func decodeNullTerminatedString(encodedData string) ([]string, error) {
 	}
 
 	return decodedStrings, nil
+}
+
+// decodeUint32 decodes a uint32 value into a string by interpreting its bytes. Useful for decoding runway identifiers.
+func decodeUint32(val uint32) {
+	fmt.Printf("Int: %d -> String: \"", val)
+
+	// Extract 4 bytes in Little Endian order (Low byte first)
+	// This simulates the behavior of reinterpret_cast<char*> on a standard PC
+	bytes := []byte{
+		byte(val & 0xFF),         // Byte 0
+		byte((val >> 8) & 0xFF),  // Byte 1
+		byte((val >> 16) & 0xFF), // Byte 2
+		byte((val >> 24) & 0xFF), // Byte 3
+	}
+
+	for _, b := range bytes {
+		if b == 0 {
+			break // Stop at null terminator
+		}
+
+		// Check if the byte is a printable ASCII character
+		if b >= 32 && b <= 126 {
+			fmt.Printf("%c", b)
+		} else {
+			// Print non-printable bytes as Hex [xNN]
+			fmt.Printf("[x%x]", b)
+		}
+	}
+	fmt.Printf("\"\n")
 }
