@@ -419,3 +419,7 @@ FodyWeavers.xsd
 
 # code-workspace
 *.code-workspace
+
+# executables and DLLs
+*.exe
+*.dll
