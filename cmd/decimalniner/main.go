@@ -19,12 +19,12 @@ To replicate:
 import (
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"flag"
 	"os"
 	"os/signal"
 	"sync/atomic"
@@ -39,11 +39,11 @@ const (
 	// X-Plane 12 default Web API port for BOTH REST and WebSocket is 8086.
 	XPlaneAPIPort = "8086"
 
-    // XPlaneRESTBaseURL is the base endpoint for retrieving indices via HTTP GET.
-	XPlaneRESTBaseURL = "http://127.0.0.1:" + XPlaneAPIPort + "/api/v2/datarefs" 
-	
+	// XPlaneRESTBaseURL is the base endpoint for retrieving indices via HTTP GET.
+	XPlaneRESTBaseURL = "http://127.0.0.1:" + XPlaneAPIPort + "/api/v2/datarefs"
+
 	// XPlaneWSURL is the endpoint for the WebSocket connection.
-	XPlaneWSURL   = "ws://127.0.0.1:" + XPlaneAPIPort + "/api/v2" 
+	XPlaneWSURL = "ws://127.0.0.1:" + XPlaneAPIPort + "/api/v2"
 )
 
 /*
@@ -90,41 +90,41 @@ enum FlightPhase
 // List of datarefs we want to look up indices for.
 var datarefsToLookup = []string{
 
-	"trafficglobal/ai/position_lat", 	   // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
-	"trafficglobal/ai/position_long", 	   // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
-	"trafficglobal/ai/position_heading",   // Float array <-- failed to retrieve this one
-	"trafficglobal/ai/position_elev",      // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+	"trafficglobal/ai/position_lat",     // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+	"trafficglobal/ai/position_long",    // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+	"trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
+	"trafficglobal/ai/position_elev",    // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
 
-	"trafficglobal/ai/aircraft_code",  		// Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
-	"trafficglobal/ai/airline_code", 		// Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
-	"trafficglobal/ai/tail_number", 		// Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+	"trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+	"trafficglobal/ai/airline_code",  // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+	"trafficglobal/ai/tail_number",   // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 
-	"trafficglobal/ai/ai_type", 			// Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-	"trafficglobal/ai/ai_class",			// Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+	"trafficglobal/ai/ai_type",  // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
+	"trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
 
-	"trafficglobal/ai/flight_num" ,		    // Int array of flight numbers <-- [471,471,471,471,471]
+	"trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
 
-	"trafficglobal/ai/source_icao",	        // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
- 	"trafficglobal/ai/dest_icao",		    // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+	"trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+	"trafficglobal/ai/dest_icao",   // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
 
-	"trafficglobal/ai/parking" ,			// Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+	"trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 
-	"trafficglobal/ai/flight_phase" ,	    // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+	"trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 
 	// The runway is the designator at the source airport if the flight phase is one of:
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
 
- 	"trafficglobal/ai/runway",	// Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+	"trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
 
- 	"trafficglobal/ai/taxi_route",   // <-- "" (no aircraft was taxiing at time of query)
+	"trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
 
- 	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
+	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
 
-	"trafficglobal/airport_flows",  // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
+	"trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
 
 }
 
@@ -146,8 +146,8 @@ type DatarefInfo struct {
 
 // Placeholder for WebSocket request structure (only used for confirmation)
 type DatarefSubscriptionRequest struct {
-	RequestID int64       `json:"req_id"`
-	Type      string      `json:"type"` 
+	RequestID int64         `json:"req_id"`
+	Type      string        `json:"type"`
 	Params    ParamDatarefs `json:"params"`
 }
 
@@ -156,7 +156,7 @@ type ParamDatarefs struct {
 }
 
 type SubDataref struct {
-	Id    int `json:"id"`
+	Id int `json:"id"`
 }
 
 type SubscriptionResponse struct {
@@ -172,7 +172,7 @@ type ErrorPayload struct {
 	Message string `json:"message"`
 }
 
-var requestCounter atomic.Int64 
+var requestCounter atomic.Int64
 
 // --- Main Application ---
 
@@ -188,7 +188,7 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 	}
 	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
-	
+
 	// 1. Get Indices via REST
 	if err := getDataRefIndices(); err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
@@ -211,10 +211,10 @@ func main() {
 
 	// 3. Connect to WebSocket (Confirm successful setup)
 	log.Println("--- Stage 2: Connect to WebSocket (Confirmation) ---")
-	
+
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
-	
+
 	u, _ := url.Parse(XPlaneWSURL)
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -222,7 +222,7 @@ func main() {
 	}
 	defer conn.Close()
 	log.Println("SUCCESS: WebSocket connection established.")
-    
+
 	done := make(chan struct{})
 
 	// 2. Start listener
@@ -259,43 +259,43 @@ func main() {
 
 // buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
 func buildURLWithFilters() (string, error) {
-    // 1. Parse the base URL
-    u, err := url.Parse(XPlaneRESTBaseURL)
-    if err != nil {
-        return "", fmt.Errorf("error parsing base URL: %w", err)
-    }
+	// 1. Parse the base URL
+	u, err := url.Parse(XPlaneRESTBaseURL)
+	if err != nil {
+		return "", fmt.Errorf("error parsing base URL: %w", err)
+	}
 
-    // 2. Add filter parameters
-    q := u.Query()
-    for _, dataref := range datarefsToLookup {
-        // The spec requires filter[name] for each dataref
-        q.Add("filter[name]", dataref) 
-    }
-    u.RawQuery = q.Encode()
+	// 2. Add filter parameters
+	q := u.Query()
+	for _, dataref := range datarefsToLookup {
+		// The spec requires filter[name] for each dataref
+		q.Add("filter[name]", dataref)
+	}
+	u.RawQuery = q.Encode()
 
-    return u.String(), nil
+	return u.String(), nil
 }
 
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
 func getDataRefIndices() error {
-    // A. Build the full URL with GET parameters
-    fullURL, err := buildURLWithFilters()
-    if err != nil {
-        return err
-    }
-    log.Printf("Querying: %s", fullURL)
+	// A. Build the full URL with GET parameters
+	fullURL, err := buildURLWithFilters()
+	if err != nil {
+		return err
+	}
+	log.Printf("Querying: %s", fullURL)
 
-    // B. Create the HTTP Request object
-    req, err := http.NewRequest(http.MethodGet, fullURL, nil)
-    if err != nil {
-        return fmt.Errorf("error creating HTTP request: %w", err)
-    }
+	// B. Create the HTTP Request object
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return fmt.Errorf("error creating HTTP request: %w", err)
+	}
 
 	// Set required header
-    req.Header.Set("Accept", "application/json") 
+	req.Header.Set("Accept", "application/json")
 
 	// C. Send the HTTP GET request
-    client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
@@ -309,7 +309,7 @@ func getDataRefIndices() error {
 	}
 
 	// D. Decode the response body
-    // The response body structure is expected to be {"indices": {"dataref/name": id, ...}}
+	// The response body structure is expected to be {"indices": {"dataref/name": id, ...}}
 	var response APIResponseDatarefs
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return fmt.Errorf("error decoding response body: %w", err)
@@ -337,17 +337,16 @@ func sendJSON(conn *websocket.Conn, data interface{}) {
 	}
 }
 
-
 // sendDatarefSubscription sends a request to subscribe to a dataref.
 func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
 	reqID := requestCounter.Add(1)
 
-// loop through each dataref in map and create a SubDataref for each
+	// loop through each dataref in map and create a SubDataref for each
 
 	paramDatarefs := make([]SubDataref, 0, len(datarefMap))
 	for _, index := range datarefMap {
 		subDataref := SubDataref{
-			Id:   index,
+			Id: index,
 		}
 		paramDatarefs = append(paramDatarefs, subDataref)
 	}
@@ -375,9 +374,9 @@ func processMessage(message []byte) {
 		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
 		return
 	}
-	
-	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API 
-	// would make this section clearer. 
+
+	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API
+	// would make this section clearer.
 
 	switch response.Type {
 	case "dataref_update_values":
@@ -396,41 +395,46 @@ func processMessage(message []byte) {
 
 func handleDatarefUpdate(rawPayload json.RawMessage) {
 
-	log.Printf("TODO: Handle dataref update payload %v", string(rawPayload) )
-	
-	// TODO: need to determine the payload content and which dataref(s) this update is for, then decode accordingly
-
-	// for now assume payload is: {"<dateref_id>": "<base64_encoded_null_terminated_strings>"}
-
-	//get the base64 encoded string from the payload
-	var payloadMap map[string]string
-	if err := json.Unmarshal(rawPayload, &payloadMap); err != nil {
+	// Accept mixed-type payloads: values may be JSON strings (base64), float arrays, or int arrays.
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(rawPayload, &payload); err != nil {
 		log.Printf("Error unmarshaling dataref update payload: %v. Raw: %s", err, string(rawPayload))
 		return
 	}
 
-	// For this example, just process the first entry in the map
-	var base64EncodedDataString string
-	for _, v := range payloadMap {
-		base64EncodedDataString = v
-		break
-	}
-	
-	// Decode the null-terminated strings from the base64 encoded data
-	aircraftCodes, err := decodeNullTerminatedString(base64EncodedDataString)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
+	for id, raw := range payload {
+		// Try as string (base64-encoded binary)
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			// Attempt to decode as base64-null-terminated string blob
+			if decoded, err := decodeNullTerminatedString(s); err == nil && len(decoded) > 0 {
+				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
+				continue
+			}
+			// Fallback: print the raw string
+			fmt.Printf("DataRef %s: string: %s\n", id, s)
+			continue
+		}
 
-	fmt.Printf("Decoded %d Aircraft Codes:\n", len(aircraftCodes))
-	for i, code := range aircraftCodes {
-		fmt.Printf("%d: %s\n", i+1, code)
-	}
+		// Try as float array
+		var floats []float64
+		if err := json.Unmarshal(raw, &floats); err == nil {
+			fmt.Printf("DataRef %s: floats: %v\n", id, floats)
+			continue
+		}
 
+		// Try as int array
+		var ints []int
+		if err := json.Unmarshal(raw, &ints); err == nil {
+			fmt.Printf("DataRef %s: ints: %v\n", id, ints)
+			continue
+		}
+
+		// Unknown type — print raw
+		fmt.Printf("DataRef %s: raw payload: %s\n", id, string(raw))
+	}
 
 }
-
 // decodeNullTerminatedString decodes the base64 string and splits the resulting
 // binary data into a slice of strings using the null byte (\x00) as a delimiter.
 func decodeNullTerminatedString(encodedData string) ([]string, error) {
@@ -449,7 +453,7 @@ func decodeNullTerminatedString(encodedData string) ([]string, error) {
 			s := string(rawBytes[start:i])
 
 			// FIX: Only append if the string is NOT empty.
-			// This prevents adding empty elements caused by double nulls 
+			// This prevents adding empty elements caused by double nulls
 			// (\x00\x00) or trailing padding at the end of the buffer.
 			if len(s) > 0 {
 				decodedStrings = append(decodedStrings, s)
