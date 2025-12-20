@@ -24,12 +24,14 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"flag"
 	"os"
 	"os/signal"
 	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/yourusername/decimal-niner/internal/mockserver"
 )
 
 // --- Configuration ---
@@ -175,6 +177,16 @@ var requestCounter atomic.Int64
 // --- Main Application ---
 
 func main() {
+	// Support a development mock server to emulate X-Plane REST+WebSocket
+	mock := flag.Bool("mock", false, "start mock X-Plane server locally")
+	flag.Parse()
+	if *mock {
+		log.Println("Starting local mock X-Plane server on :8086")
+		srv := mockserver.Start("8086")
+		defer srv.Close()
+		// small pause to let server start before client attempts to connect
+		time.Sleep(150 * time.Millisecond)
+	}
 	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
 	
 	// 1. Get Indices via REST

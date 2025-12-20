@@ -18,5 +18,17 @@
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/decimalniner"
         }
+        ,
+        // lauch with --mock flag
+        {
+            "name": "Launch debug with mock",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/decimalniner",
+            "args": [
+                "--mock"
+            ]
+        }
     ]
 }
