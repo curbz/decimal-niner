@@ -31,28 +31,28 @@ var (
 	idToValueType = make(map[int64]string)
 	// known datarefs and their canonical value types
 	datarefDefs = map[string]string{
-		"trafficglobal/ai/position_lat":    "float[]",
-		"trafficglobal/ai/position_long":   "float[]",
-		"trafficglobal/ai/position_heading":"float[]",
-		"trafficglobal/ai/position_elev":   "float[]",
+		"trafficglobal/ai/position_lat":     "float[]",
+		"trafficglobal/ai/position_long":    "float[]",
+		"trafficglobal/ai/position_heading": "float[]",
+		"trafficglobal/ai/position_elev":    "float[]",
 
-		"trafficglobal/ai/aircraft_code":   "binary[]",
-		"trafficglobal/ai/airline_code":    "binary[]",
-		"trafficglobal/ai/tail_number":     "binary[]",
+		"trafficglobal/ai/aircraft_code": "binary[]",
+		"trafficglobal/ai/airline_code":  "binary[]",
+		"trafficglobal/ai/tail_number":   "binary[]",
 
-		"trafficglobal/ai/ai_type":         "int[]",
-		"trafficglobal/ai/ai_class":        "int[]",
-		"trafficglobal/ai/flight_num":      "int[]",
+		"trafficglobal/ai/ai_type":    "int[]",
+		"trafficglobal/ai/ai_class":   "int[]",
+		"trafficglobal/ai/flight_num": "int[]",
 
 		// Some implementations return ICAO as both binary strings and ints; use binary[] for mock
-		"trafficglobal/ai/source_icao":    "binary[]",
-		"trafficglobal/ai/dest_icao":      "binary[]",
+		"trafficglobal/ai/source_icao": "binary[]",
+		"trafficglobal/ai/dest_icao":   "binary[]",
 
-		"trafficglobal/ai/parking":        "binary[]",
-		"trafficglobal/ai/flight_phase":   "int[]",
-		"trafficglobal/ai/runway":         "int[]",
-		"trafficglobal/ai/taxi_route":     "binary[]",
-		"trafficglobal/airport_flows":     "binary[]",
+		"trafficglobal/ai/parking":      "binary[]",
+		"trafficglobal/ai/flight_phase": "int[]",
+		"trafficglobal/ai/runway":       "int[]",
+		"trafficglobal/ai/taxi_route":   "binary[]",
+		"trafficglobal/airport_flows":   "binary[]",
 	}
 )
 
