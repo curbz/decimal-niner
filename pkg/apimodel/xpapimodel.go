@@ -1,4 +1,4 @@
-package apimodel
+package xpapimodel
 
 import "encoding/json"
 
