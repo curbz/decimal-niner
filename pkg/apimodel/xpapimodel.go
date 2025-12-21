@@ -7,7 +7,7 @@ type APIResponseDatarefs struct {
 }
 
 type DatarefInfo struct {
-	ID         int64  `json:"id"`
+	ID         int    `json:"id"`
 	IsWritable bool   `json:"is_writable"`
 	Name       string `json:"name"`
 	ValueType  string `json:"value_type"`

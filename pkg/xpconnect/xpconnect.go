@@ -129,7 +129,7 @@ var datarefsToLookup = []string{
 }
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-var dataRefIndexMap = make(map[string]int)
+var dataRefIndexMap = make(map[int]xpapimodel.DatarefInfo)
 
 var requestCounter atomic.Int64
 
@@ -149,8 +149,8 @@ func Start() {
 	if len(dataRefIndexMap) == len(datarefsToLookup) {
 		log.Println("SUCCESS: All DataRef Indices received.")
 		fmt.Println("Retrieved DataRef Indices:")
-		for name, id := range dataRefIndexMap {
-			fmt.Printf("  - %-40s -> ID: %d\n", name, id)
+		for id, datarefInfo := range dataRefIndexMap {
+			fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 		}
 	} else if len(dataRefIndexMap) > 0 {
 		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(dataRefIndexMap), len(datarefsToLookup))
@@ -269,9 +269,9 @@ func getDataRefIndices() error {
 		return fmt.Errorf("error decoding response body: %w", err)
 	}
 
-	// E. Store the received indices
+	// E. Store the received indices in the map
 	for _, dataref := range response.Data {
-		dataRefIndexMap[dataref.Name] = int(dataref.ID)
+		dataRefIndexMap[dataref.ID] = dataref
 	}
 
 	return err
@@ -292,13 +292,13 @@ func sendJSON(conn *websocket.Conn, data interface{}) {
 }
 
 // sendDatarefSubscription sends a request to subscribe to a dataref.
-func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
+func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]xpapimodel.DatarefInfo) {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
 
 	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(datarefMap))
-	for _, index := range datarefMap {
+	for index := range datarefMap {
 		subDataref := xpapimodel.SubDataref{
 			Id: index,
 		}
