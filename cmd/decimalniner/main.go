@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	apimodel "github.com/yourusername/decimal-niner"
 	"github.com/yourusername/decimal-niner/internal/mockserver"
 )
 
@@ -130,47 +131,6 @@ var datarefsToLookup = []string{
 
 // Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 var dataRefIndexMap = make(map[string]int)
-
-// --- Data Structures ---
-
-type APIResponseDatarefs struct {
-	Data []DatarefInfo `json:"data"`
-}
-
-type DatarefInfo struct {
-	ID         int64  `json:"id"`
-	IsWritable bool   `json:"is_writable"`
-	Name       string `json:"name"`
-	ValueType  string `json:"value_type"`
-}
-
-// Placeholder for WebSocket request structure (only used for confirmation)
-type DatarefSubscriptionRequest struct {
-	RequestID int64         `json:"req_id"`
-	Type      string        `json:"type"`
-	Params    ParamDatarefs `json:"params"`
-}
-
-type ParamDatarefs struct {
-	Datarefs []SubDataref `json:"datarefs"`
-}
-
-type SubDataref struct {
-	Id int `json:"id"`
-}
-
-type SubscriptionResponse struct {
-	RequestID int64           `json:"req_id"`
-	Type      string          `json:"type"`
-	Data      json.RawMessage `json:"data,omitempty"`
-	Success   bool            `json:"success,omitempty"`
-}
-
-// ErrorPayload is used if Type is "error".
-type ErrorPayload struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
 
 var requestCounter atomic.Int64
 
@@ -310,7 +270,7 @@ func getDataRefIndices() error {
 
 	// D. Decode the response body
 	// The response body structure is expected to be {"indices": {"dataref/name": id, ...}}
-	var response APIResponseDatarefs
+	var response apimodel.APIResponseDatarefs
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return fmt.Errorf("error decoding response body: %w", err)
 	}
@@ -343,19 +303,19 @@ func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
 
 	// loop through each dataref in map and create a SubDataref for each
 
-	paramDatarefs := make([]SubDataref, 0, len(datarefMap))
+	paramDatarefs := make([]apimodel.SubDataref, 0, len(datarefMap))
 	for _, index := range datarefMap {
-		subDataref := SubDataref{
+		subDataref := apimodel.SubDataref{
 			Id: index,
 		}
 		paramDatarefs = append(paramDatarefs, subDataref)
 	}
 
-	params := ParamDatarefs{
+	params := apimodel.ParamDatarefs{
 		Datarefs: paramDatarefs,
 	}
 
-	request := DatarefSubscriptionRequest{
+	request := apimodel.DatarefSubscriptionRequest{
 		RequestID: reqID,
 		Type:      "dataref_subscribe_values",
 		Params:    params,
@@ -369,7 +329,7 @@ func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[string]int) {
 
 // processMessage handles and dispatches the incoming JSON data from X-Plane.
 func processMessage(message []byte) {
-	var response SubscriptionResponse
+	var response apimodel.SubscriptionResponse
 	if err := json.Unmarshal(message, &response); err != nil {
 		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
 		return
@@ -435,6 +395,7 @@ func handleDatarefUpdate(rawPayload json.RawMessage) {
 	}
 
 }
+
 // decodeNullTerminatedString decodes the base64 string and splits the resulting
 // binary data into a slice of strings using the null byte (\x00) as a delimiter.
 func decodeNullTerminatedString(encodedData string) ([]string, error) {
