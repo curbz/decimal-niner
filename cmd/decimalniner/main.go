@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/mockserver"
-	"github.com/curbz/decimal-niner/pkg/xpconnect"
+	"github.com/curbz/decimal-niner/internal/xplane/xpconnect"
 )
 
 // --- Main Application ---

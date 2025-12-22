@@ -30,7 +30,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	xpapimodel "github.com/curbz/decimal-niner/pkg/xpapimodel"
+	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
 )
 
