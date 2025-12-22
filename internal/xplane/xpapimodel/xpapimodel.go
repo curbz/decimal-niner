@@ -9,7 +9,13 @@ type DatarefInfo struct {
 	IsWritable bool   `json:"is_writable"`
 	Name       string `json:"name"`
 	ValueType  string `json:"value_type"`
-	Value any	`json:"value,omitempty"`
+}
+
+type Dataref struct {
+	Name            string
+	APIInfo         DatarefInfo
+	Value           any
+	DecodedDataType string
 }
 
 // Placeholder for WebSocket request structure (only used for confirmation)
@@ -28,10 +34,10 @@ type SubDataref struct {
 }
 
 type SubscriptionResponse struct {
-	RequestID int64           `json:"req_id"`
-	Type      string          `json:"type"`
+	RequestID int64                  `json:"req_id"`
+	Type      string                 `json:"type"`
 	Data      map[string]interface{} `json:"data,omitempty"`
-	Success   bool            `json:"success,omitempty"`
+	Success   bool                   `json:"success,omitempty"`
 }
 
 // ErrorPayload is used if Type is "error".

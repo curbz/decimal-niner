@@ -88,55 +88,73 @@ enum FlightPhase
 };
 */
 
-// List of datarefs we want to look up indices for.
-var datarefsToLookup = []string{
+var requestCounter atomic.Int64
 
-	"trafficglobal/ai/position_lat",     // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
-	"trafficglobal/ai/position_long",    // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
-	"trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
-	"trafficglobal/ai/position_elev",    // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+var datarefs = []xpapimodel.Dataref{
 
-	"trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
-	"trafficglobal/ai/airline_code",  // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
-	"trafficglobal/ai/tail_number",   // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
-	"trafficglobal/ai/ai_type",  // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-	"trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
-	"trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
+	{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
-	"trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
-	"trafficglobal/ai/dest_icao",   // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+	{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
-	"trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+	{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 
-	"trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+	{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+
+	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+
+	{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+
+	{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+
+	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+
+	{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+
+	{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+
+	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+
+	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
 	// The runway is the designator at the source airport if the flight phase is one of:
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-
-	"trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
-
-	"trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
+	{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 
 	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
-
-	"trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
-
+	{Name: "trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "?"},
 }
-
-
-
-var requestCounter atomic.Int64
 
 // --- Main Application ---
 type XPConnect struct {
+	conn *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-	dataRefIndexMap map[int]*xpapimodel.DatarefInfo
+	dataRefIndexMap map[int]*xpapimodel.Dataref
 }
 
 type XPConnectInterface interface {
@@ -145,11 +163,8 @@ type XPConnectInterface interface {
 }
 
 func New() XPConnectInterface {
-	return &XPConnect{
-		dataRefIndexMap: make(map[int]*xpapimodel.DatarefInfo),
-	}
+	return &XPConnect{}
 }
-
 
 func (xpc *XPConnect) Start() {
 
@@ -162,14 +177,14 @@ func (xpc *XPConnect) Start() {
 
 	// 2. Output Results
 	fmt.Println("\n==================================")
-	if len(xpc.dataRefIndexMap) == len(datarefsToLookup) {
+	if len(xpc.dataRefIndexMap) == len(datarefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
 		fmt.Println("Retrieved DataRef Indices:")
 		for id, datarefInfo := range xpc.dataRefIndexMap {
 			fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 		}
 	} else if len(xpc.dataRefIndexMap) > 0 {
-		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(xpc.dataRefIndexMap), len(datarefsToLookup))
+		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(xpc.dataRefIndexMap), len(datarefs))
 	} else {
 		log.Fatal("FATAL: Received no indices. Check X-Plane REST configuration (Port " + XPlaneAPIPort + ") and firewall.")
 	}
@@ -182,11 +197,12 @@ func (xpc *XPConnect) Start() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	u, _ := url.Parse(XPlaneWSURL)
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	var err error
+	xpc.conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket at %s. Ensure X-Plane 12 is running and the Web API is listening on TCP port %s.\nError: %v", XPlaneWSURL, XPlaneAPIPort, err)
 	}
-	defer conn.Close()
+	defer xpc.conn.Close()
 	log.Println("SUCCESS: WebSocket connection established.")
 
 	done := make(chan struct{})
@@ -195,7 +211,7 @@ func (xpc *XPConnect) Start() {
 	go func() {
 		defer close(done)
 		for {
-			_, message, err := conn.ReadMessage()
+			_, message, err := xpc.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					log.Println("Connection closed.")
@@ -210,7 +226,7 @@ func (xpc *XPConnect) Start() {
 
 	// 3. Send subscription requests
 	log.Println("--- Sending Subscription Requests ---")
-	xpc.sendDatarefSubscription(conn, xpc.dataRefIndexMap)
+	xpc.sendDatarefSubscription()
 
 	// 4. Keep connection alive until interrupt
 	log.Println("Press Ctrl+C to disconnect.")
@@ -218,7 +234,7 @@ func (xpc *XPConnect) Start() {
 
 	// 5. Graceful Close
 	log.Println("\nInterrupt received. Disconnecting...")
-	conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	xpc.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
 func (xpc *XPConnect) Stop() {
@@ -237,9 +253,9 @@ func buildURLWithFilters() (string, error) {
 
 	// 2. Add filter parameters
 	q := u.Query()
-	for _, dataref := range datarefsToLookup {
+	for _, dataref := range datarefs {
 		// The spec requires filter[name] for each dataref
-		q.Add("filter[name]", dataref)
+		q.Add("filter[name]", dataref.Name)
 	}
 	u.RawQuery = q.Encode()
 
@@ -286,23 +302,37 @@ func (xpc *XPConnect) getDataRefIndices() error {
 	}
 
 	// E. Store the received indices in the map
+	xpc.dataRefIndexMap = make(map[int]*xpapimodel.Dataref)
 	for _, dataref := range response.Data {
-		xpc.dataRefIndexMap[dataref.ID] = &dataref
+		//xpc.dataRefIndexMap[dataref.ID] = &dataref
+		// find the corresponding dataref by name
+		for _, dr := range datarefs {
+			if dr.Name == dataref.Name {
+				// store in map		
+				xpc.dataRefIndexMap[dataref.ID] = &xpapimodel.Dataref{
+					Name:    dr.Name,
+					APIInfo: dataref,
+					Value:   nil,
+					DecodedDataType: dr.DecodedDataType,
+				}
+				break
+			}
+		}
 	}
 
-	return err
+	return nil
 }
 
 // --- WebSocket Utility (Stage 2) ---
 
 // sendDatarefSubscription sends a request to subscribe to a dataref.
-func (xpc *XPConnect) sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]*xpapimodel.DatarefInfo) {
+func (xpc *XPConnect) sendDatarefSubscription() {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
 
-	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(datarefMap))
-	for index := range datarefMap {
+	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.dataRefIndexMap))
+	for index := range xpc.dataRefIndexMap {
 		subDataref := xpapimodel.SubDataref{
 			Id: index,
 		}
@@ -319,7 +349,7 @@ func (xpc *XPConnect) sendDatarefSubscription(conn *websocket.Conn, datarefMap m
 		Params:    params,
 	}
 
-	util.SendJSON(conn, request)
+	util.SendJSON(xpc.conn, request)
 	log.Printf("-> Sent Request ID %d: Subscribing to datarefs", reqID)
 }
 
@@ -370,7 +400,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 		}
 
 		// determine the type of value from the dataref info
-		dataType := dr.ValueType
+		dataType := dr.DecodedDataType
 
 		// umarshal the value into the native golang type
 		switch dataType {
@@ -404,6 +434,5 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 			fmt.Printf("DataRef %s: raw payload: %v\n", id, value)
 		}
 	}
-
 
 }
