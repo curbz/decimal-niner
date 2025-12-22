@@ -17,7 +17,6 @@ To replicate:
 */
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,7 +30,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	xpapimodel "github.com/yourusername/decimal-niner/pkg/apimodel"
+	xpapimodel "github.com/curbz/decimal-niner/pkg/xpapimodel"
+	util "github.com/curbz/decimal-niner/pkg/util"
 )
 
 // --- Configuration ---
@@ -128,32 +128,47 @@ var datarefsToLookup = []string{
 
 }
 
-// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-var dataRefIndexMap = make(map[int]xpapimodel.DatarefInfo)
+
 
 var requestCounter atomic.Int64
 
 // --- Main Application ---
+type XPConnect struct {
+	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
+	dataRefIndexMap map[int]xpapimodel.DatarefInfo
+}
 
-func Start() {
+type XPConnectInterface interface {
+	Start()
+	Stop()
+}
+
+func New() XPConnectInterface {
+	return &XPConnect{
+		dataRefIndexMap: make(map[int]xpapimodel.DatarefInfo),
+	}
+}
+
+
+func (xpc *XPConnect) Start() {
 
 	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
 
 	// 1. Get Indices via REST
-	if err := getDataRefIndices(); err != nil {
+	if err := xpc.getDataRefIndices(); err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
 	}
 
 	// 2. Output Results
 	fmt.Println("\n==================================")
-	if len(dataRefIndexMap) == len(datarefsToLookup) {
+	if len(xpc.dataRefIndexMap) == len(datarefsToLookup) {
 		log.Println("SUCCESS: All DataRef Indices received.")
 		fmt.Println("Retrieved DataRef Indices:")
-		for id, datarefInfo := range dataRefIndexMap {
+		for id, datarefInfo := range xpc.dataRefIndexMap {
 			fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 		}
-	} else if len(dataRefIndexMap) > 0 {
-		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(dataRefIndexMap), len(datarefsToLookup))
+	} else if len(xpc.dataRefIndexMap) > 0 {
+		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(xpc.dataRefIndexMap), len(datarefsToLookup))
 	} else {
 		log.Fatal("FATAL: Received no indices. Check X-Plane REST configuration (Port " + XPlaneAPIPort + ") and firewall.")
 	}
@@ -188,13 +203,13 @@ func Start() {
 				log.Println("Fatal read error:", err)
 				return
 			}
-			processMessage(message)
+			xpc.processMessage(message)
 		}
 	}()
 
 	// 3. Send subscription requests
 	log.Println("--- Sending Subscription Requests ---")
-	sendDatarefSubscription(conn, dataRefIndexMap)
+	xpc.sendDatarefSubscription(conn, xpc.dataRefIndexMap)
 
 	// 4. Keep connection alive until interrupt
 	log.Println("Press Ctrl+C to disconnect.")
@@ -205,7 +220,7 @@ func Start() {
 	conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
-func Stop() {
+func (xpc *XPConnect) Stop() {
 	//
 }
 
@@ -231,7 +246,7 @@ func buildURLWithFilters() (string, error) {
 }
 
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
-func getDataRefIndices() error {
+func (xpc *XPConnect) getDataRefIndices() error {
 	// A. Build the full URL with GET parameters
 	fullURL, err := buildURLWithFilters()
 	if err != nil {
@@ -271,7 +286,7 @@ func getDataRefIndices() error {
 
 	// E. Store the received indices in the map
 	for _, dataref := range response.Data {
-		dataRefIndexMap[dataref.ID] = dataref
+		xpc.dataRefIndexMap[dataref.ID] = dataref
 	}
 
 	return err
@@ -279,20 +294,8 @@ func getDataRefIndices() error {
 
 // --- WebSocket Utility (Stage 2) ---
 
-// sendJSON is a utility function for the WebSocket connection (not used for REST).
-func sendJSON(conn *websocket.Conn, data interface{}) {
-	msg, err := json.Marshal(data)
-	log.Printf("-> Sending: %s", string(msg))
-	if err != nil {
-		log.Fatalf("Error marshaling JSON: %v", err)
-	}
-	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-		log.Fatalf("Error writing message: %v", err)
-	}
-}
-
 // sendDatarefSubscription sends a request to subscribe to a dataref.
-func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]xpapimodel.DatarefInfo) {
+func (xpc *XPConnect) sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]xpapimodel.DatarefInfo) {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
@@ -315,14 +318,14 @@ func sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]xpapimodel
 		Params:    params,
 	}
 
-	sendJSON(conn, request)
+	util.SendJSON(conn, request)
 	log.Printf("-> Sent Request ID %d: Subscribing to datarefs", reqID)
 }
 
 // --- Message Processing ---
 
 // processMessage handles and dispatches the incoming JSON data from X-Plane.
-func processMessage(message []byte) {
+func (xpc *XPConnect) processMessage(message []byte) {
 	var response xpapimodel.SubscriptionResponse
 	if err := json.Unmarshal(message, &response); err != nil {
 		log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
@@ -334,7 +337,7 @@ func processMessage(message []byte) {
 
 	switch response.Type {
 	case "dataref_update_values":
-		handleDatarefUpdate(response.Data)
+		xpc.handleDatarefUpdate(response.Data)
 	case "result":
 		if response.Success {
 			log.Printf("<- Received Response ID %d: Success", response.RequestID)
@@ -347,7 +350,7 @@ func processMessage(message []byte) {
 	}
 }
 
-func handleDatarefUpdate(datarefs map[string]interface{}) {
+func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 
 	for id, value := range datarefs {
 
@@ -355,12 +358,12 @@ func handleDatarefUpdate(datarefs map[string]interface{}) {
 		switch v := value.(type) {
 		case string:
 			// Attempt to decode as base64-null-terminated string blob
-			if decoded, err := decodeNullTerminatedString(v); err == nil && len(decoded) > 0 {
+			if decoded, err := util.DecodeNullTerminatedString(v); err == nil && len(decoded) > 0 {
 				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
 				continue
 			}
-			// Fallback: print the raw string
 			fmt.Printf("DataRef %s: string: %s\n", id, v)
+			//
 		case []interface{}:
 			// Determine the type of the first element to infer the array type
 			if len(v) == 0 {
@@ -393,72 +396,4 @@ func handleDatarefUpdate(datarefs map[string]interface{}) {
 	}
 
 
-}
-
-// decodeNullTerminatedString decodes the base64 string and splits the resulting
-// binary data into a slice of strings using the null byte (\x00) as a delimiter.
-func decodeNullTerminatedString(encodedData string) ([]string, error) {
-	// 1. Base64 Decode
-	rawBytes, err := base64.StdEncoding.DecodeString(encodedData)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding base64: %w", err)
-	}
-
-	var decodedStrings []string
-	start := 0
-
-	for i, b := range rawBytes {
-		if b == 0x00 {
-			// Extract the string
-			s := string(rawBytes[start:i])
-
-			// FIX: Only append if the string is NOT empty.
-			// This prevents adding empty elements caused by double nulls
-			// (\x00\x00) or trailing padding at the end of the buffer.
-			if len(s) > 0 {
-				decodedStrings = append(decodedStrings, s)
-			}
-
-			start = i + 1
-		}
-	}
-
-	// Handle any remaining data (if it doesn't end with \x00)
-	if start < len(rawBytes) {
-		s := string(rawBytes[start:])
-		if len(s) > 0 {
-			decodedStrings = append(decodedStrings, s)
-		}
-	}
-
-	return decodedStrings, nil
-}
-
-// decodeUint32 decodes a uint32 value into a string by interpreting its bytes. Useful for decoding runway identifiers.
-func decodeUint32(val uint32) {
-	fmt.Printf("Int: %d -> String: \"", val)
-
-	// Extract 4 bytes in Little Endian order (Low byte first)
-	// This simulates the behavior of reinterpret_cast<char*> on a standard PC
-	bytes := []byte{
-		byte(val & 0xFF),         // Byte 0
-		byte((val >> 8) & 0xFF),  // Byte 1
-		byte((val >> 16) & 0xFF), // Byte 2
-		byte((val >> 24) & 0xFF), // Byte 3
-	}
-
-	for _, b := range bytes {
-		if b == 0 {
-			break // Stop at null terminator
-		}
-
-		// Check if the byte is a printable ASCII character
-		if b >= 32 && b <= 126 {
-			fmt.Printf("%c", b)
-		} else {
-			// Print non-printable bytes as Hex [xNN]
-			fmt.Printf("[x%x]", b)
-		}
-	}
-	fmt.Printf("\"\n")
 }

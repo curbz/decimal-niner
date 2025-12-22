@@ -1,4 +1,4 @@
-module github.com/yourusername/decimal-niner
+module github.com/curbz/decimal-niner
 
 go 1.20
 

@@ -9,6 +9,7 @@ type DatarefInfo struct {
 	IsWritable bool   `json:"is_writable"`
 	Name       string `json:"name"`
 	ValueType  string `json:"value_type"`
+	Value any	`json:"value,omitempty"`
 }
 
 // Placeholder for WebSocket request structure (only used for confirmation)

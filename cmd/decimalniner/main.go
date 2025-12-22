@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/yourusername/decimal-niner/internal/mockserver"
-	"github.com/yourusername/decimal-niner/pkg/xpconnect"
+	"github.com/curbz/decimal-niner/internal/mockserver"
+	"github.com/curbz/decimal-niner/pkg/xpconnect"
 )
 
 // --- Main Application ---
@@ -26,7 +26,8 @@ func main() {
 	}
 
 	// Connect to X-Plane
-	xpconnect.Start()
+	xpc := xpconnect.New()
+	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown
 	interrupt := make(chan os.Signal, 1)
@@ -34,5 +35,5 @@ func main() {
 
 	<-interrupt
 	log.Println("Received interrupt, shutting down...")
-	xpconnect.Stop()
+	xpc.Stop()
 }
