@@ -1,7 +1,5 @@
 package xpapimodel
 
-import "encoding/json"
-
 type APIResponseDatarefs struct {
 	Data []DatarefInfo `json:"data"`
 }
@@ -31,7 +29,7 @@ type SubDataref struct {
 type SubscriptionResponse struct {
 	RequestID int64           `json:"req_id"`
 	Type      string          `json:"type"`
-	Data      json.RawMessage `json:"data,omitempty"`
+	Data      map[string]interface{} `json:"data,omitempty"`
 	Success   bool            `json:"success,omitempty"`
 }
 

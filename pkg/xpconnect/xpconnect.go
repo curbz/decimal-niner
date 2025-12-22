@@ -347,46 +347,51 @@ func processMessage(message []byte) {
 	}
 }
 
-func handleDatarefUpdate(rawPayload json.RawMessage) {
+func handleDatarefUpdate(datarefs map[string]interface{}) {
 
-	// Accept mixed-type payloads: values may be JSON strings (base64), float arrays, or int arrays.
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(rawPayload, &payload); err != nil {
-		log.Printf("Error unmarshaling dataref update payload: %v. Raw: %s", err, string(rawPayload))
-		return
-	}
+	for id, value := range datarefs {
 
-	for id, raw := range payload {
-		// Try as string (base64-encoded binary)
-		var s string
-		if err := json.Unmarshal(raw, &s); err == nil {
+		// umarshal the value into the native golang type
+		switch v := value.(type) {
+		case string:
 			// Attempt to decode as base64-null-terminated string blob
-			if decoded, err := decodeNullTerminatedString(s); err == nil && len(decoded) > 0 {
+			if decoded, err := decodeNullTerminatedString(v); err == nil && len(decoded) > 0 {
 				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
 				continue
 			}
 			// Fallback: print the raw string
-			fmt.Printf("DataRef %s: string: %s\n", id, s)
-			continue
+			fmt.Printf("DataRef %s: string: %s\n", id, v)
+		case []interface{}:
+			// Determine the type of the first element to infer the array type
+			if len(v) == 0 {
+				fmt.Printf("DataRef %s: empty array\n", id)
+				continue
+			}
+			switch v[0].(type) {
+			case float64:
+				// Float array
+				floatArray := make([]float64, len(v))
+				for i, elem := range v {
+					floatArray[i] = elem.(float64)
+				}
+				fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
+			case int:
+				// Int array
+				intArray := make([]int, len(v))
+				for i, elem := range v {
+					intArray[i] = elem.(int)
+				}
+				fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
+			default:
+				// Unknown array type
+				fmt.Printf("DataRef %s: unknown array type: %v\n", id, v)
+			}
+		default:
+			// Unknown type — print raw
+			fmt.Printf("DataRef %s: raw payload: %v\n", id, v)
 		}
-
-		// Try as float array
-		var floats []float64
-		if err := json.Unmarshal(raw, &floats); err == nil {
-			fmt.Printf("DataRef %s: floats: %v\n", id, floats)
-			continue
-		}
-
-		// Try as int array
-		var ints []int
-		if err := json.Unmarshal(raw, &ints); err == nil {
-			fmt.Printf("DataRef %s: ints: %v\n", id, ints)
-			continue
-		}
-
-		// Unknown type — print raw
-		fmt.Printf("DataRef %s: raw payload: %s\n", id, string(raw))
 	}
+
 
 }
 
