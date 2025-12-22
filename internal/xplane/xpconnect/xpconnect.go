@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -135,7 +136,7 @@ var requestCounter atomic.Int64
 // --- Main Application ---
 type XPConnect struct {
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-	dataRefIndexMap map[int]xpapimodel.DatarefInfo
+	dataRefIndexMap map[int]*xpapimodel.DatarefInfo
 }
 
 type XPConnectInterface interface {
@@ -145,7 +146,7 @@ type XPConnectInterface interface {
 
 func New() XPConnectInterface {
 	return &XPConnect{
-		dataRefIndexMap: make(map[int]xpapimodel.DatarefInfo),
+		dataRefIndexMap: make(map[int]*xpapimodel.DatarefInfo),
 	}
 }
 
@@ -286,7 +287,7 @@ func (xpc *XPConnect) getDataRefIndices() error {
 
 	// E. Store the received indices in the map
 	for _, dataref := range response.Data {
-		xpc.dataRefIndexMap[dataref.ID] = dataref
+		xpc.dataRefIndexMap[dataref.ID] = &dataref
 	}
 
 	return err
@@ -295,7 +296,7 @@ func (xpc *XPConnect) getDataRefIndices() error {
 // --- WebSocket Utility (Stage 2) ---
 
 // sendDatarefSubscription sends a request to subscribe to a dataref.
-func (xpc *XPConnect) sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]xpapimodel.DatarefInfo) {
+func (xpc *XPConnect) sendDatarefSubscription(conn *websocket.Conn, datarefMap map[int]*xpapimodel.DatarefInfo) {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
@@ -354,44 +355,53 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 
 	for id, value := range datarefs {
 
+		// convert id from string to int
+		idInt, err := strconv.Atoi(id)
+		if err != nil {
+			log.Printf("Error converting dataref ID %s to int: %v", id, err)
+			continue
+		}
+
+		// get the stored dataref from the xpconnect map
+		dr, exists := xpc.dataRefIndexMap[idInt]
+		if !exists {
+			log.Printf("Received update for unknown DataRef ID %d", idInt)
+			continue
+		}
+
+		// determine the type of value from the dataref info
+		dataType := dr.ValueType
+
 		// umarshal the value into the native golang type
-		switch v := value.(type) {
-		case string:
+		switch dataType {
+		case "string_array":
 			// Attempt to decode as base64-null-terminated string blob
-			if decoded, err := util.DecodeNullTerminatedString(v); err == nil && len(decoded) > 0 {
+			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
 				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
+				// get the stored dataref from the xpconnect map and update the value
+				dr := xpc.dataRefIndexMap[idInt]
+				dr.Value = decoded
 				continue
 			}
-			fmt.Printf("DataRef %s: string: %s\n", id, v)
-			//
-		case []interface{}:
-			// Determine the type of the first element to infer the array type
-			if len(v) == 0 {
-				fmt.Printf("DataRef %s: empty array\n", id)
-				continue
+			// Otherwise, print raw string
+			fmt.Printf("DataRef %s: string: %s\n", id, value.(string))
+		case "float_array":
+			// Float array
+			floatArray := make([]float64, len(value.([]interface{})))
+			for i, elem := range value.([]interface{}) {
+				floatArray[i] = elem.(float64)
 			}
-			switch v[0].(type) {
-			case float64:
-				// Float array
-				floatArray := make([]float64, len(v))
-				for i, elem := range v {
-					floatArray[i] = elem.(float64)
-				}
-				fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
-			case int:
-				// Int array
-				intArray := make([]int, len(v))
-				for i, elem := range v {
-					intArray[i] = elem.(int)
-				}
-				fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
-			default:
-				// Unknown array type
-				fmt.Printf("DataRef %s: unknown array type: %v\n", id, v)
+			fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
+		case "int_array":
+			// Int array
+			intArray := make([]int, len(value.([]interface{})))
+			for i, elem := range value.([]interface{}) {
+				intArray[i] = elem.(int)
 			}
+			fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
 		default:
 			// Unknown type — print raw
-			fmt.Printf("DataRef %s: raw payload: %v\n", id, v)
+			fmt.Printf("DataRef %s: raw payload: %v\n", id, value)
 		}
 	}
 
