@@ -445,7 +445,8 @@ func (xpc *XPConnect) updateAircraftData() {
 	// for each tail number, get or create aircraft object
 	for index, tailNumber := range tailNumbers {
 		aircraft, exists := xpc.aircraftMap[tailNumber]
-		if !exists {
+		newAircraft := !exists
+		if newAircraft {
 			aircraft = &model.Aircraft{
 				Registration: tailNumber,
 			}
@@ -456,12 +457,21 @@ func (xpc *XPConnect) updateAircraftData() {
 		// Update aircraft flight phase
 		flightPhase := xpc.getDataRefValue("trafficglobal/ai/flight_phase", index)
 		if flightPhase != nil {
-			aircraft.Flight.Phase = flightPhase.(int)
+			// check if flight phase has changed
+			updatedFlightPhase := flightPhase.(int)
+			flightPhaseChanged := aircraft.Flight.Phase != updatedFlightPhase
+			aircraft.Flight.Phase = updatedFlightPhase
+			if flightPhaseChanged && !newAircraft {
+				log.Printf("Aircraft %s flight phase changed to %d", tailNumber, updatedFlightPhase)
+			}
 		}
 
 	}
 
 	log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
+
+	xpc.printAircraftData()
+
 }
 
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
@@ -508,4 +518,11 @@ func (xpc *XPConnect) getDataRefByName(s string) *xpapimodel.Dataref {
 		}
 	}
 	return nil
+}
+
+// printAircraftData prints the current aircraft data 
+func (xpc *XPConnect) printAircraftData() {
+	for _, ac := range xpc.aircraftMap {
+		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase)
+	}
 }

@@ -244,7 +244,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	case "trafficglobal/ai/flight_num":
 		return []int{471 + iter, 472 + iter, 473 + iter}
 	case "trafficglobal/ai/flight_phase":
-		return []int{3, 4, 5}
+		return []int{1 + iter, 2, 3}
 
 	case "trafficglobal/ai/runway":
 		return []int{538756, 13107, 0, 0}
