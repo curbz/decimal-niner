@@ -10,7 +10,7 @@ type Position struct {
 	Heading  float64
 }
 
-type ATC struct {
+type Comms struct {
 	Callsign         string
 	Frequency        float64
 	LastTransmission string
@@ -26,7 +26,7 @@ type Flight struct {
 	Destination string
 	Phase       int
 	PhaseTransition time.Time
-	ATC         ATC
+	Comms         Comms
 }
 
 // Aircraft

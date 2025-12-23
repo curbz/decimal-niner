@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/xplane/xpconnect"
 )
@@ -25,8 +26,12 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 	}
 
+	// Create ATC service
+	atcService := atc.New()
+	atcService.Run()
+
 	// Connect to X-Plane
-	xpc := xpconnect.New()
+	xpc := xpconnect.New(atcService)
 	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown

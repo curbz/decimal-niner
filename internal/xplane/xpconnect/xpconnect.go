@@ -31,10 +31,33 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/model"
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
 )
+
+type XPConnect struct {
+	conn *websocket.Conn
+	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
+	dataRefIndexMap map[int]*xpapimodel.Dataref
+	aircraftMap     map[string]*model.Aircraft
+	atcService atc.ServiceInterface
+}
+
+type XPConnectInterface interface {
+	Start()
+	Stop()
+}
+
+func New(atcService atc.ServiceInterface) XPConnectInterface {
+
+	return &XPConnect{
+		aircraftMap: make(map[string]*model.Aircraft),
+		atcService: atcService,
+	}
+
+}
 
 // --- Configuration ---
 const (
@@ -69,25 +92,26 @@ enum SizeClass
 	Class_E,
 	Class_F
 };
-
-enum FlightPhase
-{
-	FP_Unknown = -1,
-	FP_Cruise = 0,
-	FP_Approach,			// Positioning from cruise to the runway.
-	FP_Final,				// Gear down on final approach.
-	FP_TaxiIn,				// Any ground movement after touchdown.
-	FP_Shutdown,			// Short period of spooling down engines/electrics.
-	FP_Parked,				// Long period parked.
-	FP_Startup,				// Short period of spooling up engines/electrics.
-	FP_TaxiOut,				// Any ground movement from the gate to the runway.
-	FP_Depart,				// Initial ground roll and first part of climb.
-	FP_GoAround,			// Unplanned transition from approach to cruise.
-	FP_Climbout,			// Remainder of climb, gear up.
-	FP_Braking,				// Short period from touchdown to when fast-taxi speed is reached.
-	FP_Holding,				// Holding, waiting for a flow to complete changing.
-};
 */
+
+type FLIGHT_PHASE int
+
+const (
+	Unknown FLIGHT_PHASE = iota -1
+	Cruise			// Normal cruise phase.
+	Approach			// Positioning from cruise to the runway.
+	Final				// Gear down on final approach.
+	TaxiIn				// Any ground movement after touchdown.
+	Shutdown			// Short period of spooling down engines/electrics.
+	Parked				// Long period parked.
+	Startup				// Short period of spooling up engines/electrics.
+	TaxiOut				// Any ground movement from the gate to the runway.
+	Depart				// Initial ground roll and first part of climb.
+	GoAround			// Unplanned transition from approach to cruise.
+	Climbout			// Remainder of climb, gear up.
+	Braking				// Short period from touchdown to when fast-taxi speed is reached.
+	Holding				// Holding, waiting for a flow to complete changing.
+ )
 
 var requestCounter atomic.Int64
 
@@ -136,26 +160,6 @@ var datarefs = []xpapimodel.Dataref{
 	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
 	{Name: "trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "?"},
-}
-
-// --- Main Application ---
-type XPConnect struct {
-	conn *websocket.Conn
-	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-	dataRefIndexMap map[int]*xpapimodel.Dataref
-	aircraftMap     map[string]*model.Aircraft
-}
-
-type XPConnectInterface interface {
-	Start()
-	Stop()
-}
-
-func New() XPConnectInterface {
-	return &XPConnect{
-		aircraftMap: make(map[string]*model.Aircraft),
-	}
-
 }
 
 func (xpc *XPConnect) Start() {
