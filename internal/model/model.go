@@ -24,9 +24,14 @@ type Flight struct {
 	TaxiRoute   string
 	Origin      string
 	Destination string
-	Phase       int
-	PhaseTransition time.Time
+	Phase       Phase
 	Comms         Comms
+}
+
+type Phase struct {
+	Current   int
+	Previous  int	// used for detecting changes, previous refers to last update and not necessarily the actual previous phase
+	Transition time.Time
 }
 
 // Aircraft

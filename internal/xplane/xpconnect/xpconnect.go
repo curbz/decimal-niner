@@ -33,6 +33,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/model"
+
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
 )
@@ -43,6 +44,7 @@ type XPConnect struct {
 	dataRefIndexMap map[int]*xpapimodel.Dataref
 	aircraftMap     map[string]*model.Aircraft
 	atcService atc.ServiceInterface
+	initialised bool
 }
 
 type XPConnectInterface interface {
@@ -94,10 +96,10 @@ enum SizeClass
 };
 */
 
-type FLIGHT_PHASE int
+type FlightPhase int
 
 const (
-	Unknown FLIGHT_PHASE = iota -1
+	Unknown FlightPhase = iota -1
 	Cruise			// Normal cruise phase.
 	Approach			// Positioning from cruise to the runway.
 	Final				// Gear down on final approach.
@@ -453,6 +455,9 @@ func (xpc *XPConnect) updateAircraftData() {
 		if newAircraft {
 			aircraft = &model.Aircraft{
 				Registration: tailNumber,
+				Flight: model.Flight{ 
+					Phase: model.Phase{ Current: int(Unknown), Previous: int(Unknown), Transition: time.Now() },
+				},
 			}
 			xpc.aircraftMap[tailNumber] = aircraft
 			log.Printf("New aircraft detected: %s", tailNumber)
@@ -461,20 +466,32 @@ func (xpc *XPConnect) updateAircraftData() {
 		// Update aircraft flight phase
 		flightPhase := xpc.getDataRefValue("trafficglobal/ai/flight_phase", index)
 		if flightPhase != nil {
-			// check if flight phase has changed
 			updatedFlightPhase := flightPhase.(int)
-			flightPhaseChanged := aircraft.Flight.Phase != updatedFlightPhase
-			aircraft.Flight.Phase = updatedFlightPhase
-			if flightPhaseChanged && !newAircraft {
-				log.Printf("Aircraft %s flight phase changed to %d", tailNumber, updatedFlightPhase)
-			}
+			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+			aircraft.Flight.Phase.Current = updatedFlightPhase
 		}
 
+	}
+
+	// TODO: update more aircraft data as needed, e.g. parking, flight number
+
+	if !xpc.initialised {
+		xpc.initialised = true
+		log.Println("Initial aircraft data loaded.")
+	} else {
+		// check for fligh phase changes
+		for _, ac := range xpc.aircraftMap {
+			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
+				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
+				ac.Flight.Phase.Transition = time.Now()
+			}
+		}
 	}
 
 	log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
 
 	xpc.printAircraftData()
+
 
 }
 
