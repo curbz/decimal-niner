@@ -31,6 +31,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/curbz/decimal-niner/internal/model"
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
 )
@@ -94,43 +95,30 @@ var datarefs = []xpapimodel.Dataref{
 
 	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-
 	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-
 	{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-
 	{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-
 	{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-
 	{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-
 	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-
 	{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
 	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
@@ -155,6 +143,7 @@ type XPConnect struct {
 	conn *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 	dataRefIndexMap map[int]*xpapimodel.Dataref
+	aircraftMap     map[string]*model.Aircraft
 }
 
 type XPConnectInterface interface {
@@ -163,7 +152,10 @@ type XPConnectInterface interface {
 }
 
 func New() XPConnectInterface {
-	return &XPConnect{}
+	return &XPConnect{
+		aircraftMap: make(map[string]*model.Aircraft),
+	}
+
 }
 
 func (xpc *XPConnect) Start() {
@@ -399,14 +391,12 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			continue
 		}
 
-		// umarshal the value into the native golang type
+		// Decode based on expected type
 		switch dr.DecodedDataType {
 		case "string_array":
 			// Attempt to decode as base64-null-terminated string blob
 			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
 				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
-				// get the stored dataref from the xpconnect map and update the value
-				dr := xpc.dataRefIndexMap[idInt]
 				dr.Value = decoded
 				continue
 			}
@@ -418,6 +408,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			for i, elem := range value.([]any) {
 				floatArray[i] = elem.(float64)
 			}
+			dr.Value = floatArray
 			fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
 		case "int_array":
 			// Int array
@@ -425,6 +416,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			for i, elem := range value.([]any) {
 				intArray[i] = int(elem.(float64))
 			}
+			dr.Value = intArray
 			fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
 		default:
 			// Unknown type — print raw
@@ -432,4 +424,88 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 		}
 	}
 
+	xpc.updateAircraftData()
+}
+
+// updateAircraftData processes the latest aircraft data using the stored datarefs
+func (xpc *XPConnect) updateAircraftData() {
+
+	// get tail numbers/registrations
+	tailNumbersDR := xpc.getDataRefByName("trafficglobal/ai/tail_number")
+	if tailNumbersDR == nil {
+		log.Println("Error: tail number dataref not found")
+		return
+	}
+	tailNumbers, ok := tailNumbersDR.Value.([]string)
+	if !ok {
+		log.Println("Error: tail number dataref has invalid type")
+		return
+	}
+
+	// for each tail number, get or create aircraft object
+	for index, tailNumber := range tailNumbers {
+		aircraft, exists := xpc.aircraftMap[tailNumber]
+		if !exists {
+			aircraft = &model.Aircraft{
+				Registration: tailNumber,
+			}
+			xpc.aircraftMap[tailNumber] = aircraft
+			log.Printf("New aircraft detected: %s", tailNumber)
+		}
+
+		// Update aircraft flight phase
+		flightPhase := xpc.getDataRefValue("trafficglobal/ai/flight_phase", index)
+		if flightPhase != nil {
+			aircraft.Flight.Phase = flightPhase.(int)
+		}
+
+	}
+
+	log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
+}
+
+// getDataRefValue retrieves the value of a dataref by name and index (for array types).
+// If the dataref is not found, returns nil.
+// If the dataref is not an array type, index is ignored.
+func (xpc *XPConnect) getDataRefValue(s string, index int) any {
+	dr := xpc.getDataRefByName(s)
+	if dr == nil {
+		return nil
+	}
+
+	// if the decoded value type is array, get the element at index
+	switch dr.DecodedDataType {
+	case "string_array":
+		values, ok := dr.Value.([]string)
+		if !ok || index >= len(values) {
+			return nil
+		}
+		return values[index]
+	case "float_array":
+		values, ok := dr.Value.([]float64)
+		if !ok || index >= len(values) {
+			return nil
+		}
+		return values[index]
+	case "int_array":
+		values, ok := dr.Value.([]int)
+		if !ok || index >= len(values) {
+			return nil
+		}
+		return values[index]
+	default:
+		// return raw value
+		return dr.Value
+	}
+}
+
+// getDataRefByName retrieves the Dataref struct by its name.
+func (xpc *XPConnect) getDataRefByName(s string) *xpapimodel.Dataref {
+
+	for _, dr := range xpc.dataRefIndexMap {
+		if dr.Name == s {
+			return dr
+		}
+	}
+	return nil
 }

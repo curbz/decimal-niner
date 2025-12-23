@@ -14,14 +14,7 @@ type ATC struct {
 	Callsign         string
 	Frequency        float64
 	LastTransmission string
-	LastReceived     string
-}
-
-// FlightPhase
-type FlightPhase struct {
-	Phase          int
-	PreviousPhase  int
-	TransitionTime time.Time
+	LastInstruction     string
 }
 
 // Flight
@@ -31,7 +24,8 @@ type Flight struct {
 	TaxiRoute   string
 	Origin      string
 	Destination string
-	Phase       FlightPhase
+	Phase       int
+	PhaseTransition time.Time
 	ATC         ATC
 }
 
