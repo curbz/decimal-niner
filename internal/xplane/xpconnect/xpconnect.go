@@ -308,11 +308,11 @@ func (xpc *XPConnect) getDataRefIndices() error {
 		// find the corresponding dataref by name
 		for _, dr := range datarefs {
 			if dr.Name == dataref.Name {
-				// store in map		
+				// store in map
 				xpc.dataRefIndexMap[dataref.ID] = &xpapimodel.Dataref{
-					Name:    dr.Name,
-					APIInfo: dataref,
-					Value:   nil,
+					Name:            dr.Name,
+					APIInfo:         dataref,
+					Value:           nil,
 					DecodedDataType: dr.DecodedDataType,
 				}
 				break
@@ -381,7 +381,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 	}
 }
 
-func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
+func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 
 	for id, value := range datarefs {
 
@@ -399,11 +399,8 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 			continue
 		}
 
-		// determine the type of value from the dataref info
-		dataType := dr.DecodedDataType
-
 		// umarshal the value into the native golang type
-		switch dataType {
+		switch dr.DecodedDataType {
 		case "string_array":
 			// Attempt to decode as base64-null-terminated string blob
 			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
@@ -417,16 +414,16 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]interface{}) {
 			fmt.Printf("DataRef %s: string: %s\n", id, value.(string))
 		case "float_array":
 			// Float array
-			floatArray := make([]float64, len(value.([]interface{})))
-			for i, elem := range value.([]interface{}) {
+			floatArray := make([]float64, len(value.([]any)))
+			for i, elem := range value.([]any) {
 				floatArray[i] = elem.(float64)
 			}
 			fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
 		case "int_array":
 			// Int array
-			intArray := make([]int, len(value.([]interface{})))
-			for i, elem := range value.([]interface{}) {
-				intArray[i] = elem.(int)
+			intArray := make([]int, len(value.([]any)))
+			for i, elem := range value.([]any) {
+				intArray[i] = int(elem.(float64))
 			}
 			fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
 		default:
