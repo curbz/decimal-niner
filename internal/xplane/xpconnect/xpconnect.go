@@ -139,10 +139,10 @@ var datarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-	{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+	//{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+	//{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
@@ -152,16 +152,16 @@ var datarefs = []xpapimodel.Dataref{
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+	//{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
-	{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+	//{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 
 	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
-	{Name: "trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "?"},
+	//{Name: "trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "?"},
 }
 
 func (xpc *XPConnect) Start() {
