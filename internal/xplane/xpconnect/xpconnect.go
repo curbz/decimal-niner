@@ -2,11 +2,8 @@ package xpconnect
 
 /*
 
-Issue 1: websocket does not return the correct values for numberic trafficglobal datarefs. Element 0 is repeated for all elements.
-Issue 2: When subscribed, if the number of elements changes, this is not reflected in the updates.
-Issue 3: When traffic global AI aircraft count is greater than 255, X-Plane crashes
+Issue 2: When subscribed, if the number of elements changes, this is not reflected in the updates for int and float arrays.
 Issue 4: source and dest icao datarefs do not return string values as stated in the c++ sample, only int array.
-Issue 5: Not an issue, but the TG UI has a setting "RELEASE_AIRCRAFT Disabled" for which there is no documentation. Presumably this stops AI from spawning/despawning which would affect the number of elements in the datarefs.
 
 To replicate:
 1. Run this program subscribing to multiple trafficglobal/ai/position_lat dataref
