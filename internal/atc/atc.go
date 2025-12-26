@@ -26,6 +26,8 @@ func New() *Service {
 			{Name: "Departure", Frequency: 122.6},
 			{Name: "Center", Frequency: 128.2},
 			{Name: "Approach", Frequency: 124.5},
+			{Name: "TRACON", Frequency: 127.2},
+			{Name: "Ocennic", Frequency: 135.0},
 		},
 	}
 }
