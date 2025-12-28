@@ -476,11 +476,16 @@ func (xpc *XPConnect) updateAircraftData() {
 		xpc.initialised = true
 		log.Println("Initial aircraft data loaded.")
 	} else {
-		// check for fligh phase changes
+		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
 				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
 				ac.Flight.Phase.Transition = time.Now()
+				// Notify ATC service of phase change by sending on channel
+				atcMessage := &atc.ATCMessage{
+					// populate fields as needed
+				}
+				xpc.atcService.Notify(atcMessage)
 			}
 		}
 	}

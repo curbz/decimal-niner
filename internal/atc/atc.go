@@ -22,6 +22,10 @@ type Service struct {
 
 type ServiceInterface interface {
 	Run()
+	Notify(msg *ATCMessage)
+}
+
+type ATCMessage struct {
 }
 
 type Position struct {
@@ -31,8 +35,15 @@ type Position struct {
 
 func New() *Service {
 
+	if _, err := os.Stat(PiperPath); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Piper binary not found at %s", PiperPath)
+	}
+	if _, err := os.Stat(VoiceDir); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Voice directory not found at %s", VoiceDir)
+	}
+
 	return &Service{
-		Channel: make(chan struct{}, 1),
+		Channel: make(chan struct{}, msgBuffSize),
 		Positions: []Position{
 			{Name: "Clearance Delivery", Frequency: 118.1},
 			{Name: "Ground", Frequency: 121.9},
@@ -49,25 +60,40 @@ func New() *Service {
 // main function to run the ATC service
 func (s *Service) Run() {
 
-	if _, err := os.Stat(PiperPath); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Piper binary not found at %s", PiperPath)
-	}
-	if _, err := os.Stat(VoiceDir); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Voice directory not found at %s", VoiceDir)
-	}
-
 	// main loop to read from channel and process instructions
-	apt := "EGNT"
-
+	go func() {
+		for {
+			<-s.Channel
+			// process instructions here
+			// e.g., generate and send ATC messages based on aircraft positions and phases
+			Say("EGNT", "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
+		}
+	}()
 	// Demo Sequence
-	Say(apt, "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
-	Say(apt, "GNT049", "GROUND", "Giant zero-four-niner, Newcastle Ground, taxi to holding point runway two-seven.")
+	//apt := "EGNT"
+	//Say(apt, "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
+	//Say(apt, "GNT049", "GROUND", "Giant zero-four-niner, Newcastle Ground, taxi to holding point runway two-seven.")
 
+}
+
+func (s *Service) Notify(msg *ATCMessage) {
+	// deterimine if user hears message by checking frequency
+
+	// if so, send on channel
+	go func() {
+		select {
+			case s.Channel <- struct{}{}:
+				// Message sent successfully
+			default:
+				log.Println("ATC message buffer full: dropping message")
+		}
+	}()
 }
 
 const (
 	PiperPath = "/home/dmorris/piper/piper"
 	VoiceDir  = "/home/dmorris/piper-voices"
+	msgBuffSize = 5
 )
 
 var RegionalPools = map[string][]string{
