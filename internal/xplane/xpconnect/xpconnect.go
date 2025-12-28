@@ -116,6 +116,8 @@ var requestCounter atomic.Int64
 
 var datarefs = []xpapimodel.Dataref{
 
+	//TODO: add current tuned atc frequency dataref to monitor user tuning
+
 	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
@@ -470,6 +472,41 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	}
 
+	// update callsigns
+	airlineCodes := []string{}
+	flightNums := []int{}
+	airlineCodesDR := xpc.getDataRefByName("trafficglobal/ai/airline_code")
+	flightNumsDR := xpc.getDataRefByName("trafficglobal/ai/flight_num")
+	if airlineCodesDR == nil || flightNumsDR == nil {
+		log.Println("Error: airline code or flight number dataref not found")
+	} else {
+		airlineCodes, ok = airlineCodesDR.Value.([]string)
+		if !ok {
+			log.Println("Error: airline code dataref has invalid type")
+		}
+		flightNums, ok = flightNumsDR.Value.([]int)
+		if !ok {
+			log.Println("Error: flight number dataref has invalid type")
+		}
+	}
+	
+	for index, tailNumber := range tailNumbers {
+		aircraft, exists := xpc.aircraftMap[tailNumber]
+		if !exists {
+			continue
+		}
+		airlineCode := "Generic"
+		if index < len(airlineCodes) {
+			airlineCode = airlineCodes[index]
+		}
+		flightNum := 0
+		if index < len(flightNums) {
+			flightNum = flightNums[index]
+		}
+		callsign := fmt.Sprintf("%s%03d", airlineCode, flightNum)
+		aircraft.Flight.Comms.Callsign = callsign
+	}
+
 	// TODO: update more aircraft data as needed, e.g. parking, flight number
 
 	if !xpc.initialised {
@@ -482,10 +519,7 @@ func (xpc *XPConnect) updateAircraftData() {
 				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of phase change by sending on channel
-				atcMessage := &atc.ATCMessage{
-					// populate fields as needed
-				}
-				xpc.atcService.Notify(atcMessage)
+				xpc.atcService.Notify(*ac)
 			}
 		}
 	}

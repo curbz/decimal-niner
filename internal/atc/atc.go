@@ -12,23 +12,22 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/curbz/decimal-niner/internal/model"
 )
 
 type Service struct {
-	// go channel to trigger instructions
-	Channel   chan struct{}
-	Positions []Position
+	Channel   chan model.Aircraft
+	Facilities []Facility
+	UserTunedFrequency float64
 }
 
 type ServiceInterface interface {
 	Run()
-	Notify(msg *ATCMessage)
+	Notify(msg model.Aircraft)
 }
 
-type ATCMessage struct {
-}
-
-type Position struct {
+type Facility struct {
 	Name      string
 	Frequency float64
 }
@@ -43,8 +42,8 @@ func New() *Service {
 	}
 
 	return &Service{
-		Channel: make(chan struct{}, msgBuffSize),
-		Positions: []Position{
+		Channel: make(chan model.Aircraft, msgBuffSize),
+		Facilities: []Facility{
 			{Name: "Clearance Delivery", Frequency: 118.1},
 			{Name: "Ground", Frequency: 121.9},
 			{Name: "Tower", Frequency: 118.1},
@@ -62,11 +61,18 @@ func (s *Service) Run() {
 
 	// main loop to read from channel and process instructions
 	go func() {
-		for {
-			<-s.Channel
-			// process instructions here
-			// e.g., generate and send ATC messages based on aircraft positions and phases
-			Say("EGNT", "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
+		for ac := range s.Channel {
+			// process instructions here based on aircraft phase or other criteria
+			// this process may generate a response to the communication
+
+			// determine atc facility based on aircraft position or phase
+
+			// if user is not tuned to frequency then skip
+
+
+			// Example instruction
+			//Say("EGNT", "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
+			Say("EGNT", ac.Flight.Comms.Callsign, "PILOT", "Newcastle Ground, " + ac.Flight.Comms.Callsign + ", request taxi.")
 		}
 	}()
 	// Demo Sequence
@@ -76,23 +82,24 @@ func (s *Service) Run() {
 
 }
 
-func (s *Service) Notify(msg *ATCMessage) {
+func (s *Service) Notify(ac model.Aircraft) {
 	// deterimine if user hears message by checking frequency
 
 	// if so, send on channel
 	go func() {
 		select {
-			case s.Channel <- struct{}{}:
-				// Message sent successfully
-			default:
-				log.Println("ATC message buffer full: dropping message")
+		case s.Channel <- ac:
+			// Message sent successfully
+			log.Println("ATC notification sent for aircraft:", ac.Flight.Comms.Callsign)
+		default:
+			log.Println("ATC notification buffer full: dropping message")
 		}
 	}()
 }
 
 const (
-	PiperPath = "/home/dmorris/piper/piper"
-	VoiceDir  = "/home/dmorris/piper-voices"
+	PiperPath   = "/home/dmorris/piper/piper"
+	VoiceDir    = "/home/dmorris/piper-voices"
 	msgBuffSize = 5
 )
 

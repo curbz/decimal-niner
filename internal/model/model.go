@@ -14,7 +14,7 @@ type Comms struct {
 	Callsign         string
 	Frequency        float64
 	LastTransmission string
-	LastInstruction     string
+	LastInstruction  string
 }
 
 // Flight
@@ -25,7 +25,7 @@ type Flight struct {
 	Origin      string
 	Destination string
 	Phase       Phase
-	Comms         Comms
+	Comms       Comms
 }
 
 type Phase struct {
