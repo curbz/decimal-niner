@@ -14,12 +14,15 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/model"
+	"github.com/curbz/decimal-niner/trafficglobal"
 )
 
 type Service struct {
 	Channel   chan model.Aircraft
-	Facilities []Facility
+	Facilities map[string]float64   // facility name to frequency
 	UserTunedFrequency float64
+	UserICAO		string
+	phrases map[string]map[string][]string
 }
 
 type ServiceInterface interface {
@@ -27,32 +30,53 @@ type ServiceInterface interface {
 	Notify(msg model.Aircraft)
 }
 
-type Facility struct {
-	Name      string
-	Frequency float64
-}
-
 func New() *Service {
 
-	if _, err := os.Stat(PiperPath); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Piper binary not found at %s", PiperPath)
+	if _, err := os.Stat(PiperDir); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Piper binary not found at %s", PiperDir)
 	}
 	if _, err := os.Stat(VoiceDir); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Voice directory not found at %s", VoiceDir)
 	}
+		if _, err := os.Stat(PhrasesFile); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Phrases file not found at %s", PhrasesFile)
+	}
+
+	// load phrases from JSON file
+	phrasesFile, err := os.Open(PhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open phrases.json: %v", err)
+	}
+	defer phrasesFile.Close()
+
+	phrasesBytes, err := io.ReadAll(phrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read phrases.json: %v", err)
+	}
+
+	var phrases map[string]map[string][]string
+	err = json.Unmarshal(phrasesBytes, &phrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal phrases.json: %v", err)
+	}
 
 	return &Service{
 		Channel: make(chan model.Aircraft, msgBuffSize),
-		Facilities: []Facility{
-			{Name: "Clearance Delivery", Frequency: 118.1},
-			{Name: "Ground", Frequency: 121.9},
-			{Name: "Tower", Frequency: 118.1},
-			{Name: "Departure", Frequency: 122.6},
-			{Name: "Center", Frequency: 128.2},
-			{Name: "Approach", Frequency: 124.5},
-			{Name: "TRACON", Frequency: 127.2},
-			{Name: "Oceanic", Frequency: 135.0},
+		// TODO: these frequencies should be set from xpconnect datarefs
+		Facilities: map[string]float64 {
+			"Clearance Delivery": 118.1,
+			"Ground":            121.9,
+			"Tower":             118.1,
+			"Departure":         122.6,
+			"Center":            128.2,
+			"Approach":          124.5,
+			"TRACON":            127.2,
+			"Oceanic":           135.0,
 		},
+		// TODO: remove these and set from xpconnect datarefs
+		UserTunedFrequency: 121.9,
+		UserICAO: "EGNT",
+		phrases: phrases,
 	}
 }
 
@@ -65,14 +89,47 @@ func (s *Service) Run() {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a response to the communication
 
+			var phaseGroup map[string][]string
+
 			// determine atc facility based on aircraft position or phase
+			switch ac.Flight.Phase.Current {
+			case int(trafficglobal.FP_Startup): // Taxi
+				phaseGroup = s.phrases["startup"]
+				// set the aircraft comms frequency to ground facility
+				ac.Flight.Comms.Frequency = s.Facilities["Ground"]
+			default:
+				log.Printf("No ATC instructions for phase %d", ac.Flight.Phase.Current)
+				continue
+			}
 
 			// if user is not tuned to frequency then skip
+			if ac.Flight.Comms.Frequency != s.UserTunedFrequency {
+				log.Printf("Skipping ATC message for %s: user not tuned to %.1f MHz", ac.Flight.Comms.Callsign, ac.Flight.Comms.Frequency)
+				continue
+			}
+
+			// select random phrase from phrasegroup e.g. taxi_instructions.pilot_initial_calls
+			phrases := phaseGroup["pilot_initial_calls"]
+			if len(phrases) == 0 {
+				log.Printf("No phrases found for phase group")
+				continue
+			}
+			selectedPhrase := phrases[rand.Intn(len(phrases))]
+
+			// construct message
+			message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
+			message = strings.ReplaceAll(message, "{AIRPORT}", s.UserICAO)
+
+			// send message
+			Say(s.UserICAO, ac.Flight.Comms.Callsign, "PILOT", message)
 
 
 			// Example instruction
 			//Say("EGNT", "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
-			Say("EGNT", ac.Flight.Comms.Callsign, "PILOT", "Newcastle Ground, " + ac.Flight.Comms.Callsign + ", request taxi.")
+			//Say("EGNT", ac.Flight.Comms.Callsign, "PILOT", "Newcastle Ground, " + ac.Flight.Comms.Callsign + ", request taxi.")
+		
+
+
 		}
 	}()
 	// Demo Sequence
@@ -98,8 +155,9 @@ func (s *Service) Notify(ac model.Aircraft) {
 }
 
 const (
-	PiperPath   = "/home/dmorris/piper/piper"
+	PiperDir   = "/home/dmorris/piper/piper"
 	VoiceDir    = "/home/dmorris/piper-voices"
+	PhrasesFile = "/home/dmorris/decimal-niner/resources/phrases.json"
 	msgBuffSize = 5
 )
 
@@ -199,7 +257,7 @@ func Say(airportCode string, callsign string, role string, message string) {
 		noiseType = "pinknoise" // Brighter, harsher for Aircraft
 	}
 
-	piperCmd := exec.Command(PiperPath, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
+	piperCmd := exec.Command(PiperDir, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
 	piperStdin, _ := piperCmd.StdinPipe()
 	piperStdout, _ := piperCmd.StdoutPipe()
 
