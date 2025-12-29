@@ -90,17 +90,20 @@ func (s *Service) Run() {
 			// this process may generate a response to the communication
 
 			var phaseGroup map[string][]string
+			var facility string
 
 			// determine atc facility based on aircraft position or phase
 			switch ac.Flight.Phase.Current {
 			case int(trafficglobal.FP_Startup): // Taxi
 				phaseGroup = s.phrases["startup"]
-				// set the aircraft comms frequency to ground facility
-				ac.Flight.Comms.Frequency = s.Facilities["Ground"]
+				facility = "Ground"
 			default:
 				log.Printf("No ATC instructions for phase %d", ac.Flight.Phase.Current)
 				continue
 			}
+
+			// set the aircraft comms frequency to ground facility
+			ac.Flight.Comms.Frequency = s.Facilities[facility]
 
 			// if user is not tuned to frequency then skip
 			if ac.Flight.Comms.Frequency != s.UserTunedFrequency {
@@ -108,28 +111,29 @@ func (s *Service) Run() {
 				continue
 			}
 
-			// select random phrase from phrasegroup e.g. taxi_instructions.pilot_initial_calls
-			phrases := phaseGroup["pilot_initial_calls"]
-			if len(phrases) == 0 {
-				log.Printf("No phrases found for phase group")
-				continue
+			callAndResponse := []string{"pilot_initial_calls", "atc_responses_instructions"}
+
+			for i, groupName := range callAndResponse {
+				// select random phrase
+				phrases := phaseGroup[groupName]
+				if len(phrases) == 0 {
+					log.Printf("No phrases found for phase group %s", phaseGroup)
+					continue
+				}
+				selectedPhrase := phrases[rand.Intn(len(phrases))]
+
+				// construct message and replace all possible variables
+				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
+				message = strings.ReplaceAll(message, "{AIRPORT}", s.UserICAO)
+
+				role := "PILOT"
+				if i > 0 {
+					role = facility
+				}
+
+				// send message
+				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, message)
 			}
-			selectedPhrase := phrases[rand.Intn(len(phrases))]
-
-			// construct message
-			message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
-			message = strings.ReplaceAll(message, "{AIRPORT}", s.UserICAO)
-
-			// send message
-			Say(s.UserICAO, ac.Flight.Comms.Callsign, "PILOT", message)
-
-
-			// Example instruction
-			//Say("EGNT", "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
-			//Say("EGNT", ac.Flight.Comms.Callsign, "PILOT", "Newcastle Ground, " + ac.Flight.Comms.Callsign + ", request taxi.")
-		
-
-
 		}
 	}()
 	// Demo Sequence
