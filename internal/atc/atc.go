@@ -94,7 +94,7 @@ func (s *Service) Run() {
 
 			// determine atc facility based on aircraft position or phase
 			switch ac.Flight.Phase.Current {
-			case int(trafficglobal.FP_Startup): // Taxi
+			case trafficglobal.Startup.Index(): // Taxi
 				phaseGroup = s.phrases["startup"]
 				facility = "Ground"
 			default:
@@ -305,14 +305,14 @@ func getSampleRate(path string) int {
 
 func noiseType(role string, flightPhase int) string {
 	if role == "PILOT" {
-		if flightPhase == int(trafficglobal.FP_Cruise) ||
-			flightPhase == int(trafficglobal.FP_Climbout) ||
-			flightPhase == int(trafficglobal.FP_Depart) ||
-			flightPhase == int(trafficglobal.FP_GoAround) ||
-			flightPhase == int(trafficglobal.FP_Approach) ||
-			flightPhase == int(trafficglobal.FP_Final) ||
-			flightPhase == int(trafficglobal.FP_Braking) ||
-			flightPhase == int(trafficglobal.FP_Holding) {
+		if flightPhase == trafficglobal.Cruise.Index() ||
+			flightPhase == trafficglobal.Climbout.Index() ||
+			flightPhase == trafficglobal.Depart.Index() ||
+			flightPhase == trafficglobal.GoAround.Index() ||
+			flightPhase == trafficglobal.Approach.Index() ||
+			flightPhase == trafficglobal.Final.Index() ||
+			flightPhase == trafficglobal.Braking.Index() ||
+			flightPhase == trafficglobal.Holding.Index() {
 			return "pinknoise"
 		}
 	}

@@ -434,10 +434,14 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft, exists := xpc.aircraftMap[tailNumber]
 		newAircraft := !exists
 		if newAircraft {
+			fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
 			aircraft = &model.Aircraft{
 				Registration: tailNumber,
 				Flight: model.Flight{ 
-					Phase: model.Phase{ Current: int(trafficglobal.FP_Unknown), Previous: int(trafficglobal.FP_Unknown), Transition: time.Now() },
+					Phase: model.Phase{ 
+						Current: fpUnknown.Index(),
+						Previous: fpUnknown.Index(), 
+						Transition: time.Now() },
 				},
 			}
 			xpc.aircraftMap[tailNumber] = aircraft
