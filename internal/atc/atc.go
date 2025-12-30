@@ -267,13 +267,18 @@ func Say(airportCode string, callsign string, role string, flightPhase int, mess
 		"bandpass", "1200", "1500",
 		"overdrive", "20",
 		"tremolo", "5", "40",
-		"synth", noiseType, "mix", "1", // Use the dynamic noise type here
+		"synth", noiseType, "mix", "0.2", 
 		"pad", "0", "0.5",
 	)
 	playCmd.Stdin = piperStdout
 
 	_ = playCmd.Start()
 	_ = piperCmd.Start()
+
+	// if the voice is non-English, translate numerics into words
+	if !strings.HasPrefix(selectedVoice, "en_") {
+		message = translateNumerics(message)
+	}
 
 	go func() {
 		defer wg.Done()
@@ -312,4 +317,30 @@ func noiseType(role string, flightPhase int) string {
 		}
 	}
 	return "brownnoise"
+}
+
+// translateNumerics converts numeric digits in a string to their word equivalents
+func translateNumerics(msg string) string {
+	numMap := map[rune]string{
+		'0': "zero",
+		'1': "one",
+		'2': "two",
+		'3': "three",
+		'4': "four",
+		'5': "five",
+		'6': "six",
+		'7': "seven",
+		'8': "eight",
+		'9': "niner",
+	}
+	var result strings.Builder
+	for _, ch := range msg {
+		if word, exists := numMap[ch]; exists {
+			result.WriteString(word)
+			result.WriteString(" ")
+		} else {
+			result.WriteRune(ch)
+		}
+	}
+	return result.String()
 }
