@@ -18,11 +18,11 @@ import (
 )
 
 type Service struct {
-	Channel   chan model.Aircraft
-	Facilities map[string]float64   // facility name to frequency
+	Channel            chan model.Aircraft
+	Facilities         map[string]float64 // facility name to frequency
 	UserTunedFrequency float64
-	UserICAO		string
-	phrases map[string]map[string][]string
+	UserICAO           string
+	phrases            map[string]map[string][]string
 }
 
 type ServiceInterface interface {
@@ -38,7 +38,7 @@ func New() *Service {
 	if _, err := os.Stat(VoiceDir); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Voice directory not found at %s", VoiceDir)
 	}
-		if _, err := os.Stat(PhrasesFile); os.IsNotExist(err) {
+	if _, err := os.Stat(PhrasesFile); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Phrases file not found at %s", PhrasesFile)
 	}
 
@@ -63,20 +63,20 @@ func New() *Service {
 	return &Service{
 		Channel: make(chan model.Aircraft, msgBuffSize),
 		// TODO: these frequencies should be set from xpconnect datarefs
-		Facilities: map[string]float64 {
+		Facilities: map[string]float64{
 			"Clearance Delivery": 118.1,
-			"Ground":            121.9,
-			"Tower":             118.1,
-			"Departure":         122.6,
-			"Center":            128.2,
-			"Approach":          124.5,
-			"TRACON":            127.2,
-			"Oceanic":           135.0,
+			"Ground":             121.9,
+			"Tower":              118.1,
+			"Departure":          122.6,
+			"Center":             128.2,
+			"Approach":           124.5,
+			"TRACON":             127.2,
+			"Oceanic":            135.0,
 		},
 		// TODO: remove these and set from xpconnect datarefs
 		UserTunedFrequency: 121.9,
-		UserICAO: "EGNT",
-		phrases: phrases,
+		UserICAO:           "EGNT",
+		phrases:            phrases,
 	}
 }
 
@@ -132,7 +132,7 @@ func (s *Service) Run() {
 				}
 
 				// send message
-				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, message)
+				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, ac.Flight.Phase.Current, message)
 			}
 		}
 	}()
@@ -159,7 +159,7 @@ func (s *Service) Notify(ac model.Aircraft) {
 }
 
 const (
-	PiperDir   = "/home/dmorris/piper/piper"
+	PiperDir    = "/home/dmorris/piper/piper"
 	VoiceDir    = "/home/dmorris/piper-voices"
 	PhrasesFile = "/home/dmorris/decimal-niner/resources/phrases.json"
 	msgBuffSize = 5
@@ -194,7 +194,7 @@ type PiperConfig struct {
 	} `json:"audio"`
 }
 
-func Say(airportCode string, callsign string, role string, message string) {
+func Say(airportCode string, callsign string, role string, flightPhase int, message string) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -256,10 +256,7 @@ func Say(airportCode string, callsign string, role string, message string) {
 	sampleRate := getSampleRate(onnxPath + ".json")
 
 	// --- Dynamic Noise Logic ---
-	noiseType := "brownnoise" // Default for Controllers
-	if role == "PILOT" {
-		noiseType = "pinknoise" // Brighter, harsher for Aircraft
-	}
+	noiseType := noiseType(role, flightPhase)
 
 	piperCmd := exec.Command(PiperDir, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
 	piperStdin, _ := piperCmd.StdinPipe()
@@ -299,4 +296,20 @@ func getSampleRate(path string) int {
 	var cfg PiperConfig
 	_ = json.NewDecoder(file).Decode(&cfg)
 	return cfg.Audio.SampleRate
+}
+
+func noiseType(role string, flightPhase int) string {
+	if role == "PILOT" {
+		if flightPhase == int(trafficglobal.FP_Cruise) ||
+			flightPhase == int(trafficglobal.FP_Climbout) ||
+			flightPhase == int(trafficglobal.FP_Depart) ||
+			flightPhase == int(trafficglobal.FP_GoAround) ||
+			flightPhase == int(trafficglobal.FP_Approach) ||
+			flightPhase == int(trafficglobal.FP_Final) ||
+			flightPhase == int(trafficglobal.FP_Braking) ||
+			flightPhase == int(trafficglobal.FP_Holding) {
+			return "pinknoise"
+		}
+	}
+	return "brownnoise"
 }

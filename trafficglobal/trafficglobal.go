@@ -16,5 +16,5 @@ const (
 	FP_GoAround			// Unplanned transition from approach to cruise.
 	FP_Climbout			// Remainder of climb, gear up.
 	FP_Braking				// Short period from touchdown to when fast-taxi speed is reached.
-	Holding				// Holding, waiting for a flow to complete changing.
+	FP_Holding				// Holding, waiting for a flow to complete changing.
  )
