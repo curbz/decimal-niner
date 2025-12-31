@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -41,8 +42,8 @@ type XPConnect struct {
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 	dataRefIndexMap map[int]*xpapimodel.Dataref
 	aircraftMap     map[string]*model.Aircraft
-	atcService atc.ServiceInterface
-	initialised bool
+	atcService      atc.ServiceInterface
+	initialised     bool
 }
 
 type XPConnectInterface interface {
@@ -50,11 +51,33 @@ type XPConnectInterface interface {
 	Stop()
 }
 
+type config struct {
+	XPlane struct {
+		Host        string `yaml:"host"`
+		Port        int    `yaml:"port"`
+		ReceivePort int    `yaml:"receive_port"`
+	} `yaml:"xplane"`
+}
+
+const relativePathToConfig = "../../config.yaml"
+
 func New(atcService atc.ServiceInterface) XPConnectInterface {
 
+	absPath, err := filepath.Abs(relativePathToConfig)
+	if err != nil {
+		log.Fatalf("Failed to get absolute path for config: %v", err)
+	}
+
+	cfg, err := util.LoadConfig[config](absPath)
+	if err != nil {
+		log.Fatalf("Error reading configuration file: %v\n", err)
+	}
+
+	log.Printf("X-Plane Config - Host: %s, Port: %d, Receive Port: %d", cfg.XPlane.Host, cfg.XPlane.Port, cfg.XPlane.ReceivePort)
+	
 	return &XPConnect{
 		aircraftMap: make(map[string]*model.Aircraft),
-		atcService: atcService,
+		atcService:  atcService,
 	}
 
 }
@@ -437,11 +460,11 @@ func (xpc *XPConnect) updateAircraftData() {
 			fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
 			aircraft = &model.Aircraft{
 				Registration: tailNumber,
-				Flight: model.Flight{ 
-					Phase: model.Phase{ 
-						Current: fpUnknown.Index(),
-						Previous: fpUnknown.Index(), 
-						Transition: time.Now() },
+				Flight: model.Flight{
+					Phase: model.Phase{
+						Current:    fpUnknown.Index(),
+						Previous:   fpUnknown.Index(),
+						Transition: time.Now()},
 				},
 			}
 			xpc.aircraftMap[tailNumber] = aircraft
@@ -475,7 +498,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			log.Println("Error: flight number dataref has invalid type")
 		}
 	}
-	
+
 	for index, tailNumber := range tailNumbers {
 		aircraft, exists := xpc.aircraftMap[tailNumber]
 		if !exists {
@@ -513,7 +536,6 @@ func (xpc *XPConnect) updateAircraftData() {
 	log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
 
 	xpc.printAircraftData()
-
 
 }
 
@@ -563,7 +585,7 @@ func (xpc *XPConnect) getDataRefByName(s string) *xpapimodel.Dataref {
 	return nil
 }
 
-// printAircraftData prints the current aircraft data 
+// printAircraftData prints the current aircraft data
 func (xpc *XPConnect) printAircraftData() {
 	for _, ac := range xpc.aircraftMap {
 		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase)

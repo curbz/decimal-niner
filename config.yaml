@@ -1,0 +1,17 @@
+# X-Plane Connection Settings
+xplane:
+  host: "127.0.0.1"
+  port: 49000
+  receive_port: 49001
+
+# Application Buffers & Performance
+atc:
+  notification_buffer_size: 1024
+  update_interval_ms: 500
+
+# File System & Data
+storage:
+  region_pool_path: "./data/regions"
+  log_path: "./logs/niner.log"
+  cache_size_mb: 50
+

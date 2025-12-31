@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/gorilla/websocket"
+	"gopkg.in/yaml.v3"
 )
 
 // DecodeNullTerminatedString decodes the base64 string and splits the resulting
@@ -88,3 +90,24 @@ func SendJSON(conn *websocket.Conn, data interface{}) {
 		log.Fatalf("Error writing message: %v", err)
 	}
 }
+
+// LoadConfig reads a YAML file and unmarshals it into a struct of type T.
+func LoadConfig[T any](filepath string) (*T, error) {
+	// 1. Read the file
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// 2. Initialize an empty instance of T
+	var config T
+
+	// 3. Unmarshal the YAML data into the struct
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
+	}
+
+	return &config, nil
+}
+
+
