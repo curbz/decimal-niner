@@ -38,7 +38,8 @@ import (
 )
 
 type XPConnect struct {
-	conn *websocket.Conn
+	config config
+	conn   *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 	dataRefIndexMap map[int]*xpapimodel.Dataref
 	aircraftMap     map[string]*model.Aircraft
@@ -53,9 +54,8 @@ type XPConnectInterface interface {
 
 type config struct {
 	XPlane struct {
-		Host        string `yaml:"host"`
-		Port        int    `yaml:"port"`
-		ReceivePort int    `yaml:"receive_port"`
+		RestBaseURL string `yaml:"web_api_http_url"`
+		WebSocketURL string `yaml:"web_api_websocket_url"`
 	} `yaml:"xplane"`
 }
 
@@ -73,26 +73,13 @@ func New(atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
-	log.Printf("X-Plane Config - Host: %s, Port: %d, Receive Port: %d", cfg.XPlane.Host, cfg.XPlane.Port, cfg.XPlane.ReceivePort)
-	
 	return &XPConnect{
 		aircraftMap: make(map[string]*model.Aircraft),
 		atcService:  atcService,
+		config:      *cfg,
 	}
 
 }
-
-// --- Configuration ---
-const (
-	// X-Plane 12 default Web API port for BOTH REST and WebSocket is 8086.
-	XPlaneAPIPort = "8086"
-
-	// XPlaneRESTBaseURL is the base endpoint for retrieving indices via HTTP GET.
-	XPlaneRESTBaseURL = "http://127.0.0.1:" + XPlaneAPIPort + "/api/v2/datarefs"
-
-	// XPlaneWSURL is the endpoint for the WebSocket connection.
-	XPlaneWSURL = "ws://127.0.0.1:" + XPlaneAPIPort + "/api/v2"
-)
 
 /*
 
@@ -188,7 +175,7 @@ func (xpc *XPConnect) Start() {
 	} else if len(xpc.dataRefIndexMap) > 0 {
 		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(xpc.dataRefIndexMap), len(datarefs))
 	} else {
-		log.Fatal("FATAL: Received no indices. Check X-Plane REST configuration (Port " + XPlaneAPIPort + ") and firewall.")
+		log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
 	}
 	fmt.Println("==================================")
 
@@ -198,11 +185,11 @@ func (xpc *XPConnect) Start() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	u, _ := url.Parse(XPlaneWSURL)
+	u, _ := url.Parse(xpc.config.XPlane.WebSocketURL)
 	var err error
 	xpc.conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket at %s. Ensure X-Plane 12 is running and the Web API is listening on TCP port %s.\nError: %v", XPlaneWSURL, XPlaneAPIPort, err)
+		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket: %v", err)
 	}
 	defer xpc.conn.Close()
 	log.Println("SUCCESS: WebSocket connection established.")
@@ -246,9 +233,9 @@ func (xpc *XPConnect) Stop() {
 // --- REST API Functions (Stage 1) ---
 
 // buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
-func buildURLWithFilters() (string, error) {
+func buildURLWithFilters(urlStr string) (string, error) {
 	// 1. Parse the base URL
-	u, err := url.Parse(XPlaneRESTBaseURL)
+	u, err := url.Parse(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("error parsing base URL: %w", err)
 	}
@@ -267,7 +254,7 @@ func buildURLWithFilters() (string, error) {
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
 func (xpc *XPConnect) getDataRefIndices() error {
 	// A. Build the full URL with GET parameters
-	fullURL, err := buildURLWithFilters()
+	fullURL, err := buildURLWithFilters(xpc.config.XPlane.RestBaseURL + "/datarefs")
 	if err != nil {
 		return err
 	}
@@ -588,6 +575,6 @@ func (xpc *XPConnect) getDataRefByName(s string) *xpapimodel.Dataref {
 // printAircraftData prints the current aircraft data
 func (xpc *XPConnect) printAircraftData() {
 	for _, ac := range xpc.aircraftMap {
-		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase)
+		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
 	}
 }
