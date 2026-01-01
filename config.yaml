@@ -9,6 +9,8 @@ atc:
   message_buffer_size:    5
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
+    sox:
+      application: "/usr/bin/play"
     piper:
       application:        "/home/dmorris/piper/piper"
       voice_directory:    "/home/dmorris/piper-voices"

@@ -44,11 +44,16 @@ type config struct {
 type VoicesConfig struct {
 	PhrasesFile string      `yaml:"phrases_file"`
 	Piper       Piper `yaml:"piper"`
+	Sox         Sox         `yaml:"sox"`
 }
 
 type Piper struct {
 	Application string `yaml:"application"`
 	VoiceDirectory  string `yaml:"voice_directory"`
+}
+
+type Sox struct {
+	Application string `yaml:"application"`
 }
 
 func New(cfgPath string) *Service {
@@ -160,7 +165,7 @@ func (s *Service) Run() {
 
 				// send message
 				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, 
-					ac.Flight.Phase.Current, message, s.Config.ATC.Voices.Piper)
+					ac.Flight.Phase.Current, message, s.Config.ATC.Voices)
 			}
 		}
 	}()
@@ -215,7 +220,7 @@ type PiperConfig struct {
 	} `json:"audio"`
 }
 
-func Say(airportCode, callsign, role string, flightPhase int, message string, piperCfg Piper) {
+func Say(airportCode, callsign, role string, flightPhase int, message string, voicesCfg VoicesConfig) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -273,17 +278,17 @@ func Say(airportCode, callsign, role string, flightPhase int, message string, pi
 	}
 	sessionMutex.Unlock()
 
-	onnxPath := filepath.Join(piperCfg.VoiceDirectory, selectedVoice+".onnx")
+	onnxPath := filepath.Join(voicesCfg.Piper.VoiceDirectory, selectedVoice+".onnx")
 	sampleRate := getSampleRate(onnxPath + ".json")
 
 	// --- Dynamic Noise Logic ---
 	noiseType := noiseType(role, flightPhase)
 
-	piperCmd := exec.Command(piperCfg.Application, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
+	piperCmd := exec.Command(voicesCfg.Piper.Application, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
 	piperStdin, _ := piperCmd.StdinPipe()
 	piperStdout, _ := piperCmd.StdoutPipe()
 
-	playCmd := exec.Command("play",
+	playCmd := exec.Command(voicesCfg.Sox.Application,
 		"-t", "raw", "-r", strconv.Itoa(sampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
 		"bandpass", "1200", "1500",
 		"overdrive", "20",
