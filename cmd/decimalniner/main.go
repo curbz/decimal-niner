@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
@@ -12,7 +13,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/xplane/xpconnect"
 )
 
-// --- Main Application ---
+const relativePathToConfig = "../../config.yaml"
 
 func main() {
 	// Support a development mock server to emulate X-Plane REST+WebSocket
@@ -26,12 +27,17 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 	}
 
+	cfgPath, err := filepath.Abs(relativePathToConfig)
+	if err != nil {
+		log.Fatalf("Failed to get absolute path for config: %v", err)
+	}
+
 	// Create ATC service
-	atcService := atc.New()
+	atcService := atc.New(cfgPath)
 	atcService.Run()
 
 	// Connect to X-Plane
-	xpc := xpconnect.New(atcService)
+	xpc := xpconnect.New(cfgPath, atcService)
 	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown

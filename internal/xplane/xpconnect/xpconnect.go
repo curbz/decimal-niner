@@ -22,7 +22,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -59,16 +58,9 @@ type config struct {
 	} `yaml:"xplane"`
 }
 
-const relativePathToConfig = "../../config.yaml"
+func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 
-func New(atcService atc.ServiceInterface) XPConnectInterface {
-
-	absPath, err := filepath.Abs(relativePathToConfig)
-	if err != nil {
-		log.Fatalf("Failed to get absolute path for config: %v", err)
-	}
-
-	cfg, err := util.LoadConfig[config](absPath)
+	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}

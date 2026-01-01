@@ -14,10 +14,13 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/model"
+	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/curbz/decimal-niner/trafficglobal"
+
 )
 
 type Service struct {
+	Config			 *config
 	Channel            chan model.Aircraft
 	Facilities         map[string]float64 // facility name to frequency
 	UserTunedFrequency float64
@@ -30,20 +33,43 @@ type ServiceInterface interface {
 	Notify(msg model.Aircraft)
 }
 
-func New() *Service {
+type config struct {
+	ATC struct {
+		MessageBufferSize int          `yaml:"message_buffer_size"`
+		Voices           VoicesConfig `yaml:"voices"`
+	} `yaml:"atc"`
+	
+}
 
-	if _, err := os.Stat(PiperDir); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Piper binary not found at %s", PiperDir)
+type VoicesConfig struct {
+	PhrasesFile string      `yaml:"phrases_file"`
+	Piper       Piper `yaml:"piper"`
+}
+
+type Piper struct {
+	Application string `yaml:"application"`
+	VoiceDirectory  string `yaml:"voice_directory"`
+}
+
+func New(cfgPath string) *Service {
+
+	cfg, err := util.LoadConfig[config](cfgPath)
+	if err != nil {
+		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
-	if _, err := os.Stat(VoiceDir); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Voice directory not found at %s", VoiceDir)
+
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
 	}
-	if _, err := os.Stat(PhrasesFile); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Phrases file not found at %s", PhrasesFile)
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
 	}
 
 	// load phrases from JSON file
-	phrasesFile, err := os.Open(PhrasesFile)
+	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
 	if err != nil {
 		log.Fatalf("FATAL: Could not open phrases.json: %v", err)
 	}
@@ -61,7 +87,8 @@ func New() *Service {
 	}
 
 	return &Service{
-		Channel: make(chan model.Aircraft, msgBuffSize),
+		Config: 		  cfg,
+		Channel: make(chan model.Aircraft, cfg.ATC.MessageBufferSize),
 		// TODO: these frequencies should be set from xpconnect datarefs
 		Facilities: map[string]float64{
 			"Clearance Delivery": 118.1,
@@ -132,7 +159,8 @@ func (s *Service) Run() {
 				}
 
 				// send message
-				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, ac.Flight.Phase.Current, message)
+				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, 
+					ac.Flight.Phase.Current, message, s.Config.ATC.Voices.Piper)
 			}
 		}
 	}()
@@ -157,13 +185,6 @@ func (s *Service) Notify(ac model.Aircraft) {
 		}
 	}()
 }
-
-const (
-	PiperDir    = "/home/dmorris/piper/piper"
-	VoiceDir    = "/home/dmorris/piper-voices"
-	PhrasesFile = "/home/dmorris/decimal-niner/resources/phrases.json"
-	msgBuffSize = 5
-)
 
 var RegionalPools = map[string][]string{
 	"UK":      {"en_GB-northern_english_male-medium", "en_GB-alan-low", "en_GB-southern_english_female-low"},
@@ -194,7 +215,7 @@ type PiperConfig struct {
 	} `json:"audio"`
 }
 
-func Say(airportCode string, callsign string, role string, flightPhase int, message string) {
+func Say(airportCode, callsign, role string, flightPhase int, message string, piperCfg Piper) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -252,13 +273,13 @@ func Say(airportCode string, callsign string, role string, flightPhase int, mess
 	}
 	sessionMutex.Unlock()
 
-	onnxPath := filepath.Join(VoiceDir, selectedVoice+".onnx")
+	onnxPath := filepath.Join(piperCfg.VoiceDirectory, selectedVoice+".onnx")
 	sampleRate := getSampleRate(onnxPath + ".json")
 
 	// --- Dynamic Noise Logic ---
 	noiseType := noiseType(role, flightPhase)
 
-	piperCmd := exec.Command(PiperDir, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
+	piperCmd := exec.Command(piperCfg.Application, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
 	piperStdin, _ := piperCmd.StdinPipe()
 	piperStdout, _ := piperCmd.StdoutPipe()
 

@@ -2,16 +2,13 @@
 xplane:
   web_api_http_url:       "http://127.0.0.1:8086/api/v2"
   web_api_websocket_url:  "ws://127.0.0.1:8086/api/v2"
-  install_path:           ""
+  application_path:       ""
 
-# Application Buffers & Performance
+# ATC Settings
 atc:
-  notification_buffer_size: 1024
-  update_interval_ms: 500
-
-# File System & Data
-storage:
-  region_pool_path: "./data/regions"
-  log_path: "./logs/niner.log"
-  cache_size_mb: 50
-
+  message_buffer_size:    5
+  voices:
+    phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
+    piper:
+      application:        "/home/dmorris/piper/piper"
+      voice_directory:    "/home/dmorris/piper-voices"
