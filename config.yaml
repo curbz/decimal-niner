@@ -2,11 +2,13 @@
 xplane:
   web_api_http_url:       "http://127.0.0.1:8086/api/v2"
   web_api_websocket_url:  "ws://127.0.0.1:8086/api/v2"
-  application_path:       ""
 
 # ATC Settings
 atc:
-  message_buffer_size:    5
+  message_buffer_size:    10
+  atc_data_file:       "/home/dmorris/go/src/atcdatparser/atc.dat"
+  atc_regions_file:  "/home/dmorris/go/src/atcdatparser/atc_regions.dat"
+  airports_data_file:   "/home/dmorris/go/src/atcdatparser/apt.dat"
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
     sox:

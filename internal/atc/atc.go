@@ -13,6 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"bufio"
+	"fmt"
+	"math"
+
 	"github.com/curbz/decimal-niner/internal/model"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/curbz/decimal-niner/trafficglobal"
@@ -22,6 +26,7 @@ import (
 type Service struct {
 	Config			 *config
 	Channel            chan model.Aircraft
+	Database           []Controller
 	Facilities         map[string]float64 // facility name to frequency
 	UserTunedFrequency float64
 	UserICAO           string
@@ -36,6 +41,9 @@ type ServiceInterface interface {
 type config struct {
 	ATC struct {
 		MessageBufferSize int          `yaml:"message_buffer_size"`
+		AtcDataFile       string       `yaml:"atc_data_file"`
+		AtcRegionsFile    string       `yaml:"atc_regions_file"`
+		AirportsDataFile  string       `yaml:"airports_data_file"`
 		Voices           VoicesConfig `yaml:"voices"`
 	} `yaml:"atc"`
 	
@@ -54,6 +62,21 @@ type Piper struct {
 
 type Sox struct {
 	Application string `yaml:"application"`
+}
+
+type Airspace struct {
+	Floor, Ceiling float64
+	Points         [][2]float64
+}
+
+type Controller struct {
+	Name, ICAO string
+	RoleID     int
+	Freqs      []int
+	Lat, Lon   float64
+	IsPoint    bool
+	IsRegion   bool
+	Airspaces  []Airspace
 }
 
 func New(cfgPath string) *Service {
@@ -91,9 +114,16 @@ func New(cfgPath string) *Service {
 		log.Fatalf("FATAL: Could not unmarshal phrases.json: %v", err)
 	}
 
+	// load atc and airport data
+	start := time.Now()
+	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
+	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
+	fmt.Printf("INITIAL LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
+
 	return &Service{
 		Config: 		  cfg,
 		Channel: make(chan model.Aircraft, cfg.ATC.MessageBufferSize),
+		Database:         db,
 		// TODO: these frequencies should be set from xpconnect datarefs
 		Facilities: map[string]float64{
 			"Clearance Delivery": 118.1,
@@ -369,4 +399,210 @@ func translateNumerics(msg string) string {
 		}
 	}
 	return result.String()
+}
+
+// --- Geometry Helpers ---
+
+func distNM(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 3440.06
+	r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
+	dLat, dLon := (lat2-lat1)*math.Pi/180, (lon2-lon1)*math.Pi/180
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
+func isPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
+	if len(polygon) < 3 { return false }
+	inside, j := false, len(polygon)-1
+	for i := 0; i < len(polygon); i++ {
+		if ((polygon[i][1] > lon) != (polygon[j][1] > lon)) &&
+			(lat < (polygon[j][0]-polygon[i][0])*(lon-polygon[i][1])/(polygon[j][1]-polygon[i][1])+polygon[i][0]) {
+			inside = !inside
+		}
+		j = i
+	}
+	return inside
+}
+
+func calculateRoughArea(pts [][2]float64) float64 {
+	minLat, maxLat := 90.0, -90.0
+	minLon, maxLon := 180.0, -180.0
+	for _, p := range pts {
+		if p[0] < minLat { minLat = p[0] }
+		if p[0] > maxLat { maxLat = p[0] }
+		if p[1] < minLon { minLon = p[1] }
+		if p[1] > maxLon { maxLon = p[1] }
+	}
+	return (maxLat - minLat) * (maxLon - minLon)
+}
+
+// --- Parsers ---
+
+func parseApt(path string) []Controller {
+	file, err := os.Open(path)
+	if err != nil { return nil }
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	var list []Controller
+	var curICAO, curName string
+	var curLat, curLon float64
+
+	// X-Plane Radio Codes: 1051=Unicom, 1052=Del, 1053=Gnd, 1054=Twr, 1055/1056=App/Dep
+	roleMap := map[string]int{"1052": 1, "1053": 2, "1054": 3, "1055": 4, "1056": 4}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		p := strings.Fields(line)
+		if len(p) < 2 { continue }
+		code := p[0]
+
+		if code == "1" || code == "16" || code == "17" {
+			curLat, curLon = 0, 0 
+			if len(p) >= 5 {
+				curICAO = p[4]
+				curName = strings.Join(p[5:], " ")
+			}
+			continue
+		}
+
+		// Use Runway (100) to find the airport center
+		if (code == "100" || code == "101" || code == "102") && curLat == 0 {
+			if len(p) >= 11 {
+				la, _ := strconv.ParseFloat(p[9], 64)
+				lo, _ := strconv.ParseFloat(p[10], 64)
+				if math.Abs(la) <= 90 { curLat, curLon = la, lo }
+			}
+		}
+
+		fRaw, _ := strconv.Atoi(p[1])
+		fNorm := fRaw
+		for fNorm > 0 && fNorm < 100000 { fNorm *= 10 }
+
+		// ALIASSING LOGIC: If an airport has Unicom (1051) or Tower (1054), 
+		// it likely handles Ground/Delivery duties too.
+		if code == "1051" || code == "1054" {
+			roles := []int{3} // Tower
+			if code == "1051" || code == "1054" { roles = append(roles, 1, 2) }
+			for _, r := range roles {
+				list = append(list, Controller{
+					Name: curName, ICAO: curICAO, RoleID: r,
+					Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
+				})
+			}
+		} else if rID, ok := roleMap[code]; ok {
+			list = append(list, Controller{
+				Name: curName, ICAO: curICAO, RoleID: rID,
+				Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
+			})
+		}
+	}
+	return list
+}
+
+func parseGeneric(path string, isRegion bool) []Controller {
+	file, err := os.Open(path)
+	if err != nil { return nil }
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	var list []Controller
+	var cur *Controller
+	var curPoly *Airspace
+	roleMap := map[string]int{"del": 1, "gnd": 2, "twr": 3, "tracon": 4, "ctr": 5}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' { continue }
+		p := strings.Fields(line)
+
+		switch strings.ToUpper(p[0]) {
+		case "CONTROLLER":
+			cur = &Controller{IsRegion: isRegion, IsPoint: false}
+		case "NAME":
+			if cur != nil { cur.Name = strings.Join(p[1:], " ") }
+		case "FACILITY_ID", "ICAO":
+			if cur != nil { cur.ICAO = p[1] }
+		case "ROLE":
+			if cur != nil { cur.RoleID = roleMap[strings.ToLower(p[1])] }
+		case "FREQ", "CHAN":
+			if cur != nil {
+				f, _ := strconv.Atoi(p[1])
+				for f > 0 && f < 100000 { f *= 10 }
+				cur.Freqs = append(cur.Freqs, f)
+			}
+		case "AIRSPACE_POLYGON_BEGIN":
+			f, c := -99999.0, 99999.0
+			if len(p) >= 3 {
+				f, _ = strconv.ParseFloat(p[1], 64)
+				c, _ = strconv.ParseFloat(p[2], 64)
+			}
+			curPoly = &Airspace{Floor: f, Ceiling: c}
+		case "POINT":
+			la, _ := strconv.ParseFloat(p[1], 64)
+			lo, _ := strconv.ParseFloat(p[2], 64)
+			if curPoly != nil { curPoly.Points = append(curPoly.Points, [2]float64{la, lo}) }
+			if cur != nil && cur.Lat == 0 { cur.Lat, cur.Lon = la, lo }
+		case "AIRSPACE_POLYGON_END":
+			if cur != nil && curPoly != nil { cur.Airspaces = append(cur.Airspaces, *curPoly) }
+			curPoly = nil
+		case "CONTROLLER_END":
+			if cur != nil { list = append(list, *cur) }
+			cur = nil
+		}
+	}
+	return list
+}
+
+// --- Search Engine ---
+
+func PerformSearch(db []Controller, label string, tFreq, tRole int, uLa, uLo, uAl float64) *Controller {
+	if tFreq > 0 {
+		for tFreq > 0 && tFreq < 100000 { tFreq *= 10 }
+	}
+	fmt.Printf("--- Searching for: %s ---\n", label)
+	
+	var bestMatch *Controller
+	closestDist := math.MaxFloat64
+	smallestArea := math.MaxFloat64
+
+	for i := range db {
+		c := &db[i]
+		if c.RoleID != tRole { continue }
+		
+		if tFreq > 0 {
+			fMatch := false
+			for _, f := range c.Freqs {
+				if f/10 == tFreq/10 { fMatch = true; break }
+			}
+			if !fMatch { continue }
+		}
+
+		dist := distNM(uLa, uLo, c.Lat, c.Lon)
+
+		if c.IsPoint {
+			if dist < closestDist {
+				closestDist = dist
+				bestMatch = c
+				fmt.Printf("  [Candidate Point] %s (%s) dist: %.2f nm (New Lead)\n", c.Name, c.ICAO, dist)
+			}
+		} else {
+			for _, poly := range c.Airspaces {
+				if c.IsRegion || (uAl >= poly.Floor && uAl <= poly.Ceiling) {
+					if isPointInPolygon(uLa, uLo, poly.Points) {
+						area := calculateRoughArea(poly.Points)
+						if area < smallestArea {
+							smallestArea = area
+							// Point stations within 2nm take priority over any polygon
+							if bestMatch == nil || bestMatch.IsPoint == false || closestDist > 2.0 {
+								bestMatch = c
+								fmt.Printf("  [Candidate Poly] %s (%s) Area: %.2f (New Lead)\n", c.Name, c.ICAO, area)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return bestMatch
 }
