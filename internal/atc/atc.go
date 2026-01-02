@@ -38,6 +38,7 @@ type ServiceInterface interface {
 	Notify(msg model.Aircraft)
 }
 
+// --- configuration structures ---
 type config struct {
 	ATC struct {
 		MessageBufferSize int          `yaml:"message_buffer_size"`
@@ -64,6 +65,62 @@ type Sox struct {
 	Application string `yaml:"application"`
 }
 
+
+// ATCMessage represents a single ATC communication message
+type ATCMessage struct {
+	AirportCode string
+	Callsign    string
+	Role        string
+	Text        string
+	VoiceDirectory string
+	FlightPhase int
+}
+
+// PreparedAudio holds a ready-to-play piper command and its metadata
+type PreparedAudio struct {
+	PiperCmd   *exec.Cmd
+	PiperOut   io.ReadCloser
+	SampleRate int
+	NoiseType  string
+	Msg        ATCMessage
+	Voice      string
+}
+
+var radioQueue chan ATCMessage
+var prepQueue chan PreparedAudio
+
+var sessionVoices = make(map[string]string)
+var sessionMutex sync.Mutex
+
+var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+// PiperConfig represents the structure of the Piper ONNX model JSON config
+type PiperConfig struct {
+	Audio struct {
+		SampleRate int `json:"sample_rate"`
+	} `json:"audio"`
+}
+
+// -- Voice selections maps ---
+var RegionalPools = map[string][]string{
+	"UK":      {"en_GB-northern_english_male-medium", "en_GB-alan-low", "en_GB-southern_english_female-low"},
+	"US":      {"en_US-john-medium", "en_US-danny-low"},
+	"FRANCE":  {"fr_FR-gilles-low"},
+	"GERMANY": {"de_DE-thorsten-low"},
+	"GREECE":  {"el_GR-rapunzelina-low"},
+}
+
+var ICAOToRegion = map[string]string{
+	"EG": "UK", "K": "US", "LF": "FRANCE", "ED": "GERMANY", "LG": "GREECE",
+}
+
+var AirlineRegions = map[string]string{
+	"BAW": "UK", "EZY": "UK", "GNT": "UK",
+	"DLH": "GERMANY", "AFR": "FRANCE",
+	"DAL": "US", "AAL": "US", "OAL": "GREECE",
+}
+
+// --- Data Structures ---
 type Airspace struct {
 	Floor, Ceiling float64
 	Points         [][2]float64
@@ -119,6 +176,12 @@ func New(cfgPath string) *Service {
 	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
 	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
 	fmt.Printf("INITIAL LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
+
+	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
+	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
+
+	go PreWarmer(cfg.ATC.Voices.Piper.Application)   // Converts Text -> Piper Process
+	go RadioPlayer() // Converts Piper Process -> Speakers
 
 	return &Service{
 		Config: 		  cfg,
@@ -187,23 +250,20 @@ func (s *Service) Run() {
 				// construct message and replace all possible variables
 				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 				message = strings.ReplaceAll(message, "{AIRPORT}", s.UserICAO)
+				// TODO: add more replacements as needed
 
 				role := "PILOT"
 				if i > 0 {
 					role = facility
 				}
 
-				// send message
-				Say(s.UserICAO, ac.Flight.Comms.Callsign, role, 
-					ac.Flight.Phase.Current, message, s.Config.ATC.Voices)
+				// send message to radio queue
+				radioQueue <- ATCMessage{s.UserICAO, ac.Flight.Comms.Callsign, role, message,
+					s.Config.ATC.Voices.Piper.VoiceDirectory, ac.Flight.Phase.Current,
+				}
 			}
 		}
 	}()
-	// Demo Sequence
-	//apt := "EGNT"
-	//Say(apt, "GNT049", "PILOT", "Newcastle Ground, Giant zero-four-niner, request taxi.")
-	//Say(apt, "GNT049", "GROUND", "Giant zero-four-niner, Newcastle Ground, taxi to holding point runway two-seven.")
-
 }
 
 func (s *Service) Notify(ac model.Aircraft) {
@@ -221,142 +281,123 @@ func (s *Service) Notify(ac model.Aircraft) {
 	}()
 }
 
-var RegionalPools = map[string][]string{
-	"UK":      {"en_GB-northern_english_male-medium", "en_GB-alan-low", "en_GB-southern_english_female-low"},
-	"US":      {"en_US-john-medium", "en_US-danny-low"},
-	"FRANCE":  {"fr_FR-gilles-low"},
-	"GERMANY": {"de_DE-thorsten-low"},
-	"GREECE":  {"el_GR-rapunzelina-low"},
+// PreWarmer picks up text and starts the Piper process immediately
+func PreWarmer(piperPath string) {
+	for msg := range radioQueue {
+		voice, onnx, rate, noise := resolveVoice(msg)
+
+		if !strings.HasPrefix(voice, "en_") {
+			msg.Text = translateNumerics(msg.Text)
+		}
+
+		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.8")
+		stdin, _ := cmd.StdinPipe()
+		stdout, _ := cmd.StdoutPipe()
+
+		if err := cmd.Start(); err != nil {
+			log.Printf("Error starting piper: %v", err)
+			continue
+		}
+
+		// Feed text immediately so Piper starts synthesizing in the background
+		go func(s io.WriteCloser, t string) {
+			io.WriteString(s, t)
+			s.Close()
+		}(stdin, msg.Text)
+
+		// Send the running process to the player queue
+		prepQueue <- PreparedAudio{
+			PiperCmd:   cmd,
+			PiperOut:   stdout,
+			SampleRate: rate,
+			NoiseType:  noise,
+			Msg:        msg,
+			Voice:      voice,
+		}
+	}
 }
 
-var ICAOToRegion = map[string]string{
-	"EG": "UK", "K": "US", "LF": "FRANCE", "ED": "GERMANY", "LG": "GREECE",
+// RadioPlayer takes prepared Piper processes and pipes them to SoX sequentially
+func RadioPlayer() {
+	for audio := range prepQueue {
+		playCmd := exec.Command("play",
+			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
+			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
+			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",
+		)
+		playCmd.Stdin = audio.PiperOut
+
+		_ = playCmd.Start()
+		
+		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
+		
+		_ = audio.PiperCmd.Wait()
+		_ = playCmd.Wait()
+		
+		// Small gap between transmissions for realism
+		time.Sleep(300 * time.Millisecond)
+	}
 }
 
-var AirlineRegions = map[string]string{
-	"BAW": "UK", "EZY": "UK", "GNT": "UK",
-	"DLH": "GERMANY", "AFR": "FRANCE",
-	"DAL": "US", "AAL": "US", "OAL": "GREECE",
-}
+// resolveVoice handles all the mapping and collision logic
+func resolveVoice(msg ATCMessage) (string, string, int, string) {
+	sessionMutex.Lock()
+	defer sessionMutex.Unlock()
 
-var sessionVoices = make(map[string]string)
-var sessionMutex sync.Mutex
-
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-type PiperConfig struct {
-	Audio struct {
-		SampleRate int `json:"sample_rate"`
-	} `json:"audio"`
-}
-
-func Say(airportCode, callsign, role string, flightPhase int, message string, voicesCfg VoicesConfig) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	var sessionKey string
-	if role != "PILOT" {
-		sessionKey = airportCode + "_" + role
-	} else {
-		sessionKey = callsign + "_PILOT"
+	key := msg.Callsign + "_PILOT"
+	if msg.Role != "PILOT" {
+		key = msg.AirportCode + "_" + msg.Role
 	}
 
-	sessionMutex.Lock()
-	selectedVoice, exists := sessionVoices[sessionKey]
-
+	selectedVoice, exists := sessionVoices[key]
 	if !exists {
 		var pool []string
-		if role != "PILOT" {
+		if msg.Role != "PILOT" {
 			region := "UK"
 			for prefix, r := range ICAOToRegion {
-				if strings.HasPrefix(airportCode, prefix) {
+				if strings.HasPrefix(msg.AirportCode, prefix) {
 					region = r
 					break
 				}
 			}
 			pool = RegionalPools[region]
 		} else {
-			prefix := ""
-			if len(callsign) >= 3 {
-				prefix = strings.ToUpper(callsign[:3])
-			}
+			prefix := strings.ToUpper(msg.Callsign[:3])
 			region, known := AirlineRegions[prefix]
 			if !known {
 				allRegions := []string{"UK", "US", "FRANCE", "GERMANY", "GREECE"}
-				region = allRegions[rand.Intn(len(allRegions))]
+				region = allRegions[rng.Intn(len(allRegions))]
 			}
 			pool = RegionalPools[region]
 		}
 
-		// Shuffle and check for collisions
 		rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
 		selectedVoice = pool[0]
 		for _, v := range pool {
-			isUsed := false
-			for _, assignedVoice := range sessionVoices {
-				if assignedVoice == v {
-					isUsed = true
-					break
-				}
+			used := false
+			for _, assigned := range sessionVoices {
+				if assigned == v { used = true; break }
 			}
-			if !isUsed {
-				selectedVoice = v
-				break
-			}
+			if !used { selectedVoice = v; break }
 		}
-		sessionVoices[sessionKey] = selectedVoice
+		sessionVoices[key] = selectedVoice
 	}
-	sessionMutex.Unlock()
 
-	onnxPath := filepath.Join(voicesCfg.Piper.VoiceDirectory, selectedVoice+".onnx")
-	sampleRate := getSampleRate(onnxPath + ".json")
+	onnxPath := filepath.Join(msg.VoiceDirectory, selectedVoice+".onnx")
 
 	// --- Dynamic Noise Logic ---
-	noiseType := noiseType(role, flightPhase)
+	noise := noiseType(msg.Role, msg.FlightPhase)
 
-	piperCmd := exec.Command(voicesCfg.Piper.Application, "--model", onnxPath, "--output-raw", "--length_scale", "0.8")
-	piperStdin, _ := piperCmd.StdinPipe()
-	piperStdout, _ := piperCmd.StdoutPipe()
-
-	playCmd := exec.Command(voicesCfg.Sox.Application,
-		"-t", "raw", "-r", strconv.Itoa(sampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-		"bandpass", "1200", "1500",
-		"overdrive", "20",
-		"tremolo", "5", "40",
-		"synth", noiseType, "mix", "0.2", 
-		"pad", "0", "0.5",
-	)
-	playCmd.Stdin = piperStdout
-
-	_ = playCmd.Start()
-	_ = piperCmd.Start()
-
-	// if the voice is non-English, translate numerics into words
-	if !strings.HasPrefix(selectedVoice, "en_") {
-		message = translateNumerics(message)
+	// Simple sample rate fetch (optimized)
+	rate := 22050
+	if f, err := os.Open(onnxPath + ".json"); err == nil {
+		var cfg struct{ Audio struct{ SampleRate int `json:"sample_rate"` } }
+		json.NewDecoder(f).Decode(&cfg)
+		rate = cfg.Audio.SampleRate
+		f.Close()
 	}
 
-	go func() {
-		defer wg.Done()
-		io.WriteString(piperStdin, message)
-		piperStdin.Close()
-		_ = piperCmd.Wait()
-		_ = playCmd.Wait()
-	}()
-
-	log.Printf("[%s] %s @ %s (%s) [Noise: %s]: %s", role, callsign, airportCode, selectedVoice, noiseType, message)
-	wg.Wait()
-}
-
-func getSampleRate(path string) int {
-	file, err := os.Open(path)
-	if err != nil {
-		return 22050
-	}
-	defer file.Close()
-	var cfg PiperConfig
-	_ = json.NewDecoder(file).Decode(&cfg)
-	return cfg.Audio.SampleRate
+	return selectedVoice, onnxPath, rate, noise
 }
 
 func noiseType(role string, flightPhase int) string {
