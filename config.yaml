@@ -6,11 +6,12 @@ xplane:
 # ATC Settings
 atc:
   message_buffer_size:    10
-  atc_data_file:       "/home/dmorris/go/src/atcdatparser/atc.dat"
-  atc_regions_file:  "/home/dmorris/go/src/atcdatparser/atc_regions.dat"
-  airports_data_file:   "/home/dmorris/go/src/atcdatparser/apt.dat"
+  atc_data_file:       "home/dmorris/decimal-niner/resources/atc.dat"
+  atc_regions_file:  "home/dmorris/decimal-niner/resources/atc_regions.dat"
+  airports_data_file:   "home/dmorris/decimal-niner/resources/apt.dat"
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
+    callsigns_file:     "/home/dmorris/decimal-niner/resources/callsigns.json"
     sox:
       application: "/usr/bin/play"
     piper:
