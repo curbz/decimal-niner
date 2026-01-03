@@ -44,6 +44,7 @@ type XPConnect struct {
 	aircraftMap     map[string]*model.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
+	airlines 		map[string]AirlineInfo
 }
 
 type XPConnectInterface interface {
@@ -55,7 +56,14 @@ type config struct {
 	XPlane struct {
 		RestBaseURL string `yaml:"web_api_http_url"`
 		WebSocketURL string `yaml:"web_api_websocket_url"`
+		AirlinesFile string `yaml:"airlines_file"`
 	} `yaml:"xplane"`
+}
+
+// AirlineInfo represents the internal object for each airline code in callsigns.json
+type AirlineInfo struct {
+	AirlineName string `json:"airline_name"`
+	Callsign    string `json:"callsign"`
 }
 
 func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
@@ -65,8 +73,29 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
+		// load airlines from JSON file
+	airlinesFile, err := os.Open(cfg.XPlane.AirlinesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
+	}
+	defer airlinesFile.Close()
+
+	airlinesBytes, err := io.ReadAll(airlinesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
+	}
+
+	var airlinesData map[string]AirlineInfo
+	// Unmarshal the JSON into the map
+	err = json.Unmarshal(airlinesBytes, &airlinesData)
+	if err != nil {
+		log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
+	}
+	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
+
 	return &XPConnect{
 		aircraftMap: make(map[string]*model.Aircraft),
+		airlines: airlinesData,
 		atcService:  atcService,
 		config:      *cfg,
 	}

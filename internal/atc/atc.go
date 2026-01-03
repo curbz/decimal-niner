@@ -175,7 +175,7 @@ func New(cfgPath string) *Service {
 	start := time.Now()
 	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
 	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
-	fmt.Printf("INITIAL LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
+	fmt.Printf("INITIAL ATC DATABASE LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
 
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio

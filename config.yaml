@@ -2,16 +2,16 @@
 xplane:
   web_api_http_url:       "http://127.0.0.1:8086/api/v2"
   web_api_websocket_url:  "ws://127.0.0.1:8086/api/v2"
+  airlines_file:          "/home/dmorris/decimal-niner/resources/airlines.json"
 
 # ATC Settings
 atc:
   message_buffer_size:    10
-  atc_data_file:       "home/dmorris/decimal-niner/resources/atc.dat"
-  atc_regions_file:  "home/dmorris/decimal-niner/resources/atc_regions.dat"
-  airports_data_file:   "home/dmorris/decimal-niner/resources/apt.dat"
+  atc_data_file:       "/home/dmorris/decimal-niner/resources/atc.dat"
+  atc_regions_file:  "/home/dmorris/decimal-niner/resources/atc_regions.dat"
+  airports_data_file:   "/home/dmorris/decimal-niner/resources/apt.dat"
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
-    callsigns_file:     "/home/dmorris/decimal-niner/resources/callsigns.json"
     sox:
       application: "/usr/bin/play"
     piper:
