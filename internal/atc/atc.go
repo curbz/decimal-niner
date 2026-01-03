@@ -450,11 +450,21 @@ func translateNumerics(msg string) string {
 // --- Geometry Helpers ---
 
 func distNM(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 3440.06
-	r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
-	dLat, dLon := (lat2-lat1)*math.Pi/180, (lon2-lon1)*math.Pi/180
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
-	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+    const R = 3440.06
+    r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
+    
+    dLat := (lat2 - lat1) * math.Pi / 180
+    dLon := (lon2 - lon1) * math.Pi / 180
+
+    // --- handle dateline crossing ---
+    for dLon > math.Pi  { dLon -= 2 * math.Pi }
+    for dLon < -math.Pi { dLon += 2 * math.Pi }
+    // --------------------------------
+
+    a := math.Sin(dLat/2)*math.Sin(dLat/2) + 
+         math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
+         
+    return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
 func isPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
