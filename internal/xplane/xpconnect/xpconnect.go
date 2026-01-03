@@ -373,9 +373,6 @@ func (xpc *XPConnect) processMessage(message []byte) {
 		return
 	}
 
-	// A diagram showing the structure of an incoming WebSocket message for the X-Plane 12 API
-	// would make this section clearer.
-
 	switch response.Type {
 	case "dataref_update_values":
 		xpc.handleDatarefUpdate(response.Data)
@@ -512,16 +509,22 @@ func (xpc *XPConnect) updateAircraftData() {
 		if !exists {
 			continue
 		}
-		airlineCode := "Generic"
+		airlineCode := "unknown"
 		if index < len(airlineCodes) {
 			airlineCode = airlineCodes[index]
 		}
+		// lookup callsign for airline code, default to airline code value if not found in map 
+		callsign := airlineCode
+		airlineInfo, exists := xpc.airlines[airlineCode]
+		if exists {
+			callsign = airlineInfo.Callsign
+		} 
+
 		flightNum := 0
 		if index < len(flightNums) {
 			flightNum = flightNums[index]
 		}
-		callsign := fmt.Sprintf("%s%03d", airlineCode, flightNum)
-		aircraft.Flight.Comms.Callsign = callsign
+		aircraft.Flight.Comms.Callsign  = fmt.Sprintf("%s %d", callsign, flightNum)
 	}
 
 	// TODO: update more aircraft data as needed, e.g. parking, flight number

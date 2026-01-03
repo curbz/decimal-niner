@@ -250,7 +250,10 @@ func (s *Service) Run() {
 				// construct message and replace all possible variables
 				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 				message = strings.ReplaceAll(message, "{AIRPORT}", s.UserICAO)
-				// TODO: add more replacements as needed
+				
+				// TODO: add more replacements as needed here
+
+				message = translateNumerics(message)
 
 				role := "PILOT"
 				if i > 0 {
@@ -284,11 +287,10 @@ func (s *Service) Notify(ac model.Aircraft) {
 // PreWarmer picks up text and starts the Piper process immediately
 func PreWarmer(piperPath string) {
 	for msg := range radioQueue {
-		voice, onnx, rate, noise := resolveVoice(msg)
 
-		if !strings.HasPrefix(voice, "en_") {
-			msg.Text = translateNumerics(msg.Text)
-		}
+		log.Printf("Processing message: %s", msg.Text)
+		
+		voice, onnx, rate, noise := resolveVoice(msg)
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.8")
 		stdin, _ := cmd.StdinPipe()
@@ -334,8 +336,11 @@ func RadioPlayer() {
 		_ = audio.PiperCmd.Wait()
 		_ = playCmd.Wait()
 		
-		// Small gap between transmissions for realism
-		time.Sleep(300 * time.Millisecond)
+		// Small gap between transmissions
+		min := 400
+		max := 1200
+		randomMillis := rand.Intn(max-min+1) + min
+		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
 	}
 }
 

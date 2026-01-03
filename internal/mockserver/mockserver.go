@@ -221,7 +221,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		s := fmt.Sprintf("AC%02d\x00BC%02d\x00CC%02d\x00", iter, iter, iter)
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	case "trafficglobal/ai/airline_code":
-		s := fmt.Sprintf("AL%02d\x00BL%02d\x00CL%02d\x00", iter, iter, iter)
+		s := "BAW\x00BAW\x00BAW\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	case "trafficglobal/ai/tail_number":
 		s := "TN02\x00AB006\x00DE544\x00"
