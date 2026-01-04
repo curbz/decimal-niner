@@ -29,7 +29,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
-	"github.com/curbz/decimal-niner/internal/model"
 	"github.com/curbz/decimal-niner/trafficglobal"
 
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
@@ -41,7 +40,7 @@ type XPConnect struct {
 	conn   *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 	dataRefIndexMap map[int]*xpapimodel.Dataref
-	aircraftMap     map[string]*model.Aircraft
+	aircraftMap     map[string]*atc.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
 	airlines 		map[string]AirlineInfo
@@ -94,7 +93,7 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
 
 	return &XPConnect{
-		aircraftMap: make(map[string]*model.Aircraft),
+		aircraftMap: make(map[string]*atc.Aircraft),
 		airlines: airlinesData,
 		atcService:  atcService,
 		config:      *cfg,
@@ -103,8 +102,6 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 }
 
 /*
-
-M2NMILES(a) ((a) / 1852.0)
 
 enum TrafficType
 {
@@ -129,8 +126,25 @@ var requestCounter atomic.Int64
 
 var datarefs = []xpapimodel.Dataref{
 
-	//TODO: add current tuned atc frequency dataref to monitor user tuning
+	//user position datarefs
+	{Name: "sim/flightmodel/position/latitude",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/flightmodel/position/longitude",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/flightmodel/position/elevation",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/flightmodel/position/psi",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	
+	//user tuned atc facilities and frequencies
+	{Name: "sim/atc/com1_tuned_facility",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/cockpit/radios/com1_freq_hz",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/cockpit/radios/com1_freq_hz",
+		APIInfo: xpapimodel.DatarefInfo{}},
 
+	//traffic global datarefs
 	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
@@ -145,10 +159,10 @@ var datarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-	{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+	//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+	//{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 	//{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
@@ -164,8 +178,8 @@ var datarefs = []xpapimodel.Dataref{
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-	//{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
 	//{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
@@ -434,13 +448,36 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			dr.Value = intArray
 			fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
 		default:
-			// Unknown type — print raw
+			// Unknown or unspecified type — print raw
 			fmt.Printf("DataRef %s: raw payload: %v\n", id, value)
+			dr.Value = value
 		}
 	}
 
+	xpc.updateUserData()
 	xpc.updateAircraftData()
 }
+
+func (xpc *XPConnect) updateUserData() {
+
+    com1 := float64(xpc.getDataRefValue("sim/cockpit/radios/com1_freq_hz", 0).(int)) / 100.0
+    com2 := float64(xpc.getDataRefValue("sim/cockpit/radios/com2_freq_hz", 0).(int)) / 100.0
+    
+	lastTunedFreqs := xpc.atcService.GetUserState().TunedFreqs
+
+	// if no change to tuned frequencies, no need to update user state
+	if com1 == lastTunedFreqs[1] && com2 == lastTunedFreqs[2] {
+		return
+	}
+
+    xpc.atcService.UpdateUserState(atc.Position{
+        Lat: xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
+        Long: xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64), 
+        Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64)  * 3.28084,
+    }, com1, com2)
+
+}
+
 
 // updateAircraftData processes the latest aircraft data using the stored datarefs
 func (xpc *XPConnect) updateAircraftData() {
@@ -463,10 +500,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		newAircraft := !exists
 		if newAircraft {
 			fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
-			aircraft = &model.Aircraft{
+			aircraft = &atc.Aircraft{
 				Registration: tailNumber,
-				Flight: model.Flight{
-					Phase: model.Phase{
+				Flight: atc.Flight{
+					Phase: atc.Phase{
 						Current:    fpUnknown.Index(),
 						Previous:   fpUnknown.Index(),
 						Transition: time.Now()},

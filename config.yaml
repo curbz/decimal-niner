@@ -9,7 +9,8 @@ atc:
   message_buffer_size:    10
   atc_data_file:       "/home/dmorris/decimal-niner/resources/atc.dat"
   atc_regions_file:  "/home/dmorris/decimal-niner/resources/atc_regions.dat"
-  airports_data_file:   "/home/dmorris/decimal-niner/resources/apt.dat"
+#  airports_data_file:   "/home/dmorris/decimal-niner/resources/apt.dat"  # minimal for development speed
+  airports_data_file:       "/home/dmorris/go/src/atcdatparser/apt.dat"   # full file - slow 
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
     sox:
