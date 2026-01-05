@@ -540,6 +540,21 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft.Flight.Phase.Current = updatedFlightPhase
 		}
 
+			// --- UPDATE POSITION DATA ---
+		// We use the 'index' from the loop to pull the correct element from the AI arrays
+		lat := xpc.getDataRefValue("trafficglobal/ai/position_lat", index)
+		lon := xpc.getDataRefValue("trafficglobal/ai/position_long", index)
+		alt := xpc.getDataRefValue("trafficglobal/ai/position_elev", index)
+		hdg := xpc.getDataRefValue("trafficglobal/ai/position_heading", index)
+
+		if lat != nil && lon != nil && alt != nil && hdg != nil {
+			aircraft.Flight.Position = atc.Position{
+				Lat:      lat.(float64),
+				Long:     lon.(float64),
+				Altitude: alt.(float64) * 3.28084, // Ensure AI altitude is also in feet
+				Heading:  hdg.(float64),
+			}
+		}
 	}
 
 	// update callsigns
