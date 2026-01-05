@@ -34,7 +34,7 @@ type ServiceInterface interface {
 	Run()
 	Notify(msg Aircraft)
 	GetUserState() UserState
-	UpdateUserState(pos Position, com1Freq, com2Freq float64) 
+	UpdateUserState(pos Position, com1Freq, com2Freq  map[int]int) 
 }
 
 // --- configuration structures ---
@@ -53,7 +53,8 @@ type UserState struct {
 	NearestICAO string
 	Position Position
 	ActiveFacilities map[int]*Controller // Key: 1 for COM1, 2 for COM2
-	TunedFreqs map[int]float64 // Key: 1 for COM1, 2 for COM2
+	TunedFreqs map[int]int // Key: 1 for COM1, 2 for COM2
+	TunedFacilities map[int]int // Key: 1 for COM1, 2 for COM2
 }
 
 type Aircraft struct {
@@ -348,29 +349,34 @@ func (s *Service) GetUserState() UserState {
 	return s.UserState
 }
 
-func (s *Service) UpdateUserState(pos Position, com1Freq, com2Freq float64) {
+func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[int]int) {
 
 	s.UserState.Position = pos
 	if s.UserState.ActiveFacilities == nil {
 		s.UserState.ActiveFacilities = make(map[int]*Controller)
 	}
 
-	freqs := map[int]float64{1: com1Freq, 2: com2Freq}
-	s.UserState.TunedFreqs = freqs
+	s.UserState.TunedFreqs = tunedFreqs
+	s.UserState.TunedFacilities = tunedFacilities
 
-	for idx, freq := range freqs {
-		// Normalize 121.7 to 121700
-		uFreq := int(freq * 1000)
-		if uFreq < 100000 { uFreq *= 10 }
+	for idx, freq := range tunedFreqs {
+		// Normalize 12170 to 121700
+		uFreq := int(freq)
+		if uFreq < 100000 { 
+			uFreq *= 10 
+		}
 
 		controller := s.PerformSearch(
 			fmt.Sprintf("User_COM%d", idx),
-			uFreq, 0, // Search by freq, any role
+			uFreq, // Search by freq
+			tunedFacilities[idx], // role
 			pos.Lat, pos.Long, pos.Altitude,
 		)
-
-		s.UserState.ActiveFacilities[idx] = controller
-		s.UserState.NearestICAO = controller.ICAO
+    
+		if controller != nil {
+			s.UserState.ActiveFacilities[idx] = controller
+			s.UserState.NearestICAO = controller.ICAO
+		}
 	}
 }
 
@@ -768,4 +774,23 @@ func (s *Service) getAITargetRole(phase int) int {
 	default:
 		return 0
 	}
+}
+
+func (s *Service) mapSimRoleToInternal(simRole int) int {
+    switch simRole {
+    case 1: // Sim Delivery
+        return 1 // Your RoleID (Del)
+    case 2: // Sim Ground
+        return 2 // Your RoleID (Gnd)
+    case 3: // Sim Tower
+        return 3 // Your RoleID (Twr)
+    case 4: // Sim Approach/Departure
+        // Approach/Dep can be mapped to your Role 4 or 5 
+        // depending on your db structure
+        return 4 
+    case 5: // Sim Center
+        return 6 // Your RoleID (Center)
+    default:
+        return 0 // Unknown/ATIS/Unicom
+    }
 }

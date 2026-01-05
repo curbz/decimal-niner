@@ -137,11 +137,13 @@ var datarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 	
 	//user tuned atc facilities and frequencies
+	{Name: "sim/cockpit/radios/com1_freq_hz",
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: "sim/cockpit/radios/com2_freq_hz",
+		APIInfo: xpapimodel.DatarefInfo{}},
 	{Name: "sim/atc/com1_tuned_facility",
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/cockpit/radios/com1_freq_hz",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/cockpit/radios/com1_freq_hz",
+	{Name: "sim/atc/com2_tuned_facility",
 		APIInfo: xpapimodel.DatarefInfo{}},
 
 	//traffic global datarefs
@@ -201,14 +203,14 @@ func (xpc *XPConnect) Start() {
 
 	// 2. Output Results
 	fmt.Println("\n==================================")
+	fmt.Println("Retrieved DataRef Indices:")
+	for id, datarefInfo := range xpc.dataRefIndexMap {
+		fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
+	}	
 	if len(xpc.dataRefIndexMap) == len(datarefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
-		fmt.Println("Retrieved DataRef Indices:")
-		for id, datarefInfo := range xpc.dataRefIndexMap {
-			fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
-		}
 	} else if len(xpc.dataRefIndexMap) > 0 {
-		log.Printf("WARNING: Only %d of %d indices were received. Some datarefs may be invalid.", len(xpc.dataRefIndexMap), len(datarefs))
+		log.Fatalf("Only %d of %d dataref indices were received", len(xpc.dataRefIndexMap), len(datarefs))
 	} else {
 		log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
 	}
@@ -460,21 +462,38 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 
 func (xpc *XPConnect) updateUserData() {
 
-    com1 := float64(xpc.getDataRefValue("sim/cockpit/radios/com1_freq_hz", 0).(int)) / 100.0
-    com2 := float64(xpc.getDataRefValue("sim/cockpit/radios/com2_freq_hz", 0).(int)) / 100.0
+	com1FreqVal := xpc.getDataRefValue("sim/cockpit/radios/com1_freq_hz", 0)
+	com2FreqVal := xpc.getDataRefValue("sim/cockpit/radios/com2_freq_hz", 0)
+	com1FacilityVal := xpc.getDataRefValue("sim/atc/com1_tuned_facility", 0)
+	com2FacilityVal := xpc.getDataRefValue("sim/atc/com2_tuned_facility", 0)
+
+	if com1FreqVal == nil || com2FreqVal == nil ||
+		com1FacilityVal == nil || com2FacilityVal == nil {
+			log.Println("WARNING: Couldn't update user state as com1 or com2 datarefs are not available")
+			return
+	}
+
+    com1Freq := int(com1FreqVal.(float64))
+    com2Freq := int(com2FreqVal.(float64)) 
+	com1Facility := int(com1FacilityVal.(float64))
+    com2Facility := int(com2FacilityVal.(float64)) 
     
-	lastTunedFreqs := xpc.atcService.GetUserState().TunedFreqs
+	userState := xpc.atcService.GetUserState()
+	lastTunedFreqs := userState.TunedFreqs
+	lastTunedFacilities := userState.TunedFacilities
 
 	// if no change to tuned frequencies, no need to update user state
-	if com1 == lastTunedFreqs[1] && com2 == lastTunedFreqs[2] {
+	if com1Freq == lastTunedFreqs[1] && com2Freq == lastTunedFreqs[2] &&
+		com1Facility == lastTunedFacilities[1] && com2Facility == lastTunedFacilities[2] {
 		return
 	}
 
+	
     xpc.atcService.UpdateUserState(atc.Position{
         Lat: xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
         Long: xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64), 
         Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64)  * 3.28084,
-    }, com1, com2)
+    }, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
 
 }
 

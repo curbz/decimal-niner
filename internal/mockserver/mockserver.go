@@ -31,6 +31,18 @@ var (
 	idToValueType = make(map[int64]string)
 	// known datarefs and their canonical value types
 	datarefDefs = map[string]string{
+
+		"sim/flightmodel/position/latitude":  "double",
+		"sim/flightmodel/position/longitude": "double",
+		"sim/flightmodel/position/elevation": "double",
+		"sim/flightmodel/position/psi":       "float",
+
+		"sim/cockpit/radios/com1_freq_hz": "int",
+		"sim/cockpit/radios/com2_freq_hz": "int",
+
+		"sim/atc/com1_tuned_facility": "int",
+		"sim/atc/com2_tuned_facility": "int",
+
 		"trafficglobal/ai/position_lat":     "float[]",
 		"trafficglobal/ai/position_long":    "float[]",
 		"trafficglobal/ai/position_heading": "float[]",
@@ -207,44 +219,70 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // matches what the client expects for that type (e.g., numeric arrays or
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
-	switch name {
-	case "trafficglobal/ai/position_lat":
-		return []float64{35.145877838134766 + float64(iter), 35.1459 + float64(iter), 35.146 + float64(iter)}
-	case "trafficglobal/ai/position_long":
-		return []float64{24.120702743530273 + float64(iter), 24.121 + float64(iter), 24.122 + float64(iter)}
-	case "trafficglobal/ai/position_heading":
-		return []float64{180.0 + float64(iter), 181.0 + float64(iter), 182.0 + float64(iter)}
-	case "trafficglobal/ai/position_elev":
-		return []float64{10372.2021484375 + float64(iter), 10380.0 + float64(iter), 10390.0 + float64(iter)}
+switch name {
+    // --- User Position (Heathrow Center) ---
+    case "sim/flightmodel/position/latitude":
+        return 51.4700 + (float64(iter) * 0.0001)
+    case "sim/flightmodel/position/longitude":
+        return -0.4543 + (float64(iter) * 0.0001)
+    case "sim/flightmodel/position/elevation":
+        return 25.0 + float64(iter) // EGLL is ~80ft MSL
+    case "sim/flightmodel/position/psi":
+        return 270.5 // Facing West towards Runway 27R
 
-	case "trafficglobal/ai/aircraft_code":
-		s := fmt.Sprintf("AC%02d\x00BC%02d\x00CC%02d\x00", iter, iter, iter)
-		return base64.StdEncoding.EncodeToString([]byte(s))
-	case "trafficglobal/ai/airline_code":
-		s := "BAW\x00BAW\x00BAW\x00"
-		return base64.StdEncoding.EncodeToString([]byte(s))
-	case "trafficglobal/ai/tail_number":
-		s := "TN02\x00AB006\x00DE544\x00"
-		return base64.StdEncoding.EncodeToString([]byte(s))
-	case "trafficglobal/ai/source_icao":
-		s := fmt.Sprintf("SRC%02d\x00SRC%02d\x00", iter, iter)
-		return base64.StdEncoding.EncodeToString([]byte(s))
-	case "trafficglobal/ai/dest_icao":
-		s := fmt.Sprintf("DST%02d\x00DST%02d\x00", iter, iter)
-		return base64.StdEncoding.EncodeToString([]byte(s))
+    // --- User Radios (Heathrow Frequencies) ---
+    case "sim/cockpit/radios/com1_freq_hz":
+        return int(11850) // EGLL Tower
+    case "sim/cockpit/radios/com2_freq_hz":
+        return int(12190) // EGLL Ground
+	case "sim/atc/com1_tuned_facility":
+		return 3 // Tower
+	case "sim/atc/com2_tuned_facility":
+		return 2 // Ground
 
-	case "trafficglobal/ai/parking":
-		s := fmt.Sprintf("RAMP %d\x00APRON %d\x00", iter, iter)
-		return base64.StdEncoding.EncodeToString([]byte(s))
+    // --- AI Aircraft Data (Moving around EGLL) ---
+    case "trafficglobal/ai/position_lat":
+        return []float64{
+            51.4695,                     // AC1: Near Terminal 5
+            51.4710 + (float64(iter)*0.001), // AC2: Taxiing toward 27R
+            51.4770 + (float64(iter)*0.005), // AC3: On Final Approach
+        }
+    case "trafficglobal/ai/position_long":
+        return []float64{
+            -0.4870, 
+            -0.4600 + (float64(iter)*0.001), 
+            -0.3500 + (float64(iter)*0.005),
+        }
+    case "trafficglobal/ai/position_heading":
+        return []float64{90.0, 270.0, 270.0}
+    case "trafficglobal/ai/position_elev":
+        return []float64{
+            25.0,   // Ground
+            25.0,   // Ground
+            300.5,  // Descending on Final
+        }
 
-	case "trafficglobal/ai/ai_type":
-		return []int{0 + iter, 0 + iter, 1 + iter}
-	case "trafficglobal/ai/ai_class":
-		return []int{2, 2, 2}
-	case "trafficglobal/ai/flight_num":
-		return []int{471 + iter, 472 + iter, 473 + iter}
-	case "trafficglobal/ai/flight_phase":
-		return []int{4 + iter, 2, 6}
+    case "trafficglobal/ai/aircraft_code":
+        // A320, B738, A359
+        s := "A320\x00B738\x00A359\x00"
+        return base64.StdEncoding.EncodeToString([]byte(s))
+    case "trafficglobal/ai/airline_code":
+        s := "BAW\x00EZY\x00BAW\x00" // British Airways and EasyJet
+        return base64.StdEncoding.EncodeToString([]byte(s))
+    
+    case "trafficglobal/ai/source_icao":
+        s := "EGLL\x00EGLL\x00LFPG\x00" // Two departing, one arriving from Paris
+        return base64.StdEncoding.EncodeToString([]byte(s))
+    case "trafficglobal/ai/dest_icao":
+        s := "KJFK\x00EGPH\x00EGLL\x00"
+        return base64.StdEncoding.EncodeToString([]byte(s))
+
+    case "trafficglobal/ai/flight_phase":
+        return []int{
+            7, // AC1: Parked (Startup)
+            8 + iter, // AC2: TaxiOut
+            3, // AC3: Final
+        }
 
 	case "trafficglobal/ai/runway":
 		return []int{538756, 13107, 0, 0}
