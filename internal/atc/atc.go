@@ -250,26 +250,65 @@ func (s *Service) Run() {
 			var phaseGroup map[string][]string
 			var facility string
 
-			/*
-			// determine atc facility based on aircraft position or phase
 			switch ac.Flight.Phase.Current {
-			case trafficglobal.Startup.Index(): // Taxi
+
+			// --- PRE-FLIGHT & DEPARTURE ---
+			case trafficglobal.Parked.Index():
+				phaseGroup = s.phrases["pre_flight_parked"]
+				facility = "Clearance" // or Delivery
+
+			case trafficglobal.Startup.Index():
 				phaseGroup = s.phrases["startup"]
 				facility = "Ground"
+
+			case trafficglobal.TaxiOut.Index():
+				phaseGroup = s.phrases["taxi_out"]
+				facility = "Ground"
+
+			case trafficglobal.Depart.Index():
+				phaseGroup = s.phrases["depart"]
+				facility = "Tower"
+
+			// --- IN-FLIGHT ---
+			case trafficglobal.Climbout.Index():
+				phaseGroup = s.phrases["climb_out"]
+				facility = "Departure"
+
+			case trafficglobal.Cruise.Index():
+				phaseGroup = s.phrases["cruise"]
+				facility = "Center"
+
+			case trafficglobal.Approach.Index():
+				phaseGroup = s.phrases["approach"]
+				facility = "Approach"
+
+			case trafficglobal.Final.Index():
+				phaseGroup = s.phrases["final"]
+				facility = "Tower"
+
+			case trafficglobal.GoAround.Index():
+				phaseGroup = s.phrases["go_around"]
+				facility = "Tower"
+
+			// --- ARRIVAL & TAXI-IN ---
+			case trafficglobal.Braking.Index():
+				// In Traffic Global, Braking usually covers the rollout and runway exit
+				phaseGroup = s.phrases["braking"]
+				facility = "Tower"
+
+			case trafficglobal.TaxiIn.Index():
+				phaseGroup = s.phrases["taxi_in"]
+				facility = "Ground"
+
+			case trafficglobal.Shutdown.Index():
+				// Usually uses the end of Taxi-In or a "On Blocks" message
+				phaseGroup = s.phrases["post_flight_parked"] 
+				facility = "Ground"
+
 			default:
 				log.Printf("No ATC instructions for phase %d", ac.Flight.Phase.Current)
 				continue
 			}
-
-			// set the aircraft comms frequency to ground facility
-			ac.Flight.Comms.Frequency = s.Facilities[facility]
-
-			// if user is not tuned to frequency then skip
-			if ac.Flight.Comms.Frequency != s.UserTunedFrequency {
-				log.Printf("Skipping ATC message for %s: user not tuned to %.1f MHz", ac.Flight.Comms.Callsign, ac.Flight.Comms.Frequency)
-				continue
-			}
-			*/
 
 			callAndResponse := []string{"pilot_initial_calls", "atc_responses_instructions"}
 
@@ -325,6 +364,8 @@ func (s *Service) Notify(ac Aircraft) {
 			return
 		}
 
+		ac.Flight.Comms.Controller = aiFac
+		
 		// Check match against COM1 and COM2
 		for _, userFac := range userActive {
 			if userFac == nil { continue }
