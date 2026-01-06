@@ -423,3 +423,4 @@ FodyWeavers.xsd
 # executables and DLLs
 *.exe
 *.dll
+__debug_bin*
