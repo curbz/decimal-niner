@@ -347,7 +347,7 @@ func (s *Service) Notify(ac Aircraft) {
 	userActive := s.UserState.ActiveFacilities
 
 	if len(userActive) == 0 {
-		log.Println("No active tuned facilities")
+		log.Println("User has no active tuned ATC facilities")
 		return
 	}
 	
@@ -357,10 +357,16 @@ func (s *Service) Notify(ac Aircraft) {
 		aiFac := s.PerformSearch(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
-			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude,
-		)
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+
+		// 2. Fallback: If no Tower/Ground found, look for Unicom (Role 0)
+		if aiFac == nil {
+			aiFac = s.PerformSearch("AI_FALLBACK", 0, 0, 
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+		}
 
 		if aiFac == nil {
+			log.Printf("No suitable ATC facility found for AI aircraft: %v", ac)
 			return
 		}
 
@@ -641,8 +647,14 @@ func parseApt(path string) []Controller {
 	var curICAO, curName string
 	var curLat, curLon float64
 
-	// X-Plane Radio Codes: 1051=Unicom, 1052=Del, 1053=Gnd, 1054=Twr, 1055/1056=App/Dep
-	roleMap := map[string]int{"1052": 1, "1053": 2, "1054": 3, "1055": 4, "1056": 4}
+	roleMap := map[string]int{
+		"1051": 0, // Unicom / CTAF
+		"1052": 1, // Delivery
+		"1053": 2, // Ground
+		"1054": 3, // Tower
+		"1056": 4, // Departure
+		"1055": 5, // Approach
+	}
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -752,8 +764,18 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 	closestDist := math.MaxFloat64
 	smallestArea := math.MaxFloat64
 
+	log.Printf("Searching for AI at %f, %f. Target Role: %d  Freq: %d", uLa, uLo, tRole, tFreq)
+
 	for i := range s.Database {
 		c := &s.Database[i]
+
+		// DEBUG: Only log for the specific AI we are hunting (VAL01 area)
+		if uLa > 51.4 && uLa < 51.5 {
+			// If the RoleID doesn't match, we need to know what the DB actually contains
+			if c.ICAO == "EGLL" {
+				log.Printf("CHECKING EGLL: DB_Role=%d, Target_Role=%d, Freqs=%v", c.RoleID, tRole, c.Freqs)
+			}
+		}
 
 		// Short-circuit 1: Role
 		if tRole > 0 && c.RoleID != tRole { continue }
@@ -768,13 +790,16 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 		}
 
 		// Expensive Math
+		if c.ICAO == "EGLL" {
+			log.Printf("Checking distance: uLa: %v uLo: %v c.Lat: %v c.Lon: %v", uLa, uLo, c.Lat, c.Lon)
+		}
 		dist := distNM(uLa, uLo, c.Lat, c.Lon)
 
 		if c.IsPoint {
 			maxRange := 60.0 
 			if c.RoleID >= 5 { maxRange = 200.0 } // Center range
 
-			if dist < maxRange && dist < closestDist {
+			if (dist < maxRange && dist < closestDist) {
 				closestDist = dist
 				bestMatch = c
 			}
@@ -800,9 +825,9 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 func (s *Service) getAITargetRole(phase int) int {
 	p := trafficglobal.FlightPhase(phase)
 	switch p {
-	case trafficglobal.Startup, trafficglobal.Parked, trafficglobal.Shutdown:
+	case trafficglobal.Parked:
 		return 1 // Delivery
-	case trafficglobal.TaxiOut, trafficglobal.TaxiIn:
+	case trafficglobal.Startup, trafficglobal.TaxiOut, trafficglobal.TaxiIn, trafficglobal.Shutdown:
 		return 2 // Ground
 	case trafficglobal.Depart, trafficglobal.Braking, trafficglobal.Final:
 		return 3 // Tower
@@ -812,26 +837,8 @@ func (s *Service) getAITargetRole(phase int) int {
 		return 5 // Approach
 	case trafficglobal.Cruise:
 		return 6 // Center
-	default:
-		return 0
+default:
+        // If we don't know, Ground is the safest place for a radio to be tuned
+        return 2
 	}
-}
-
-func (s *Service) mapSimRoleToInternal(simRole int) int {
-    switch simRole {
-    case 1: // Sim Delivery
-        return 1 // Your RoleID (Del)
-    case 2: // Sim Ground
-        return 2 // Your RoleID (Gnd)
-    case 3: // Sim Tower
-        return 3 // Your RoleID (Twr)
-    case 4: // Sim Approach/Departure
-        // Approach/Dep can be mapped to your Role 4 or 5 
-        // depending on your db structure
-        return 4 
-    case 5: // Sim Center
-        return 6 // Your RoleID (Center)
-    default:
-        return 0 // Unknown/ATIS/Unicom
-    }
 }
