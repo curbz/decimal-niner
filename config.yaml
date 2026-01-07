@@ -16,5 +16,5 @@ atc:
     sox:
       application: "/usr/bin/play"
     piper:
-      application:        "/home/dmorris/piper/piper"
+      application:        "/home/dmorris/.local/bin/piper"
       voice_directory:    "/home/dmorris/piper-voices"
