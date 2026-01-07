@@ -769,14 +769,6 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 	for i := range s.Database {
 		c := &s.Database[i]
 
-		// DEBUG: Only log for the specific AI we are hunting (VAL01 area)
-		if uLa > 51.4 && uLa < 51.5 {
-			// If the RoleID doesn't match, we need to know what the DB actually contains
-			if c.ICAO == "EGLL" {
-				log.Printf("CHECKING EGLL: DB_Role=%d, Target_Role=%d, Freqs=%v", c.RoleID, tRole, c.Freqs)
-			}
-		}
-
 		// Short-circuit 1: Role
 		if tRole > 0 && c.RoleID != tRole { continue }
 
@@ -790,9 +782,6 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 		}
 
 		// Expensive Math
-		if c.ICAO == "EGLL" {
-			log.Printf("Checking distance: uLa: %v uLo: %v c.Lat: %v c.Lon: %v", uLa, uLo, c.Lat, c.Lon)
-		}
 		dist := distNM(uLa, uLo, c.Lat, c.Lon)
 
 		if c.IsPoint {
