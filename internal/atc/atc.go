@@ -185,6 +185,8 @@ type Controller struct {
 
 func New(cfgPath string) *Service {
 
+	log.Println("Starting ATC service - loading all configurations")
+
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
 		log.Fatalf("Error reading configuration file: %v\n", err)
@@ -219,6 +221,7 @@ func New(cfgPath string) *Service {
 	}
 
 	// load atc and airport data
+	log.Println("Loading X-Plane ATC and Airport data")
 	start := time.Now()
 	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
 	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
@@ -306,7 +309,8 @@ func (s *Service) Run() {
 				facility = "Ground"
 
 			default:
-				log.Printf("No ATC instructions for phase %d", ac.Flight.Phase.Current)
+				log.Printf("No ATC instructions for aircraft %s flight phase %d", 
+					ac.Registration, ac.Flight.Phase.Current)
 				continue
 			}
 
@@ -370,6 +374,9 @@ func (s *Service) Notify(ac Aircraft) {
 			return
 		}
 
+		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",  
+			ac.Registration, aiFac.Name, aiFac.ICAO, aiFac.RoleID)
+
 		ac.Flight.Comms.Controller = aiFac
 		
 		// Check match against COM1 and COM2
@@ -385,8 +392,11 @@ func (s *Service) Notify(ac Aircraft) {
 			}
 
 			if match {
+				log.Printf("User on same frequency as aircraft %s - sending for phrase generation", ac.Registration)
 				s.Channel <- ac
 				return 
+			} else {
+				log.Printf("User not on same frequency as aircraft %s - audio will not be generated", ac.Registration)
 			}
 		}
 	}()
@@ -423,6 +433,10 @@ func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
 			s.UserState.NearestICAO = controller.ICAO
+			log.Printf("Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq, 
+					controller.Name, controller.ICAO, controller.RoleID)
+		} else {
+			log.Printf("No nearby controller found for user on COM%d %d", idx, uFreq)
 		}
 	}
 }
@@ -764,7 +778,7 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 	closestDist := math.MaxFloat64
 	smallestArea := math.MaxFloat64
 
-	log.Printf("Searching for AI at %f, %f. Target Role: %d  Freq: %d", uLa, uLo, tRole, tFreq)
+	log.Printf("Searching for %s at %f, %f elev %f. Target Role: %d  Freq: %d", label, uLa, uLo, uAl, tRole, tFreq)
 
 	for i := range s.Database {
 		c := &s.Database[i]
