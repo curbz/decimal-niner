@@ -43,7 +43,7 @@ type XPConnect struct {
 	aircraftMap     map[string]*atc.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
-	airlines 		map[string]AirlineInfo
+	airlines        map[string]AirlineInfo
 }
 
 type XPConnectInterface interface {
@@ -53,7 +53,7 @@ type XPConnectInterface interface {
 
 type config struct {
 	XPlane struct {
-		RestBaseURL string `yaml:"web_api_http_url"`
+		RestBaseURL  string `yaml:"web_api_http_url"`
 		WebSocketURL string `yaml:"web_api_websocket_url"`
 		AirlinesFile string `yaml:"airlines_file"`
 	} `yaml:"xplane"`
@@ -72,7 +72,7 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
-		// load airlines from JSON file
+	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.XPlane.AirlinesFile)
 	if err != nil {
 		log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
@@ -94,7 +94,7 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 
 	return &XPConnect{
 		aircraftMap: make(map[string]*atc.Aircraft),
-		airlines: airlinesData,
+		airlines:    airlinesData,
 		atcService:  atcService,
 		config:      *cfg,
 	}
@@ -135,7 +135,7 @@ var datarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 	{Name: "sim/flightmodel/position/psi",
 		APIInfo: xpapimodel.DatarefInfo{}},
-	
+
 	//user tuned atc facilities and frequencies
 	{Name: "sim/cockpit/radios/com1_freq_hz",
 		APIInfo: xpapimodel.DatarefInfo{}},
@@ -206,7 +206,7 @@ func (xpc *XPConnect) Start() {
 	fmt.Println("Retrieved DataRef Indices:")
 	for id, datarefInfo := range xpc.dataRefIndexMap {
 		fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
-	}	
+	}
 	if len(xpc.dataRefIndexMap) == len(datarefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
 	} else if len(xpc.dataRefIndexMap) > 0 {
@@ -469,15 +469,15 @@ func (xpc *XPConnect) updateUserData() {
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
-			log.Println("WARNING: Couldn't update user state as com1 or com2 datarefs are not available")
-			return
+		log.Println("WARNING: Couldn't update user state as com1 or com2 datarefs are not available")
+		return
 	}
 
-    com1Freq := int(com1FreqVal.(float64))
-    com2Freq := int(com2FreqVal.(float64)) 
+	com1Freq := int(com1FreqVal.(float64))
+	com2Freq := int(com2FreqVal.(float64))
 	com1Facility := int(com1FacilityVal.(float64))
-    com2Facility := int(com2FacilityVal.(float64)) 
-    
+	com2Facility := int(com2FacilityVal.(float64))
+
 	userState := xpc.atcService.GetUserState()
 	lastTunedFreqs := userState.TunedFreqs
 	lastTunedFacilities := userState.TunedFacilities
@@ -488,15 +488,13 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
-	
-    xpc.atcService.UpdateUserState(atc.Position{
-        Lat: xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
-        Long: xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64), 
-        Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64)  * 3.28084,
-    }, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
+	xpc.atcService.UpdateUserState(atc.Position{
+		Lat:      xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
+		Long:     xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64),
+		Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
+	}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
 
 }
-
 
 // updateAircraftData processes the latest aircraft data using the stored datarefs
 func (xpc *XPConnect) updateAircraftData() {
@@ -540,7 +538,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft.Flight.Phase.Current = updatedFlightPhase
 		}
 
-			// --- UPDATE POSITION DATA ---
+		// --- UPDATE POSITION DATA ---
 		// We use the 'index' from the loop to pull the correct element from the AI arrays
 		lat := xpc.getDataRefValue("trafficglobal/ai/position_lat", index)
 		lon := xpc.getDataRefValue("trafficglobal/ai/position_long", index)
@@ -584,21 +582,22 @@ func (xpc *XPConnect) updateAircraftData() {
 		if index < len(airlineCodes) {
 			airlineCode = airlineCodes[index]
 		}
-		// lookup callsign for airline code, default to airline code value if not found in map 
+		// lookup callsign for airline code, default to airline code value if not found in map
 		callsign := airlineCode
 		airlineInfo, exists := xpc.airlines[airlineCode]
 		if exists {
 			callsign = airlineInfo.Callsign
-		} 
+		}
 
 		flightNum := 0
 		if index < len(flightNums) {
 			flightNum = flightNums[index]
 		}
-		aircraft.Flight.Comms.Callsign  = fmt.Sprintf("%s %d", callsign, flightNum)
+		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
+		aircraft.Flight.Number = flightNum
 	}
 
-	// TODO: update more aircraft data as needed, e.g. parking, flight number
+	// TODO: update more aircraft data as needed, e.g. parking location etc.
 
 	if !xpc.initialised {
 		xpc.initialised = true

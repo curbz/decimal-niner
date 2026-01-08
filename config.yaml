@@ -13,6 +13,7 @@ atc:
   airports_data_file:       "/home/dmorris/decimal-niner/resources/apt.dat"   # full file - slow 
   voices:
     phrases_file:       "/home/dmorris/decimal-niner/resources/phrases.json"
+    unicom_phrases_file: "/home/dmorris/decimal-niner/resources/phrases_unicom.json"
     sox:
       application: "/usr/bin/play"
     piper:

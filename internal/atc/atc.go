@@ -19,22 +19,22 @@ import (
 
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/curbz/decimal-niner/trafficglobal"
-
 )
 
 type Service struct {
-	Config			   *config
-	Channel            chan Aircraft
-	Database           []Controller
-	phrases            map[string]map[string][]string
-	UserState		   UserState
+	Config    *config
+	Channel   chan Aircraft
+	Database  []Controller
+	phrases   map[string]map[string][]string
+	phrasesUnicom map[string]map[string][]string
+	UserState UserState
 }
 
 type ServiceInterface interface {
 	Run()
 	Notify(msg Aircraft)
 	GetUserState() UserState
-	UpdateUserState(pos Position, com1Freq, com2Freq  map[int]int) 
+	UpdateUserState(pos Position, com1Freq, com2Freq map[int]int)
 }
 
 // --- configuration structures ---
@@ -44,17 +44,16 @@ type config struct {
 		AtcDataFile       string       `yaml:"atc_data_file"`
 		AtcRegionsFile    string       `yaml:"atc_regions_file"`
 		AirportsDataFile  string       `yaml:"airports_data_file"`
-		Voices           VoicesConfig `yaml:"voices"`
+		Voices            VoicesConfig `yaml:"voices"`
 	} `yaml:"atc"`
-	
 }
 
 type UserState struct {
-	NearestICAO string
-	Position Position
+	NearestICAO      string
+	Position         Position
 	ActiveFacilities map[int]*Controller // Key: 1 for COM1, 2 for COM2
-	TunedFreqs map[int]int // Key: 1 for COM1, 2 for COM2
-	TunedFacilities map[int]int // Key: 1 for COM1, 2 for COM2
+	TunedFreqs       map[int]int         // Key: 1 for COM1, 2 for COM2
+	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
 }
 
 type Aircraft struct {
@@ -68,7 +67,7 @@ type Aircraft struct {
 
 type Flight struct {
 	Position    Position
-	FlightNum   int64
+	Number      int
 	TaxiRoute   string
 	Origin      string
 	Destination string
@@ -84,43 +83,42 @@ type Position struct {
 }
 
 type Phase struct {
-	Current   int
-	Previous  int	// used for detecting changes, previous refers to last update and not necessarily the actual previous phase
+	Current    int
+	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition time.Time
 }
 
 type Comms struct {
 	Callsign         string
-	Controller 		 *Controller
+	Controller       *Controller
 	LastTransmission string
 	LastInstruction  string
 }
 
-
 type VoicesConfig struct {
-	PhrasesFile string      `yaml:"phrases_file"`
-	Piper       Piper `yaml:"piper"`
-	Sox         Sox         `yaml:"sox"`
+	PhrasesFile 		string `yaml:"phrases_file"`
+	UnicomPhrasesFile 	string `yaml:"unicom_phrases_file"`
+	Piper       		Piper  `yaml:"piper"`
+	Sox         		Sox    `yaml:"sox"`
 }
 
 type Piper struct {
-	Application string `yaml:"application"`
-	VoiceDirectory  string `yaml:"voice_directory"`
+	Application    string `yaml:"application"`
+	VoiceDirectory string `yaml:"voice_directory"`
 }
 
 type Sox struct {
 	Application string `yaml:"application"`
 }
 
-
 // ATCMessage represents a single ATC communication message
 type ATCMessage struct {
-	ICAO		string
-	Callsign    string
-	Role        string
-	Text        string
+	ICAO           string
+	Callsign       string
+	Role           string
+	Text           string
 	VoiceDirectory string
-	FlightPhase int
+	FlightPhase    int
 }
 
 // PreparedAudio holds a ready-to-play piper command and its metadata
@@ -205,19 +203,37 @@ func New(cfgPath string) *Service {
 	// load phrases from JSON file
 	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open phrases.json: %v", err)
+		log.Fatalf("FATAL: Could not open phrases json file: %v", err)
 	}
 	defer phrasesFile.Close()
 
 	phrasesBytes, err := io.ReadAll(phrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not read phrases.json: %v", err)
+		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
 	}
 
 	var phrases map[string]map[string][]string
 	err = json.Unmarshal(phrasesBytes, &phrases)
 	if err != nil {
-		log.Fatalf("FATAL: Could not unmarshal phrases.json: %v", err)
+		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
+	}
+
+	// load unicom phrases from JSON file
+	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open unicom phrases json file: %v", err)
+	}
+	defer unicomPhrasesFile.Close()
+
+	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
+	}
+
+	var unicomPhrases map[string]map[string][]string
+	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
 	}
 
 	// load atc and airport data
@@ -230,14 +246,15 @@ func New(cfgPath string) *Service {
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
-	go PreWarmer(cfg.ATC.Voices.Piper.Application)   // Converts Text -> Piper Process
-	go RadioPlayer() // Converts Piper Process -> Speakers
+	go PreWarmer(cfg.ATC.Voices.Piper.Application) // Converts Text -> Piper Process
+	go RadioPlayer()                               // Converts Piper Process -> Speakers
 
 	return &Service{
-		Config: 		  cfg,
-		Channel: make(chan Aircraft, cfg.ATC.MessageBufferSize),
-		Database:         db,
-		phrases:            phrases,
+		Config:   cfg,
+		Channel:  make(chan Aircraft, cfg.ATC.MessageBufferSize),
+		Database: db,
+		phrases:  phrases,
+		phrasesUnicom: unicomPhrases,
 	}
 }
 
@@ -252,65 +269,70 @@ func (s *Service) Run() {
 
 			var phaseGroup map[string][]string
 			var facility string
-
+			
+			var phraseSource map[string]map[string][]string
+			if ac.Flight.Comms.Controller.RoleID == 0 {
+				phraseSource = s.phrasesUnicom
+			} else {
+				phraseSource = s.phrases
+			} 
 			switch ac.Flight.Phase.Current {
-
 			// --- PRE-FLIGHT & DEPARTURE ---
 			case trafficglobal.Parked.Index():
-				phaseGroup = s.phrases["pre_flight_parked"]
+				phaseGroup = phraseSource["pre_flight_parked"]
 				facility = "Clearance" // or Delivery
 
 			case trafficglobal.Startup.Index():
-				phaseGroup = s.phrases["startup"]
+				phaseGroup = phraseSource["startup"]
 				facility = "Ground"
 
 			case trafficglobal.TaxiOut.Index():
-				phaseGroup = s.phrases["taxi_out"]
+				phaseGroup = phraseSource["taxi_out"]
 				facility = "Ground"
 
 			case trafficglobal.Depart.Index():
-				phaseGroup = s.phrases["depart"]
+				phaseGroup = phraseSource["depart"]
 				facility = "Tower"
 
 			// --- IN-FLIGHT ---
 			case trafficglobal.Climbout.Index():
-				phaseGroup = s.phrases["climb_out"]
+				phaseGroup = phraseSource["climb_out"]
 				facility = "Departure"
 
 			case trafficglobal.Cruise.Index():
-				phaseGroup = s.phrases["cruise"]
+				phaseGroup = phraseSource["cruise"]
 				facility = "Center"
 
 			case trafficglobal.Approach.Index():
-				phaseGroup = s.phrases["approach"]
+				phaseGroup = phraseSource["approach"]
 				facility = "Approach"
 
 			case trafficglobal.Final.Index():
-				phaseGroup = s.phrases["final"]
+				phaseGroup = phraseSource["final"]
 				facility = "Tower"
 
 			case trafficglobal.GoAround.Index():
-				phaseGroup = s.phrases["go_around"]
+				phaseGroup = phraseSource["go_around"]
 				facility = "Tower"
 
 			// --- ARRIVAL & TAXI-IN ---
 			case trafficglobal.Braking.Index():
 				// In Traffic Global, Braking usually covers the rollout and runway exit
-				phaseGroup = s.phrases["braking"]
+				phaseGroup = phraseSource["braking"]
 				facility = "Tower"
 
 			case trafficglobal.TaxiIn.Index():
-				phaseGroup = s.phrases["taxi_in"]
+				phaseGroup = phraseSource["taxi_in"]
 				facility = "Ground"
 
 			case trafficglobal.Shutdown.Index():
 				// Usually uses the end of Taxi-In or a "On Blocks" message
-				phaseGroup = s.phrases["post_flight_parked"] 
+				phaseGroup = phraseSource["post_flight_parked"]
 				facility = "Ground"
 
 			default:
-				log.Printf("No ATC instructions for aircraft %s flight phase %d", 
-					ac.Registration, ac.Flight.Phase.Current)
+				log.Printf("No ATC instructions for aircraft %s flight phase %d role id %d",
+					ac.Registration, ac.Flight.Phase.Current, ac.Flight.Comms.Controller.RoleID)
 				continue
 			}
 
@@ -320,26 +342,34 @@ func (s *Service) Run() {
 				// select random phrase
 				phrases := phaseGroup[groupName]
 				if len(phrases) == 0 {
-					log.Printf("No phrases found for phase group %s", phaseGroup)
+					log.Printf("No phrases found for phase group %s role id %d", phaseGroup, ac.Flight.Comms.Controller.RoleID)
 					continue
 				}
 				selectedPhrase := phrases[rand.Intn(len(phrases))]
 
 				// construct message and replace all possible variables
 				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
-				
+				message = strings.ReplaceAll(message, "{FACILITY}", ac.Flight.Comms.Controller.Name)
 				// TODO: add more replacements as needed here
 
 				message = translateNumerics(message)
 
-				role := "PILOT"
-				if i > 0 {
+				var role string
+				if i == 0 {
+					role = "PILOT"
+					ac.Flight.Comms.LastTransmission = message
+				} else {
 					role = facility
+					ac.Flight.Comms.LastInstruction = message
 				}
 
 				// send message to radio queue
 				radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign, role, message,
 					s.Config.ATC.Voices.Piper.VoiceDirectory, ac.Flight.Phase.Current,
+				}
+
+				if ac.Flight.Comms.Controller.RoleID == 0 {
+					break
 				}
 			}
 		}
@@ -354,7 +384,7 @@ func (s *Service) Notify(ac Aircraft) {
 		log.Println("User has no active tuned ATC facilities")
 		return
 	}
-	
+
 	go func() {
 		// Identify AI's intended facility
 		aiRole := s.getAITargetRole(ac.Flight.Phase.Current)
@@ -365,8 +395,8 @@ func (s *Service) Notify(ac Aircraft) {
 
 		// 2. Fallback: If no Tower/Ground found, look for Unicom (Role 0)
 		if aiFac == nil {
-			aiFac = s.PerformSearch("AI_FALLBACK", 0, 0, 
-			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+			aiFac = s.PerformSearch("AI_FALLBACK", 0, 0,
+				ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
 		}
 
 		if aiFac == nil {
@@ -374,18 +404,20 @@ func (s *Service) Notify(ac Aircraft) {
 			return
 		}
 
-		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",  
+		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",
 			ac.Registration, aiFac.Name, aiFac.ICAO, aiFac.RoleID)
 
 		ac.Flight.Comms.Controller = aiFac
-		
+
 		// Check match against COM1 and COM2
 		for _, userFac := range userActive {
-			if userFac == nil { continue }
+			if userFac == nil {
+				continue
+			}
 
 			// Match logic
 			match := (userFac.ICAO == aiFac.ICAO && userFac.RoleID == aiFac.RoleID)
-			
+
 			// Fallback for Regions (Center/Approach) where ICAO might differ
 			if !match && userFac.RoleID >= 4 && aiFac.RoleID >= 4 {
 				match = (userFac.Name == aiFac.Name)
@@ -394,7 +426,7 @@ func (s *Service) Notify(ac Aircraft) {
 			if match {
 				log.Printf("User on same frequency as aircraft %s - sending for phrase generation", ac.Registration)
 				s.Channel <- ac
-				return 
+				return
 			} else {
 				log.Printf("User not on same frequency as aircraft %s - audio will not be generated", ac.Registration)
 			}
@@ -419,22 +451,22 @@ func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[
 	for idx, freq := range tunedFreqs {
 		// Normalize 12170 to 121700
 		uFreq := int(freq)
-		if uFreq < 100000 { 
-			uFreq *= 10 
+		if uFreq < 100000 {
+			uFreq *= 10
 		}
 
 		controller := s.PerformSearch(
 			fmt.Sprintf("User_COM%d", idx),
-			uFreq, // Search by freq
+			uFreq,                // Search by freq
 			tunedFacilities[idx], // role
 			pos.Lat, pos.Long, pos.Altitude,
 		)
-    
+
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
 			s.UserState.NearestICAO = controller.ICAO
-			log.Printf("Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq, 
-					controller.Name, controller.ICAO, controller.RoleID)
+			log.Printf("Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq,
+				controller.Name, controller.ICAO, controller.RoleID)
 		} else {
 			log.Printf("No nearby controller found for user on COM%d %d", idx, uFreq)
 		}
@@ -446,7 +478,7 @@ func PreWarmer(piperPath string) {
 	for msg := range radioQueue {
 
 		log.Printf("Processing message: %s", msg.Text)
-		
+
 		voice, onnx, rate, noise := resolveVoice(msg)
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.8")
@@ -487,12 +519,12 @@ func RadioPlayer() {
 		playCmd.Stdin = audio.PiperOut
 
 		_ = playCmd.Start()
-		
+
 		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
-		
+
 		_ = audio.PiperCmd.Wait()
 		_ = playCmd.Wait()
-		
+
 		// Small gap between transmissions
 		min := 400
 		max := 1200
@@ -538,9 +570,15 @@ func resolveVoice(msg ATCMessage) (string, string, int, string) {
 		for _, v := range pool {
 			used := false
 			for _, assigned := range sessionVoices {
-				if assigned == v { used = true; break }
+				if assigned == v {
+					used = true
+					break
+				}
 			}
-			if !used { selectedVoice = v; break }
+			if !used {
+				selectedVoice = v
+				break
+			}
 		}
 		sessionVoices[key] = selectedVoice
 	}
@@ -553,7 +591,11 @@ func resolveVoice(msg ATCMessage) (string, string, int, string) {
 	// Simple sample rate fetch (optimized)
 	rate := 22050
 	if f, err := os.Open(onnxPath + ".json"); err == nil {
-		var cfg struct{ Audio struct{ SampleRate int `json:"sample_rate"` } }
+		var cfg struct {
+			Audio struct {
+				SampleRate int `json:"sample_rate"`
+			}
+		}
 		json.NewDecoder(f).Decode(&cfg)
 		rate = cfg.Audio.SampleRate
 		f.Close()
@@ -607,25 +649,31 @@ func translateNumerics(msg string) string {
 // --- Geometry Helpers ---
 
 func distNM(lat1, lon1, lat2, lon2 float64) float64 {
-    const R = 3440.06
-    r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
-    
-    dLat := (lat2 - lat1) * math.Pi / 180
-    dLon := (lon2 - lon1) * math.Pi / 180
+	const R = 3440.06
+	r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
 
-    // --- handle dateline crossing ---
-    for dLon > math.Pi  { dLon -= 2 * math.Pi }
-    for dLon < -math.Pi { dLon += 2 * math.Pi }
-    // --------------------------------
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
 
-    a := math.Sin(dLat/2)*math.Sin(dLat/2) + 
-         math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
-         
-    return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	// --- handle dateline crossing ---
+	for dLon > math.Pi {
+		dLon -= 2 * math.Pi
+	}
+	for dLon < -math.Pi {
+		dLon += 2 * math.Pi
+	}
+	// --------------------------------
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
+
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
 func isPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
-	if len(polygon) < 3 { return false }
+	if len(polygon) < 3 {
+		return false
+	}
 	inside, j := false, len(polygon)-1
 	for i := 0; i < len(polygon); i++ {
 		if ((polygon[i][1] > lon) != (polygon[j][1] > lon)) &&
@@ -641,10 +689,18 @@ func calculateRoughArea(pts [][2]float64) float64 {
 	minLat, maxLat := 90.0, -90.0
 	minLon, maxLon := 180.0, -180.0
 	for _, p := range pts {
-		if p[0] < minLat { minLat = p[0] }
-		if p[0] > maxLat { maxLat = p[0] }
-		if p[1] < minLon { minLon = p[1] }
-		if p[1] > maxLon { maxLon = p[1] }
+		if p[0] < minLat {
+			minLat = p[0]
+		}
+		if p[0] > maxLat {
+			maxLat = p[0]
+		}
+		if p[1] < minLon {
+			minLon = p[1]
+		}
+		if p[1] > maxLon {
+			maxLon = p[1]
+		}
 	}
 	return (maxLat - minLat) * (maxLon - minLon)
 }
@@ -653,9 +709,11 @@ func calculateRoughArea(pts [][2]float64) float64 {
 
 func parseApt(path string) []Controller {
 	file, err := os.Open(path)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	defer file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	var list []Controller
 	var curICAO, curName string
@@ -673,11 +731,13 @@ func parseApt(path string) []Controller {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		p := strings.Fields(line)
-		if len(p) < 2 { continue }
+		if len(p) < 2 {
+			continue
+		}
 		code := p[0]
 
 		if code == "1" || code == "16" || code == "17" {
-			curLat, curLon = 0, 0 
+			curLat, curLon = 0, 0
 			if len(p) >= 5 {
 				curICAO = p[4]
 				curName = strings.Join(p[5:], " ")
@@ -690,19 +750,25 @@ func parseApt(path string) []Controller {
 			if len(p) >= 11 {
 				la, _ := strconv.ParseFloat(p[9], 64)
 				lo, _ := strconv.ParseFloat(p[10], 64)
-				if math.Abs(la) <= 90 { curLat, curLon = la, lo }
+				if math.Abs(la) <= 90 {
+					curLat, curLon = la, lo
+				}
 			}
 		}
 
 		fRaw, _ := strconv.Atoi(p[1])
 		fNorm := fRaw
-		for fNorm > 0 && fNorm < 100000 { fNorm *= 10 }
+		for fNorm > 0 && fNorm < 100000 {
+			fNorm *= 10
+		}
 
-		// ALIASSING LOGIC: If an airport has Unicom (1051) or Tower (1054), 
+		// ALIASSING LOGIC: If an airport has Unicom (1051) or Tower (1054),
 		// it likely handles Ground/Delivery duties too.
 		if code == "1051" || code == "1054" {
 			roles := []int{3} // Tower
-			if code == "1051" || code == "1054" { roles = append(roles, 1, 2) }
+			if code == "1051" || code == "1054" {
+				roles = append(roles, 1, 2)
+			}
 			for _, r := range roles {
 				list = append(list, Controller{
 					Name: curName, ICAO: curICAO, RoleID: r,
@@ -721,9 +787,11 @@ func parseApt(path string) []Controller {
 
 func parseGeneric(path string, isRegion bool) []Controller {
 	file, err := os.Open(path)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	defer file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	var list []Controller
 	var cur *Controller
@@ -732,22 +800,32 @@ func parseGeneric(path string, isRegion bool) []Controller {
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || line[0] == '#' { continue }
+		if line == "" || line[0] == '#' {
+			continue
+		}
 		p := strings.Fields(line)
 
 		switch strings.ToUpper(p[0]) {
 		case "CONTROLLER":
 			cur = &Controller{IsRegion: isRegion, IsPoint: false}
 		case "NAME":
-			if cur != nil { cur.Name = strings.Join(p[1:], " ") }
+			if cur != nil {
+				cur.Name = strings.Join(p[1:], " ")
+			}
 		case "FACILITY_ID", "ICAO":
-			if cur != nil { cur.ICAO = p[1] }
+			if cur != nil {
+				cur.ICAO = p[1]
+			}
 		case "ROLE":
-			if cur != nil { cur.RoleID = roleMap[strings.ToLower(p[1])] }
+			if cur != nil {
+				cur.RoleID = roleMap[strings.ToLower(p[1])]
+			}
 		case "FREQ", "CHAN":
 			if cur != nil {
 				f, _ := strconv.Atoi(p[1])
-				for f > 0 && f < 100000 { f *= 10 }
+				for f > 0 && f < 100000 {
+					f *= 10
+				}
 				cur.Freqs = append(cur.Freqs, f)
 			}
 		case "AIRSPACE_POLYGON_BEGIN":
@@ -760,13 +838,21 @@ func parseGeneric(path string, isRegion bool) []Controller {
 		case "POINT":
 			la, _ := strconv.ParseFloat(p[1], 64)
 			lo, _ := strconv.ParseFloat(p[2], 64)
-			if curPoly != nil { curPoly.Points = append(curPoly.Points, [2]float64{la, lo}) }
-			if cur != nil && cur.Lat == 0 { cur.Lat, cur.Lon = la, lo }
+			if curPoly != nil {
+				curPoly.Points = append(curPoly.Points, [2]float64{la, lo})
+			}
+			if cur != nil && cur.Lat == 0 {
+				cur.Lat, cur.Lon = la, lo
+			}
 		case "AIRSPACE_POLYGON_END":
-			if cur != nil && curPoly != nil { cur.Airspaces = append(cur.Airspaces, *curPoly) }
+			if cur != nil && curPoly != nil {
+				cur.Airspaces = append(cur.Airspaces, *curPoly)
+			}
 			curPoly = nil
 		case "CONTROLLER_END":
-			if cur != nil { list = append(list, *cur) }
+			if cur != nil {
+				list = append(list, *cur)
+			}
 			cur = nil
 		}
 	}
@@ -784,32 +870,43 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 		c := &s.Database[i]
 
 		// Short-circuit 1: Role
-		if tRole > 0 && c.RoleID != tRole { continue }
+		if tRole > 0 && c.RoleID != tRole {
+			continue
+		}
 
 		// Short-circuit 2: Freq
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 { fMatch = true; break }
+				if f/10 == tFreq/10 {
+					fMatch = true
+					break
+				}
 			}
-			if !fMatch { continue }
+			if !fMatch {
+				continue
+			}
 		}
 
 		// Expensive Math
 		dist := distNM(uLa, uLo, c.Lat, c.Lon)
 
 		if c.IsPoint {
-			maxRange := 60.0 
-			if c.RoleID >= 5 { maxRange = 200.0 } // Center range
+			maxRange := 60.0
+			if c.RoleID >= 5 {
+				maxRange = 200.0
+			} // Center range
 
-			if (dist < maxRange && dist < closestDist) {
+			if dist < maxRange && dist < closestDist {
 				closestDist = dist
 				bestMatch = c
 			}
 		} else {
 			// Polygon logic for Regions
 			for _, poly := range c.Airspaces {
-				if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) { continue }
+				if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) {
+					continue
+				}
 				if isPointInPolygon(uLa, uLo, poly.Points) {
 					area := calculateRoughArea(poly.Points)
 					if area < smallestArea {
@@ -840,8 +937,8 @@ func (s *Service) getAITargetRole(phase int) int {
 		return 5 // Approach
 	case trafficglobal.Cruise:
 		return 6 // Center
-default:
-        // If we don't know, Ground is the safest place for a radio to be tuned
-        return 2
+	default:
+		// If we don't know, Ground is the safest place for a radio to be tuned
+		return 2
 	}
 }
