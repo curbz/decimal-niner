@@ -81,6 +81,66 @@ var AirlineRegions = map[string]string{
 	"DAL": "US", "AAL": "US", "OAL": "GREECE",
 }
 
+func loadPhrases(cfg *config) PhraseClasses {
+
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
+	}
+
+	// load phrases from JSON file
+	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open phrases json file: %v", err)
+	}
+	defer phrasesFile.Close()
+
+	phrasesBytes, err := io.ReadAll(phrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
+	}
+
+	var phrases map[string]map[string][]string
+	err = json.Unmarshal(phrasesBytes, &phrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
+	}
+
+	// load unicom phrases from JSON file
+	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open unicom phrases json file: %v", err)
+	}
+	defer unicomPhrasesFile.Close()
+
+	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
+	}
+
+	var unicomPhrases map[string]map[string][]string
+	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
+	}
+
+	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
+	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
+
+	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
+	go RadioPlayer()                                                                     // Converts Piper Process -> Speakers
+
+	return PhraseClasses{
+			phrases:       phrases,
+			phrasesUnicom: unicomPhrases,
+		}
+}
+
 // main function to recieve aircraft updates for phrase generation
 func (s *Service) startComms() {
 
