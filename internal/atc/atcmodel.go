@@ -12,6 +12,11 @@ type UserState struct {
 	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
 }
 
+type AirlineInfo struct {
+	AirlineName string `json:"airline_name"`
+	Callsign    string `json:"callsign"`
+}
+
 type Aircraft struct {
 	Flight       Flight
 	Type         string
@@ -59,7 +64,6 @@ type ATCMessage struct {
 	Text        string
 	FlightPhase int
 }
-
 
 type Airspace struct {
 	Floor, Ceiling float64

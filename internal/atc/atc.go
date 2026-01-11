@@ -1,11 +1,14 @@
 package atc
 
 import (
+	"encoding/json"
+	"io"
 	"log"
 	"time"
 
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -18,13 +21,15 @@ type Service struct {
 	Database      []Controller
 	PhraseClasses PhraseClasses
 	UserState     UserState
+	Airlines 	  map[string]AirlineInfo
 }
 
 type ServiceInterface interface {
 	Run()
 	Notify(msg Aircraft)
+	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
-	UpdateUserState(pos Position, com1Freq, com2Freq map[int]int)
+	UpdateUserState(pos Position, com1Freq, com2Freq map[int]int) 
 }
 
 // --- configuration structures ---
@@ -34,6 +39,7 @@ type config struct {
 		AtcDataFile       string       `yaml:"atc_data_file"`
 		AtcRegionsFile    string       `yaml:"atc_regions_file"`
 		AirportsDataFile  string       `yaml:"airports_data_file"`
+		AirlinesFile 	  string 	   `yaml:"airlines_file"`
 		Voices            VoicesConfig `yaml:"voices"`
 	} `yaml:"atc"`
 }
@@ -56,6 +62,26 @@ func New(cfgPath string) *Service {
 	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
 	fmt.Printf("INITIAL ATC DATABASE LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
 
+	// load airlines from JSON file
+	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+	}
+	defer airlinesFile.Close()
+
+	airlinesBytes, err := io.ReadAll(airlinesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+	}
+
+	var airlinesData map[string]AirlineInfo
+	// Unmarshal the JSON into the map
+	err = json.Unmarshal(airlinesBytes, &airlinesData)
+	if err != nil {
+		log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+	}
+	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
+
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
@@ -67,6 +93,7 @@ func New(cfgPath string) *Service {
 		Channel:  make(chan Aircraft, cfg.ATC.MessageBufferSize),
 		Database: db,
 		PhraseClasses: phraseClasses,
+		Airlines: airlinesData,
 	}
 }
 
@@ -131,6 +158,14 @@ func (s *Service) Notify(ac Aircraft) {
 			}
 		}
 	}()
+}
+
+func (s *Service) GetAirline(code string) *AirlineInfo {
+	airlineInfo, exists := s.Airlines[code]
+	if !exists {
+		return nil
+	}
+	return &airlineInfo
 }
 
 func (s *Service) GetUserState() UserState {

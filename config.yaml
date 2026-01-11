@@ -1,13 +1,13 @@
 # X-Plane Connection Settings
-xplane:
+xplane_api:
   web_api_http_url:       "http://127.0.0.1:8086/api/v2"
   web_api_websocket_url:  "ws://127.0.0.1:8086/api/v2"
-  airlines_file:          "/home/dmorris/decimal-niner/resources/airlines.json"
 
 # ATC Settings
 atc:
   message_buffer_size:    10
-  atc_data_file:       "/home/dmorris/decimal-niner/resources/atc.dat"
+  airlines_file:     "/home/dmorris/decimal-niner/resources/airlines.json"
+  atc_data_file:     "/home/dmorris/decimal-niner/resources/atc.dat"
   atc_regions_file:  "/home/dmorris/decimal-niner/resources/atc_regions.dat"
   #airports_data_file:   "/home/dmorris/decimal-niner/resources/apt.min.dat"  # minimal for development speed
   airports_data_file:       "/home/dmorris/decimal-niner/resources/apt.dat"   # full file - slow 

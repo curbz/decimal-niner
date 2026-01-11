@@ -1,18 +1,5 @@
 package xpconnect
 
-/*
-
-Issue 2: When subscribed, if the number of elements changes, this is not reflected in the updates for int and float arrays.
-Issue 4: source and dest icao datarefs do not return string values as stated in the c++ sample, only int array.
-
-To replicate:
-1. Run this program subscribing to multiple trafficglobal/ai/position_lat dataref
-2. Note the dataref id and use it to manually query the dataref via REST API:
-   	e.g. http://localhost:8086/api/v2/datarefs/1988818324744/value
-3. Compare values returned via REST and WebSocket.
-
-*/
-
 import (
 	"encoding/json"
 	"fmt"
@@ -43,7 +30,6 @@ type XPConnect struct {
 	aircraftMap     map[string]*atc.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
-	airlines        map[string]AirlineInfo
 }
 
 type XPConnectInterface interface {
@@ -55,14 +41,7 @@ type config struct {
 	XPlane struct {
 		RestBaseURL  string `yaml:"web_api_http_url"`
 		WebSocketURL string `yaml:"web_api_websocket_url"`
-		AirlinesFile string `yaml:"airlines_file"`
-	} `yaml:"xplane"`
-}
-
-// AirlineInfo represents the internal object for each airline code in callsigns.json
-type AirlineInfo struct {
-	AirlineName string `json:"airline_name"`
-	Callsign    string `json:"callsign"`
+	} `yaml:"xplane_api"`
 }
 
 func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
@@ -72,55 +51,13 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
-	// load airlines from JSON file
-	airlinesFile, err := os.Open(cfg.XPlane.AirlinesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
-	}
-	defer airlinesFile.Close()
-
-	airlinesBytes, err := io.ReadAll(airlinesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
-	}
-
-	var airlinesData map[string]AirlineInfo
-	// Unmarshal the JSON into the map
-	err = json.Unmarshal(airlinesBytes, &airlinesData)
-	if err != nil {
-		log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.XPlane.AirlinesFile, err)
-	}
-	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
-
 	return &XPConnect{
 		aircraftMap: make(map[string]*atc.Aircraft),
-		airlines:    airlinesData,
 		atcService:  atcService,
 		config:      *cfg,
 	}
 
 }
-
-/*
-
-enum TrafficType
-{
-	PT_Airline = 0,
-	PT_Cargo,
-	PT_GA,
-	PT_Military,
-};
-
-enum SizeClass
-{
-	Class_A = 0,
-	Class_B,
-	Class_C,
-	Class_D,
-	Class_E,
-	Class_F
-};
-*/
 
 var requestCounter atomic.Int64
 
@@ -584,8 +521,8 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 		// lookup callsign for airline code, default to airline code value if not found in map
 		callsign := airlineCode
-		airlineInfo, exists := xpc.airlines[airlineCode]
-		if exists {
+		airlineInfo := xpc.atcService.GetAirline(airlineCode)
+		if airlineInfo != nil {
 			callsign = airlineInfo.Callsign
 		}
 
