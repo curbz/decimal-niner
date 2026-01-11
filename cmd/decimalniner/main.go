@@ -11,7 +11,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/mockserver"
-	"github.com/curbz/decimal-niner/internal/xplane/xpconnect"
+	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 )
 
 

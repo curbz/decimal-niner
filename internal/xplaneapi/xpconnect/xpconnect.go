@@ -31,7 +31,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/trafficglobal"
 
-	xpapimodel "github.com/curbz/decimal-niner/internal/xplane/xpapimodel"
+	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
 )
 

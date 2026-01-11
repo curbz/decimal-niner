@@ -1,17 +1,13 @@
 package atc
 
 import (
-
 	"log"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
-	"bufio"
 	"fmt"
 	"math"
 
+	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/curbz/decimal-niner/trafficglobal"
 )
@@ -40,78 +36,6 @@ type config struct {
 		AirportsDataFile  string       `yaml:"airports_data_file"`
 		Voices            VoicesConfig `yaml:"voices"`
 	} `yaml:"atc"`
-}
-
-type UserState struct {
-	NearestICAO      string
-	Position         Position
-	ActiveFacilities map[int]*Controller // Key: 1 for COM1, 2 for COM2
-	TunedFreqs       map[int]int         // Key: 1 for COM1, 2 for COM2
-	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
-}
-
-type Aircraft struct {
-	Flight       Flight
-	Type         string
-	Class        string
-	Code         string
-	Airline      string
-	Registration string
-}
-
-type Flight struct {
-	Position    Position
-	Number      int
-	TaxiRoute   string
-	Origin      string
-	Destination string
-	Phase       Phase
-	Comms       Comms
-}
-
-type Position struct {
-	Lat      float64
-	Long     float64
-	Altitude float64
-	Heading  float64
-}
-
-type Phase struct {
-	Current    int
-	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
-	Transition time.Time
-}
-
-type Comms struct {
-	Callsign         string
-	Controller       *Controller
-	LastTransmission string
-	LastInstruction  string
-}
-
-// ATCMessage represents a single ATC communication message
-type ATCMessage struct {
-	ICAO        string
-	Callsign    string
-	Role        string
-	Text        string
-	FlightPhase int
-}
-
-// --- Data Structures ---
-type Airspace struct {
-	Floor, Ceiling float64
-	Points         [][2]float64
-}
-
-type Controller struct {
-	Name, ICAO string
-	RoleID     int
-	Freqs      []int
-	Lat, Lon   float64
-	IsPoint    bool
-	IsRegion   bool
-	Airspaces  []Airspace
 }
 
 func New(cfgPath string) *Service {
@@ -248,219 +172,6 @@ func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[
 	}
 }
 
-// --- Geometry Helpers ---
-
-func distNM(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 3440.06
-	r1, r2 := lat1*math.Pi/180, lat2*math.Pi/180
-
-	dLat := (lat2 - lat1) * math.Pi / 180
-	dLon := (lon2 - lon1) * math.Pi / 180
-
-	// --- handle dateline crossing ---
-	for dLon > math.Pi {
-		dLon -= 2 * math.Pi
-	}
-	for dLon < -math.Pi {
-		dLon += 2 * math.Pi
-	}
-	// --------------------------------
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
-
-	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-}
-
-func isPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
-	if len(polygon) < 3 {
-		return false
-	}
-	inside, j := false, len(polygon)-1
-	for i := 0; i < len(polygon); i++ {
-		if ((polygon[i][1] > lon) != (polygon[j][1] > lon)) &&
-			(lat < (polygon[j][0]-polygon[i][0])*(lon-polygon[i][1])/(polygon[j][1]-polygon[i][1])+polygon[i][0]) {
-			inside = !inside
-		}
-		j = i
-	}
-	return inside
-}
-
-func calculateRoughArea(pts [][2]float64) float64 {
-	minLat, maxLat := 90.0, -90.0
-	minLon, maxLon := 180.0, -180.0
-	for _, p := range pts {
-		if p[0] < minLat {
-			minLat = p[0]
-		}
-		if p[0] > maxLat {
-			maxLat = p[0]
-		}
-		if p[1] < minLon {
-			minLon = p[1]
-		}
-		if p[1] > maxLon {
-			maxLon = p[1]
-		}
-	}
-	return (maxLat - minLat) * (maxLon - minLon)
-}
-
-// --- Parsers ---
-
-func parseApt(path string) []Controller {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	var list []Controller
-	var curICAO, curName string
-	var curLat, curLon float64
-
-	roleMap := map[string]int{
-		"1051": 0, // Unicom / CTAF
-		"1052": 1, // Delivery
-		"1053": 2, // Ground
-		"1054": 3, // Tower
-		"1056": 4, // Departure
-		"1055": 5, // Approach
-	}
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		p := strings.Fields(line)
-		if len(p) < 2 {
-			continue
-		}
-		code := p[0]
-
-		if code == "1" || code == "16" || code == "17" {
-			curLat, curLon = 0, 0
-			if len(p) >= 5 {
-				curICAO = p[4]
-				curName = strings.Join(p[5:], " ")
-			}
-			continue
-		}
-
-		// Use Runway (100) to find the airport center
-		if (code == "100" || code == "101" || code == "102") && curLat == 0 {
-			if len(p) >= 11 {
-				la, _ := strconv.ParseFloat(p[9], 64)
-				lo, _ := strconv.ParseFloat(p[10], 64)
-				if math.Abs(la) <= 90 {
-					curLat, curLon = la, lo
-				}
-			}
-		}
-
-		fRaw, _ := strconv.Atoi(p[1])
-		fNorm := fRaw
-		for fNorm > 0 && fNorm < 100000 {
-			fNorm *= 10
-		}
-
-		// ALIASSING LOGIC: If an airport has Unicom (1051) or Tower (1054),
-		// it likely handles Ground/Delivery duties too.
-		if code == "1051" || code == "1054" {
-			roles := []int{3} // Tower
-			if code == "1051" || code == "1054" {
-				roles = append(roles, 1, 2)
-			}
-			for _, r := range roles {
-				list = append(list, Controller{
-					Name: curName, ICAO: curICAO, RoleID: r,
-					Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
-				})
-			}
-		} else if rID, ok := roleMap[code]; ok {
-			list = append(list, Controller{
-				Name: curName, ICAO: curICAO, RoleID: rID,
-				Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
-			})
-		}
-	}
-	return list
-}
-
-func parseGeneric(path string, isRegion bool) []Controller {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	var list []Controller
-	var cur *Controller
-	var curPoly *Airspace
-	roleMap := map[string]int{"del": 1, "gnd": 2, "twr": 3, "tracon": 4, "ctr": 5}
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		p := strings.Fields(line)
-
-		switch strings.ToUpper(p[0]) {
-		case "CONTROLLER":
-			cur = &Controller{IsRegion: isRegion, IsPoint: false}
-		case "NAME":
-			if cur != nil {
-				cur.Name = strings.Join(p[1:], " ")
-			}
-		case "FACILITY_ID", "ICAO":
-			if cur != nil {
-				cur.ICAO = p[1]
-			}
-		case "ROLE":
-			if cur != nil {
-				cur.RoleID = roleMap[strings.ToLower(p[1])]
-			}
-		case "FREQ", "CHAN":
-			if cur != nil {
-				f, _ := strconv.Atoi(p[1])
-				for f > 0 && f < 100000 {
-					f *= 10
-				}
-				cur.Freqs = append(cur.Freqs, f)
-			}
-		case "AIRSPACE_POLYGON_BEGIN":
-			f, c := -99999.0, 99999.0
-			if len(p) >= 3 {
-				f, _ = strconv.ParseFloat(p[1], 64)
-				c, _ = strconv.ParseFloat(p[2], 64)
-			}
-			curPoly = &Airspace{Floor: f, Ceiling: c}
-		case "POINT":
-			la, _ := strconv.ParseFloat(p[1], 64)
-			lo, _ := strconv.ParseFloat(p[2], 64)
-			if curPoly != nil {
-				curPoly.Points = append(curPoly.Points, [2]float64{la, lo})
-			}
-			if cur != nil && cur.Lat == 0 {
-				cur.Lat, cur.Lon = la, lo
-			}
-		case "AIRSPACE_POLYGON_END":
-			if cur != nil && curPoly != nil {
-				cur.Airspaces = append(cur.Airspaces, *curPoly)
-			}
-			curPoly = nil
-		case "CONTROLLER_END":
-			if cur != nil {
-				list = append(list, *cur)
-			}
-			cur = nil
-		}
-	}
-	return list
-}
-
 func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl float64) *Controller {
 	var bestMatch *Controller
 	closestDist := math.MaxFloat64
@@ -491,7 +202,7 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 		}
 
 		// Expensive Math
-		dist := distNM(uLa, uLo, c.Lat, c.Lon)
+		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 
 		if c.IsPoint {
 			maxRange := 60.0
@@ -509,8 +220,8 @@ func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl fl
 				if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) {
 					continue
 				}
-				if isPointInPolygon(uLa, uLo, poly.Points) {
-					area := calculateRoughArea(poly.Points)
+				if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
+					area := geometry.CalculateRoughArea(poly.Points)
 					if area < smallestArea {
 						smallestArea = area
 						if bestMatch == nil || !bestMatch.IsPoint || closestDist > 2.0 {
