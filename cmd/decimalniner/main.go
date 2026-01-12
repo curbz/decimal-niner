@@ -19,7 +19,7 @@ func main() {
 
 	configFlag := flag.String("config", "", "Path to the config file (optional)")
 	
-	// Support a development mock server to emulate X-Plane REST+WebSocket
+	// mock server to emulate X-Plane REST+WebSocket
 	mock := flag.Bool("mock", false, "start mock X-Plane server locally")
 	
 	flag.Parse()
@@ -44,8 +44,8 @@ func main() {
 		log.Println("Starting local mock X-Plane server on :8086")
 		srv := mockserver.Start("8086")
 		defer srv.Close()
-		// small pause to let server start before client attempts to connect
-		time.Sleep(150 * time.Millisecond)
+		// small pause to let mock server start before client attempts to connect
+		time.Sleep(250 * time.Millisecond)
 	}
 
 	// Create ATC service

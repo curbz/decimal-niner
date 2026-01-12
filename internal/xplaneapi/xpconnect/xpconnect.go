@@ -133,16 +133,15 @@ func (xpc *XPConnect) Start() {
 
 	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
 
-	// 1. Get Indices via REST
+	// Get dataref indices via Web API REST
 	if err := xpc.getDataRefIndices(); err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
 	}
 
-	// 2. Output Results
-	fmt.Println("\n==================================")
-	fmt.Println("Retrieved DataRef Indices:")
+	// Log results
+	log.Println("Retrieved DataRef Indices:")
 	for id, datarefInfo := range xpc.dataRefIndexMap {
-		fmt.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
+		log.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 	}
 	if len(xpc.dataRefIndexMap) == len(datarefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
@@ -151,10 +150,9 @@ func (xpc *XPConnect) Start() {
 	} else {
 		log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
 	}
-	fmt.Println("==================================")
 
-	// 3. Connect to WebSocket (Confirm successful setup)
-	log.Println("--- Stage 2: Connect to WebSocket (Confirmation) ---")
+	// connect to X-Plane WebSocket
+	log.Println("connecting to x-plane websocket")
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -166,7 +164,7 @@ func (xpc *XPConnect) Start() {
 		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket: %v", err)
 	}
 	defer xpc.conn.Close()
-	log.Println("SUCCESS: WebSocket connection established.")
+	log.Println("WebSocket connection established.")
 
 	done := make(chan struct{})
 
@@ -188,7 +186,7 @@ func (xpc *XPConnect) Start() {
 	}()
 
 	// 3. Send subscription requests
-	log.Println("--- Sending Subscription Requests ---")
+	log.Println("sending dataref subscription requests")
 	xpc.sendDatarefSubscription()
 
 	// 4. Keep connection alive until interrupt
@@ -364,12 +362,12 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 		case "string_array":
 			// Attempt to decode as base64-null-terminated string blob
 			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
-				fmt.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
+				log.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
 				dr.Value = decoded
 				continue
 			}
 			// Otherwise, print raw string
-			fmt.Printf("DataRef %s: string: %s\n", id, value.(string))
+			log.Printf("DataRef %s: string: %s\n", id, value.(string))
 		case "float_array":
 			// Float array
 			floatArray := make([]float64, len(value.([]any)))
@@ -377,7 +375,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 				floatArray[i] = elem.(float64)
 			}
 			dr.Value = floatArray
-			fmt.Printf("DataRef %s: floats: %v\n", id, floatArray)
+			log.Printf("DataRef %s: floats: %v\n", id, floatArray)
 		case "int_array":
 			// Int array
 			intArray := make([]int, len(value.([]any)))
@@ -385,10 +383,10 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 				intArray[i] = int(elem.(float64))
 			}
 			dr.Value = intArray
-			fmt.Printf("DataRef %s: ints: %v\n", id, intArray)
+			log.Printf("DataRef %s: ints: %v\n", id, intArray)
 		default:
 			// Unknown or unspecified type — print raw
-			fmt.Printf("DataRef %s: raw payload: %v\n", id, value)
+			log.Printf("DataRef %s: raw payload: %v\n", id, value)
 			dr.Value = value
 		}
 	}
@@ -397,6 +395,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 	xpc.updateAircraftData()
 }
 
+// determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
 	com1FreqVal := xpc.getDataRefValue("sim/cockpit/radios/com1_freq_hz", 0)
@@ -406,7 +405,7 @@ func (xpc *XPConnect) updateUserData() {
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
-		log.Println("WARNING: Couldn't update user state as com1 or com2 datarefs are not available")
+		log.Println("WARNING: Couldn't update user state as com1 or com2 dataref values are not available")
 		return
 	}
 
@@ -425,7 +424,7 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
-	xpc.atcService.UpdateUserState(atc.Position{
+	xpc.atcService.NotifyUserChange(atc.Position{
 		Lat:      xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
 		Long:     xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64),
 		Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
@@ -545,8 +544,8 @@ func (xpc *XPConnect) updateAircraftData() {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
 				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
 				ac.Flight.Phase.Transition = time.Now()
-				// Notify ATC service of phase change by sending on channel
-				xpc.atcService.Notify(*ac)
+				// Notify ATC service of flight phase change
+				xpc.atcService.NotifyAircraftChange(*ac)
 			}
 		}
 	}

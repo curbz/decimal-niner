@@ -26,10 +26,10 @@ type Service struct {
 
 type ServiceInterface interface {
 	Run()
-	Notify(msg Aircraft)
+	NotifyAircraftChange(msg Aircraft)
+	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int) 
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
-	UpdateUserState(pos Position, com1Freq, com2Freq map[int]int) 
 }
 
 // --- configuration structures ---
@@ -60,7 +60,7 @@ func New(cfgPath string) *Service {
 	start := time.Now()
 	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
 	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
-	fmt.Printf("INITIAL ATC DATABASE LOAD: %v (Count: %d)\n\n", time.Since(start), len(db))
+	log.Printf("ATC controller database generated: %v (Count: %d)\n\n", time.Since(start), len(db))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
@@ -97,12 +97,11 @@ func New(cfgPath string) *Service {
 	}
 }
 
-// main function to run the ATC service
 func (s *Service) Run() {
 	s.startComms()
 }
 
-func (s *Service) Notify(ac Aircraft) {
+func (s *Service) NotifyAircraftChange(ac Aircraft) {
 
 	userActive := s.UserState.ActiveFacilities
 
@@ -114,14 +113,14 @@ func (s *Service) Notify(ac Aircraft) {
 	go func() {
 		// Identify AI's intended facility
 		aiRole := s.getAITargetRole(ac.Flight.Phase.Current)
-		aiFac := s.PerformSearch(
+		aiFac := s.LocateController(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
 			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
 
-		// 2. Fallback: If no Tower/Ground found, look for Unicom (Role 0)
+		// Fallback: If no Tower/Ground found, look for Unicom (Role 0)
 		if aiFac == nil {
-			aiFac = s.PerformSearch("AI_FALLBACK", 0, 0,
+			aiFac = s.LocateController("AI_FALLBACK", 0, 0,
 				ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
 		}
 
@@ -172,7 +171,7 @@ func (s *Service) GetUserState() UserState {
 	return s.UserState
 }
 
-func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[int]int) {
+func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
 
 	s.UserState.Position = pos
 	if s.UserState.ActiveFacilities == nil {
@@ -189,7 +188,7 @@ func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[
 			uFreq *= 10
 		}
 
-		controller := s.PerformSearch(
+		controller := s.LocateController(
 			fmt.Sprintf("User_COM%d", idx),
 			uFreq,                // Search by freq
 			tunedFacilities[idx], // role
@@ -207,7 +206,7 @@ func (s *Service) UpdateUserState(pos Position, tunedFreqs, tunedFacilities map[
 	}
 }
 
-func (s *Service) PerformSearch(label string, tFreq, tRole int, uLa, uLo, uAl float64) *Controller {
+func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64) *Controller {
 	var bestMatch *Controller
 	closestDist := math.MaxFloat64
 	smallestArea := math.MaxFloat64
