@@ -27,13 +27,15 @@ type Aircraft struct {
 }
 
 type Flight struct {
-	Position    Position
-	Number      int
-	TaxiRoute   string
-	Origin      string
-	Destination string
-	Phase       Phase
-	Comms       Comms
+	Position    	Position
+	Number      	int
+	TaxiRoute   	string
+	Origin      	string
+	Destination 	string
+	Phase       	Phase
+	Comms       	Comms
+	AssignedParking	string
+	AssignedRunway 	string
 }
 
 type Position struct {

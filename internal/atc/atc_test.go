@@ -21,7 +21,7 @@ func TestPerformSearch(t *testing.T) {
 	}
 
 	for _, t := range tests {
-		m := atcService.PerformSearch(t.label, t.f, t.r, t.la, t.lo, t.al)
+		m := atcService.LocateController(t.label, t.f, t.r, t.la, t.lo, t.al)
 		if m != nil {
 			fmt.Printf("FINAL RESULT: %s (%s)\n\n", m.Name, m.ICAO)
 		} else {

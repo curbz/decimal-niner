@@ -233,7 +233,8 @@ func (s *Service) startComms() {
 				// construct message and replace all possible variables
 				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 				message = strings.ReplaceAll(message, "{FACILITY}", ac.Flight.Comms.Controller.Name)
-				// TODO: add more replacements as needed here
+				message = strings.ReplaceAll(message, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
+				message = strings.ReplaceAll(message, "{PARKING}", ac.Flight.AssignedParking)
 
 				message = translateNumerics(message)
 
@@ -430,4 +431,10 @@ func translateNumerics(msg string) string {
 		}
 	}
 	return result.String()
+}
+
+func translateRunway(runway string) string {
+	runway = strings.Replace(runway, "L", "left", 1)
+	runway = strings.Replace(runway, "R", "right", 1)
+	return runway
 }

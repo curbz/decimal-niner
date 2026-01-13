@@ -50,33 +50,15 @@ func DecodeNullTerminatedString(encodedData string) ([]string, error) {
 	return decodedStrings, nil
 }
 
-// DecodeUint32 decodes a uint32 value into a string by interpreting its bytes. Useful for decoding runway identifiers.
-func DecodeUint32(val uint32) {
-	fmt.Printf("Int: %d -> String: \"", val)
+// DecodeRunway converts a uint32 packed ASCII value into a string.
+func DecodeUint32(val uint32) string {
+	// Extract bytes using bit shifting and masking
+	char1 := byte(val & 0xFF)         // Rightmost byte
+	char2 := byte((val >> 8) & 0xFF)  // Second byte
+	char3 := byte((val >> 16) & 0xFF) // Third byte
 
-	// Extract 4 bytes in Little Endian order (Low byte first)
-	// This simulates the behavior of reinterpret_cast<char*> on a standard PC
-	bytes := []byte{
-		byte(val & 0xFF),         // Byte 0
-		byte((val >> 8) & 0xFF),  // Byte 1
-		byte((val >> 16) & 0xFF), // Byte 2
-		byte((val >> 24) & 0xFF), // Byte 3
-	}
-
-	for _, b := range bytes {
-		if b == 0 {
-			break // Stop at null terminator
-		}
-
-		// Check if the byte is a printable ASCII character
-		if b >= 32 && b <= 126 {
-			fmt.Printf("%c", b)
-		} else {
-			// Print non-printable bytes as Hex [xNN]
-			fmt.Printf("[x%x]", b)
-		}
-	}
-	fmt.Printf("\"\n")
+	// Return as a concatenated string
+	return string([]byte{char1, char2, char3})
 }
 
 // SendJSON is a utility function for the WebSocket connection (not used for REST).

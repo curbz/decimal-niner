@@ -93,11 +93,11 @@ var datarefs = []xpapimodel.Dataref{
 	{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 	{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 	{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 	//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
 	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 	//{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
@@ -109,7 +109,7 @@ var datarefs = []xpapimodel.Dataref{
 	//{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
 	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
@@ -118,7 +118,7 @@ var datarefs = []xpapimodel.Dataref{
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
 	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
 
 	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
 	//{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
@@ -168,7 +168,7 @@ func (xpc *XPConnect) Start() {
 
 	done := make(chan struct{})
 
-	// 2. Start listener
+	// Start websocket listener
 	go func() {
 		defer close(done)
 		for {
@@ -185,11 +185,11 @@ func (xpc *XPConnect) Start() {
 		}
 	}()
 
-	// 3. Send subscription requests
+	// Send subscription requests
 	log.Println("sending dataref subscription requests")
 	xpc.sendDatarefSubscription()
 
-	// 4. Keep connection alive until interrupt
+	// Keep connection alive until interrupt
 	log.Println("Press Ctrl+C to disconnect.")
 	<-interrupt
 
@@ -199,10 +199,8 @@ func (xpc *XPConnect) Start() {
 }
 
 func (xpc *XPConnect) Stop() {
-	//
+	// TODO: closedown if needed
 }
-
-// --- REST API Functions (Stage 1) ---
 
 // buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
 func buildURLWithFilters(urlStr string) (string, error) {
@@ -225,14 +223,14 @@ func buildURLWithFilters(urlStr string) (string, error) {
 
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
 func (xpc *XPConnect) getDataRefIndices() error {
-	// A. Build the full URL with GET parameters
+	// Build the full URL with GET parameters
 	fullURL, err := buildURLWithFilters(xpc.config.XPlane.RestBaseURL + "/datarefs")
 	if err != nil {
 		return err
 	}
 	log.Printf("Querying: %s", fullURL)
 
-	// B. Create the HTTP Request object
+	// Create the HTTP Request object
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
 	if err != nil {
 		return fmt.Errorf("error creating HTTP request: %w", err)
@@ -241,7 +239,7 @@ func (xpc *XPConnect) getDataRefIndices() error {
 	// Set required header
 	req.Header.Set("Accept", "application/json")
 
-	// C. Send the HTTP GET request
+	// Send the HTTP GET request
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -255,17 +253,15 @@ func (xpc *XPConnect) getDataRefIndices() error {
 		return fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
 	}
 
-	// D. Decode the response body
-	// The response body structure is expected to be {"indices": {"dataref/name": id, ...}}
+	// read the response body
 	var response xpapimodel.APIResponseDatarefs
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return fmt.Errorf("error decoding response body: %w", err)
 	}
 
-	// E. Store the received indices in the map
+	// Store the received indices in a map
 	xpc.dataRefIndexMap = make(map[int]*xpapimodel.Dataref)
 	for _, dataref := range response.Data {
-		//xpc.dataRefIndexMap[dataref.ID] = &dataref
 		// find the corresponding dataref by name
 		for _, dr := range datarefs {
 			if dr.Name == dataref.Name {
@@ -283,8 +279,6 @@ func (xpc *XPConnect) getDataRefIndices() error {
 
 	return nil
 }
-
-// --- WebSocket Utility (Stage 2) ---
 
 // sendDatarefSubscription sends a request to subscribe to a dataref.
 func (xpc *XPConnect) sendDatarefSubscription() {
@@ -359,7 +353,7 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 
 		// Decode based on expected type
 		switch dr.DecodedDataType {
-		case "string_array":
+		case "base64_string_array":
 			// Attempt to decode as base64-null-terminated string blob
 			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
 				log.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
@@ -367,9 +361,15 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 				continue
 			}
 			// Otherwise, print raw string
-			log.Printf("DataRef %s: string: %s\n", id, value.(string))
+			log.Printf("error decoding null terminated string: DataRef %s: raw value: %v error: %v\n", id, value, err)
+		case "uint32_string_array":
+			strArray := make([]string, len(value.([]any)))
+			for i, elem := range value.([]any) {
+				strArray[i] = util.DecodeUint32(uint32(elem.(float64)))
+			}
+			dr.Value = strArray
+			log.Printf("DataRef %s: uint32 decoded: %v\n", id, strArray)			
 		case "float_array":
-			// Float array
 			floatArray := make([]float64, len(value.([]any)))
 			for i, elem := range value.([]any) {
 				floatArray[i] = elem.(float64)
@@ -377,7 +377,6 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			dr.Value = floatArray
 			log.Printf("DataRef %s: floats: %v\n", id, floatArray)
 		case "int_array":
-			// Int array
 			intArray := make([]int, len(value.([]any)))
 			for i, elem := range value.([]any) {
 				intArray[i] = int(elem.(float64))
@@ -447,6 +446,23 @@ func (xpc *XPConnect) updateAircraftData() {
 		return
 	}
 
+	airlineCodes := []string{}
+	flightNums := []int{}
+	airlineCodesDR := xpc.getDataRefByName("trafficglobal/ai/airline_code")
+	flightNumsDR := xpc.getDataRefByName("trafficglobal/ai/flight_num")
+	if airlineCodesDR == nil || flightNumsDR == nil {
+		log.Println("Error: airline code or flight number dataref not found")
+	} else {
+		airlineCodes, ok = airlineCodesDR.Value.([]string)
+		if !ok {
+			log.Println("Error: airline code dataref has invalid type")
+		}
+		flightNums, ok = flightNumsDR.Value.([]int)
+		if !ok {
+			log.Println("Error: flight number dataref has invalid type")
+		}
+	}
+
 	// for each tail number, get or create aircraft object
 	for index, tailNumber := range tailNumbers {
 		aircraft, exists := xpc.aircraftMap[tailNumber]
@@ -489,31 +505,7 @@ func (xpc *XPConnect) updateAircraftData() {
 				Heading:  hdg.(float64),
 			}
 		}
-	}
 
-	// update callsigns
-	airlineCodes := []string{}
-	flightNums := []int{}
-	airlineCodesDR := xpc.getDataRefByName("trafficglobal/ai/airline_code")
-	flightNumsDR := xpc.getDataRefByName("trafficglobal/ai/flight_num")
-	if airlineCodesDR == nil || flightNumsDR == nil {
-		log.Println("Error: airline code or flight number dataref not found")
-	} else {
-		airlineCodes, ok = airlineCodesDR.Value.([]string)
-		if !ok {
-			log.Println("Error: airline code dataref has invalid type")
-		}
-		flightNums, ok = flightNumsDR.Value.([]int)
-		if !ok {
-			log.Println("Error: flight number dataref has invalid type")
-		}
-	}
-
-	for index, tailNumber := range tailNumbers {
-		aircraft, exists := xpc.aircraftMap[tailNumber]
-		if !exists {
-			continue
-		}
 		airlineCode := "unknown"
 		if index < len(airlineCodes) {
 			airlineCode = airlineCodes[index]
@@ -525,15 +517,21 @@ func (xpc *XPConnect) updateAircraftData() {
 			callsign = airlineInfo.Callsign
 		}
 
+		// get flight number
 		flightNum := 0
 		if index < len(flightNums) {
 			flightNum = flightNums[index]
 		}
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
 		aircraft.Flight.Number = flightNum
-	}
 
-	// TODO: update more aircraft data as needed, e.g. parking location etc.
+		// get parking
+		aircraft.Flight.AssignedParking = xpc.getDataRefValue("trafficglobal/ai/parking", index).(string)
+
+		// get assigned runway
+		aircraft.Flight.AssignedRunway = xpc.getDataRefValue("trafficglobal/ai/runway", index).(string)
+
+	}
 
 	if !xpc.initialised {
 		xpc.initialised = true
@@ -567,7 +565,7 @@ func (xpc *XPConnect) getDataRefValue(s string, index int) any {
 
 	// if the decoded value type is array, get the element at index
 	switch dr.DecodedDataType {
-	case "string_array":
+	case "base64_string_array", "uint32_string_array" :
 		values, ok := dr.Value.([]string)
 		if !ok || index >= len(values) {
 			return nil

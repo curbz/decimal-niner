@@ -285,7 +285,7 @@ switch name {
         }
 
 	case "trafficglobal/ai/runway":
-		return []int{538756, 13107, 0, 0}
+		return []float64{4994866, 5388082, 5388082, 5388082}
 
 	case "trafficglobal/ai/taxi_route":
 		// empty string when no taxiing
