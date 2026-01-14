@@ -19,3 +19,5 @@ atc:
     piper:
       application:        "/home/dmorris/.local/bin/piper"
       voice_directory:    "/home/dmorris/piper-voices"
+trafficglobal:
+  bgl_file: "/home/dmorris/decimal-niner/resources/Traffic_Global_Airlines.bgl"

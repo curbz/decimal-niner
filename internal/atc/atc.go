@@ -16,12 +16,13 @@ import (
 )
 
 type Service struct {
-	Config        *config
-	Channel       chan Aircraft
-	Database      []Controller
-	PhraseClasses PhraseClasses
-	UserState     UserState
-	Airlines 	  map[string]AirlineInfo
+	Config        	*config
+	Channel       	chan Aircraft
+	Database      	[]Controller
+	PhraseClasses 	PhraseClasses
+	UserState     	UserState
+	Airlines 	  	map[string]AirlineInfo
+	FlightSchedules map[int]trafficglobal.ScheduledFlight
 }
 
 type ServiceInterface interface {
@@ -44,7 +45,7 @@ type config struct {
 	} `yaml:"atc"`
 }
 
-func New(cfgPath string) *Service {
+func New(cfgPath string, fScheds map[string]trafficglobal.ScheduledFlight) *Service {
 
 	log.Println("Starting ATC service - loading all configurations")
 

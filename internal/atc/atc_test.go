@@ -3,12 +3,14 @@ package atc
 import (
 	"fmt"
 	"testing"
+
+	"github.com/curbz/decimal-niner/trafficglobal"
 )
 
 
 func TestPerformSearch(t *testing.T) {
 
-	atcService := New("../../config.yaml")
+	atcService := New("../../config.yaml", make(map[string]trafficglobal.ScheduledFlight))
 
 	tests := []struct {
 		label string

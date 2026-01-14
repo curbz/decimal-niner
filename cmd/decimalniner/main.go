@@ -12,6 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
+	"github.com/curbz/decimal-niner/trafficglobal"
 )
 
 
@@ -48,8 +49,12 @@ func main() {
 		time.Sleep(250 * time.Millisecond)
 	}
 
+	// Get flight schedules from traffic global
+	tgConfig := trafficglobal.LoadConfig(cfgPath)
+	fScheds := trafficglobal.BGLReader(tgConfig.TG.BGLFile)
+
 	// Create ATC service
-	atcService := atc.New(cfgPath)
+	atcService := atc.New(cfgPath, fScheds)
 	atcService.Run()
 
 	// Connect to X-Plane

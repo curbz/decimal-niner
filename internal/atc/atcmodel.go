@@ -81,3 +81,4 @@ type Controller struct {
 	IsRegion   bool
 	Airspaces  []Airspace
 }
+
