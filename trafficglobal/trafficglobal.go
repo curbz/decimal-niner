@@ -85,108 +85,165 @@ func LoadConfig(cfgPath string) *config {
 	return cfg
 }
 
+//TODO: pass in current sim time and only load flights that are either in progress
+// or due to depart within 12 hours
 func BGLReader(filePath string) map[string]ScheduledFlight {
 	
 	fScheds := make(map[string]ScheduledFlight)
 
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Fatalf("Fatal: %v\n", err)
-	}
-	defer file.Close()
+    file, err := os.Open(filePath)
+    if err != nil {
+        log.Fatalf("Fatal: %v\n", err)
+    }
+    defer file.Close()
 
-	// Skip the first 500KB to bypass the Airport Index "junk"
-	file.Seek(500*1024, 0)
+    buffer := make([]byte, 1024*1024)
 
-	buffer := make([]byte, 1024*1024)
-	log.Println("Scanning for Active Schedules...")
+    cnt := 0
+    for {
+        n, err := file.Read(buffer)
+        if n == 0 {
+            break
+        }
 
-	for {
-		n, err := file.Read(buffer)
-		if n == 0 { break }
+        for i := 0; i < n-20; i++ {
+            if isICAO(buffer[i : i+4]) {
+                icao1 := string(buffer[i : i+4])
 
-		for i := 0; i < n-30; i++ {
-			if isICAO(buffer[i : i+4]) {
-				icao1 := string(buffer[i : i+4])
-				
-				for j := i + 5; j < i+35 && j+4 < n; j++ {
-					if isICAO(buffer[j : j+4]) {
-						icao2 := string(buffer[j : j+4])
-						
-						if icao1 != icao2 {
-							var reg string
-							var flightNum uint16
-							if i >= 60 {
-								reg, flightNum = parseHeader(buffer[i-60 : i])
-							}
+                for j := i + 5; j < i+30 && j+4 < n; j++ {
+                    if isICAO(buffer[j : j+4]) {
+                        icao2 := string(buffer[j : j+4])
 
-							// Only proceed if we found a valid-looking registration
-							if len(reg) > 3 {
-								// Extract TimeCode (2 bytes following the second ICAO)
-								tCode := binary.LittleEndian.Uint16(buffer[j+4 : j+6])
-								
-								// Decode into Day/Hour/Min
-								day, hr, min := decodeTime(tCode)
+                        if icao1 != icao2 {
+                            // Step 1: Extract Aircraft and Flight Number
+                            var reg string
+                            var flightNum uint16
+                            if i >= 50 {
+                                reg, flightNum = parseFlightHeader(buffer[i-50 : i])
+                            }
 
-								if day < 7 { // Simple validation for the decoded time
-									fScheds[string(flightNum) + "_" + reg] = ScheduledFlight{
+                            if reg != "" {
+                                // Step 2: Extract Time Metadata and Flight Parameters
+                                // After the second ICAO: departure time (2 bytes), flight duration (2 bytes),
+                                // traffic density (1 byte), cruise level (2 bytes)
+                                if j+13 < n {
+                                    depTime := binary.LittleEndian.Uint16(buffer[j+4 : j+6])
+									depDay, depHr, depMin := decodeTime(depTime)
+
+									/*
+                                    flightDuration := binary.LittleEndian.Uint16(buffer[j+6 : j+8])
+                                    trafficDensity := buffer[j+8]
+                                    cruiseLevel := binary.LittleEndian.Uint16(buffer[j+9 : j+11])
+
+                                    arrTime := depTime + flightDuration
+                                    arrDay, arrHr, arrMin := decodeTime(arrTime)
+
+                                    // Handle week rollover: if arrival >= 10080 minutes (7 days), wrap
+                                    if arrTime >= 10080 {
+                                        arrTime -= 10080
+                                        arrDay, arrHr, arrMin = decodeTime(arrTime)
+                                    }
+
+                                    // Cruise level scaling: try different factors
+                                    cruiseLevelValue := cruiseLevel / 100
+                                    if cruiseLevelValue == 0 {
+                                        cruiseLevelValue = cruiseLevel
+                                    }
+									*/
+									
+									if depDay < 7 { // Simple validation for the decoded times
+                                    //if depDay < 7 && arrDay < 7 { // Simple validation for the decoded times
+                                        // Traffic density should be 1-100, handle out-of-range values
+										/*
+                                        trafficPercent := int(trafficDensity)
+                                        if trafficPercent < 1 {
+                                            trafficPercent = 1
+                                        } else if trafficPercent > 100 {
+                                            trafficPercent = trafficPercent % 100
+                                            if trafficPercent == 0 {
+                                                trafficPercent = 100
+                                            }
+                                        }
+										*/
+										/*
+                                        fmt.Printf("[%s] Flt# %-5d | %s -> %s | Departs: %s %02d:%02d | Arrives: %s %02d:%02d | Cruise: FL%d | Traffic: %d%%\n",
+                                            reg, flightNum, icao1, icao2, days[depDay], depHr, depMin,
+                                            days[arrDay], arrHr, arrMin, cruiseLevelValue, trafficPercent)
+										*/
+										fScheds[string(flightNum) + "_" + reg] = ScheduledFlight{
 											AircraftRegistration: reg,
 											Number: int(flightNum),
 											IcaoOrigin: icao1, 
 											IcaoDest: icao2,
-											DayOfWeek: day,
-											DepatureHour: hr,
-											DepartureMin: min,
-									}
-								}
-								
-								i = j + 3 
-								break 
-							}
-						}
-					}
-				}
-			}
-		}
-		if err == io.EOF { break }
-	}
+											DayOfWeek: depDay,
+											DepatureHour: depHr,
+											DepartureMin: depMin,
+										}
+                                    }
+
+                                    i = j + 3
+                                    cnt++
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if err == io.EOF {
+            break
+        }
+    }
 
 	log.Printf("Loaded %d Traffic Global flight schedules", len(fScheds))
 
 	return fScheds
 }
 
-func decodeTime(t uint16) (int, int, int) {
-	// Standard FSX/TrafficGlobal Weekly Minutes
-	d := int(t / 1440)
-	h := int((t % 1440) / 60)
-	m := int(t % 60)
-	return d, h, m
-}
-
 func isICAO(b []byte) bool {
-	for _, v := range b {
-		if v < 'A' || v > 'Z' { return false }
-	}
-	return true
+    for _, v := range b {
+        if v < 'A' || v > 'Z' {
+            return false
+        }
+    }
+    return true
 }
 
-func parseHeader(b []byte) (string, uint16) {
-	idx := bytes.IndexByte(b, '-')
-	// Registrations are usually 5-7 chars: VT-WBW, N12345
-	if idx != -1 && idx >= 2 && idx <= len(b)-6 {
-		reg := b[idx-2 : idx+4]
-		
-		// Strict validation: registration must be alphanumeric
-		for _, v := range reg {
-			if v != '-' && (v < 'A' || v > 'Z') && (v < '0' || v > '9') {
-				return "", 0
-			}
-		}
+func parseFlightHeader(b []byte) (string, uint16) {
+    idx := bytes.IndexByte(b, '-')
+    if idx != -1 && idx >= 2 && idx <= len(b)-6 {
+        regBytes := b[idx-2 : idx+4]
 
-		// The 2 bytes after the registration are the Flight Number
-		fNum := binary.LittleEndian.Uint16(b[idx+5 : idx+7])
-		return string(reg), fNum
-	}
-	return "", 0
+        // Validate that all bytes are printable ASCII
+        if !isPrintable(regBytes) {
+            return "", 0
+        }
+
+        reg := string(regBytes)
+
+        // The 2 bytes following the registration are usually the Flight Number
+        flightNum := binary.LittleEndian.Uint16(b[idx+5 : idx+7])
+
+        return reg, flightNum
+    }
+    return "", 0
 }
+
+func isPrintable(b []byte) bool {
+    for _, v := range b {
+        if v < 32 || v > 126 {
+            return false
+        }
+    }
+    return true
+}
+
+func decodeTime(t uint16) (int, int, int) {
+    // Standard FSX/TrafficGlobal Weekly Minutes
+    d := int(t / 1440)
+    h := int((t % 1440) / 60)
+    m := int(t % 60)
+    return d, h, m
+}
+
