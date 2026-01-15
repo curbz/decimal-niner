@@ -75,11 +75,6 @@ var ICAOToRegion = map[string]string{
 	"EG": "UK", "K": "US", "LF": "FRANCE", "ED": "GERMANY", "LG": "GREECE",
 }
 
-var AirlineRegions = map[string]string{
-	"BAW": "UK", "EZY": "UK", "GNT": "UK",
-	"DLH": "GERMANY", "AFR": "FRANCE",
-	"DAL": "US", "AAL": "US", "OAL": "GREECE",
-}
 
 func loadPhrases(cfg *config) PhraseClasses {
 
@@ -249,7 +244,7 @@ func (s *Service) startComms() {
 
 				// send message to radio queue
 				radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
-					role, message, ac.Flight.Phase.Current,
+					role, message, ac.Flight.Phase.Current, ac.Flight.Comms.CountryCode,
 				}
 
 				if ac.Flight.Comms.Controller.RoleID == 0 {
@@ -343,8 +338,7 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 			}
 			pool = RegionalPools[region]
 		} else {
-			prefix := strings.ToUpper(msg.Callsign[:3])
-			region, known := AirlineRegions[prefix]
+			region, known := ICAOToRegion[msg.CountryCode]
 			if !known {
 				allRegions := []string{"UK", "US", "FRANCE", "GERMANY", "GREECE"}
 				region = allRegions[rng.Intn(len(allRegions))]

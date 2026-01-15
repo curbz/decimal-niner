@@ -15,6 +15,7 @@ type UserState struct {
 type AirlineInfo struct {
 	AirlineName string `json:"airline_name"`
 	Callsign    string `json:"callsign"`
+	CountryCode string `json:"icao_country_code"`
 }
 
 type Aircraft struct {
@@ -27,15 +28,15 @@ type Aircraft struct {
 }
 
 type Flight struct {
-	Position    	Position
-	Number      	int
-	TaxiRoute   	string
-	Origin      	string
-	Destination 	string
-	Phase       	Phase
-	Comms       	Comms
-	AssignedParking	string
-	AssignedRunway 	string
+	Position        Position
+	Number          int
+	TaxiRoute       string
+	Origin          string
+	Destination     string
+	Phase           Phase
+	Comms           Comms
+	AssignedParking string
+	AssignedRunway  string
 }
 
 type Position struct {
@@ -54,6 +55,7 @@ type Phase struct {
 type Comms struct {
 	Callsign         string
 	Controller       *Controller
+	CountryCode		 string
 	LastTransmission string
 	LastInstruction  string
 }
@@ -65,6 +67,7 @@ type ATCMessage struct {
 	Role        string
 	Text        string
 	FlightPhase int
+	CountryCode string
 }
 
 type Airspace struct {
@@ -81,4 +84,3 @@ type Controller struct {
 	IsRegion   bool
 	Airspaces  []Airspace
 }
-

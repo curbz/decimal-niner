@@ -1,398 +1,497 @@
 {
   "AAL": {
     "airline_name": "American Airlines",
-    "callsign": "AMERICAN"
+    "callsign": "AMERICAN",
+    "icao_country_code": "K"
   },
   "AAR": {
     "airline_name": "Asiana Airlines",
-    "callsign": "ASIANA"
+    "callsign": "ASIANA",
+    "icao_country_code": "RK"
   },
   "ABW": {
     "airline_name": "AirBridgeCargo",
-    "callsign": "AIRBRIDGE CARGO"
+    "callsign": "AIRBRIDGE CARGO",
+    "icao_country_code": "U"
   },
   "ACA": {
     "airline_name": "Air Canada",
-    "callsign": "AIR CANADA"
+    "callsign": "AIR CANADA",
+    "icao_country_code": "C"
   },
   "ADO": {
     "airline_name": "Air Do",
-    "callsign": "AIR DO"
+    "callsign": "AIR DO",
+    "icao_country_code": "RJ"
   },
   "AEE": {
     "airline_name": "Aegean Airlines",
-    "callsign": "AEGEAN"
+    "callsign": "AEGEAN",
+    "icao_country_code": "LG"
   },
   "AFL": {
     "airline_name": "Aeroflot",
-    "callsign": "AEROFLOT"
+    "callsign": "AEROFLOT",
+    "icao_country_code": "U"
   },
   "AFR": {
     "airline_name": "Air France",
-    "callsign": "AIRFRANS"
+    "callsign": "AIRFRANS",
+    "icao_country_code": "LF"
   },
   "AHY": {
     "airline_name": "Azerbaijan Airlines",
-    "callsign": "AZAL"
+    "callsign": "AZAL",
+    "icao_country_code": "UB"
   },
   "AIC": {
     "airline_name": "Air India",
-    "callsign": "AIRINDIA"
+    "callsign": "AIRINDIA",
+    "icao_country_code": "V"
   },
   "AIZ": {
     "airline_name": "Arkia Israeli Airlines",
-    "callsign": "ARKIA"
+    "callsign": "ARKIA",
+    "icao_country_code": "LL"
   },
   "ALG": {
     "airline_name": "Air Algerie",
-    "callsign": "AIR ALGERIE"
+    "callsign": "AIR ALGERIE",
+    "icao_country_code": "DA"
   },
   "ANG": {
     "airline_name": "Air Niugini",
-    "callsign": "NIUGINI"
+    "callsign": "NIUGINI",
+    "icao_country_code": "AY"
   },
   "ANZ": {
     "airline_name": "Air New Zealand",
-    "callsign": "NEW ZEALAND"
+    "callsign": "NEW ZEALAND",
+    "icao_country_code": "NZ"
   },
   "APG": {
     "airline_name": "Air Panama",
-    "callsign": "AIR PANAMA"
+    "callsign": "AIR PANAMA",
+    "icao_country_code": "MP"
   },
   "ARG": {
     "airline_name": "Aerolineas Argentinas",
-    "callsign": "ARGENTINA"
+    "callsign": "ARGENTINA",
+    "icao_country_code": "SA"
   },
   "AUA": {
     "airline_name": "Austrian Airlines",
-    "callsign": "AUSTRIAN"
+    "callsign": "AUSTRIAN",
+    "icao_country_code": "LO"
   },
   "AUR": {
     "airline_name": "Aurigny",
-    "callsign": "AYLINE"
+    "callsign": "AYLINE",
+    "icao_country_code": "EG"
   },
   "AVA": {
     "airline_name": "Avianca",
-    "callsign": "AVIANCA"
+    "callsign": "AVIANCA",
+    "icao_country_code": "SK"
   },
   "AXM": {
     "airline_name": "AirAsia",
-    "callsign": "ASIAN EXPRESS"
+    "callsign": "ASIAN EXPRESS",
+    "icao_country_code": "WM"
   },
   "AZA": {
     "airline_name": "Alitalia",
-    "callsign": "ALITALIA"
+    "callsign": "ALITALIA",
+    "icao_country_code": "LI"
   },
   "BAW": {
     "airline_name": "British Airways",
-    "callsign": "SPEEDBIRD"
+    "callsign": "SPEEDBIRD",
+    "icao_country_code": "EG"
   },
   "BBC": {
     "airline_name": "Biman Bangladesh Airlines",
-    "callsign": "BIMAN"
+    "callsign": "BIMAN",
+    "icao_country_code": "VG"
   },
   "BEL": {
     "airline_name": "Brussels Airlines",
-    "callsign": "BEE-LINE"
+    "callsign": "BEE-LINE",
+    "icao_country_code": "EB"
   },
   "BEK": {
     "airline_name": "Bek Air",
-    "callsign": "BEK AIR"
+    "callsign": "BEK AIR",
+    "icao_country_code": "UA"
   },
   "BRU": {
     "airline_name": "Belavia",
-    "callsign": "BELAVIA"
+    "callsign": "BELAVIA",
+    "icao_country_code": "UM"
   },
   "BTI": {
     "airline_name": "Air Baltic",
-    "callsign": "AIR BALTIC"
+    "callsign": "AIR BALTIC",
+    "icao_country_code": "EV"
   },
   "CAL": {
     "airline_name": "China Airlines",
-    "callsign": "DYNASTY"
+    "callsign": "DYNASTY",
+    "icao_country_code": "RC"
   },
   "CCA": {
     "airline_name": "Air China",
-    "callsign": "AIR CHINA"
+    "callsign": "AIR CHINA",
+    "icao_country_code": "Z"
   },
   "CDG": {
     "airline_name": "Chengdu Airlines",
-    "callsign": "UNITED EAGLE"
+    "callsign": "UNITED EAGLE",
+    "icao_country_code": "Z"
   },
   "CES": {
     "airline_name": "China Eastern Airlines",
-    "callsign": "CHINA EASTERN"
+    "callsign": "CHINA EASTERN",
+    "icao_country_code": "Z"
   },
   "CHH": {
     "airline_name": "Hainan Airlines",
-    "callsign": "HAINAN"
+    "callsign": "HAINAN",
+    "icao_country_code": "Z"
   },
   "CKS": {
     "airline_name": "Kalitta Air",
-    "callsign": "CONNIE"
+    "callsign": "CONNIE",
+    "icao_country_code": "K"
   },
   "CPA": {
     "airline_name": "Cathay Pacific",
-    "callsign": "CATHAY"
+    "callsign": "CATHAY",
+    "icao_country_code": "VH"
   },
   "CRQ": {
     "airline_name": "Air Creebec",
-    "callsign": "CREE"
+    "callsign": "CREE",
+    "icao_country_code": "C"
   },
   "CSC": {
     "airline_name": "Sichuan Airlines",
-    "callsign": "SI CHUAN"
+    "callsign": "SI CHUAN",
+    "icao_country_code": "Z"
   },
   "CSH": {
     "airline_name": "Shanghai Airlines",
-    "callsign": "SHANGHAI AIR"
+    "callsign": "SHANGHAI AIR",
+    "icao_country_code": "Z"
   },
   "CSN": {
     "airline_name": "China Southern Airlines",
-    "callsign": "CHINA SOUTHERN"
+    "callsign": "CHINA SOUTHERN",
+    "icao_country_code": "Z"
   },
   "CTN": {
     "airline_name": "Croatia Airlines",
-    "callsign": "CROATIA"
+    "callsign": "CROATIA",
+    "icao_country_code": "LD"
   },
   "DAL": {
     "airline_name": "Delta Air Lines",
-    "callsign": "DELTA"
+    "callsign": "DELTA",
+    "icao_country_code": "K"
   },
   "DLH": {
     "airline_name": "Lufthansa",
-    "callsign": "LUFTHANSA"
+    "callsign": "LUFTHANSA",
+    "icao_country_code": "ED"
   },
   "EDW": {
     "airline_name": "Edelweiss Air",
-    "callsign": "EDELWEISS"
+    "callsign": "EDELWEISS",
+    "icao_country_code": "LS"
   },
   "EIN": {
     "airline_name": "Aer Lingus",
-    "callsign": "SHAMROCK"
+    "callsign": "SHAMROCK",
+    "icao_country_code": "EI"
   },
   "ELY": {
     "airline_name": "El Al Israel Airlines",
-    "callsign": "EL AL"
+    "callsign": "EL AL",
+    "icao_country_code": "LL"
   },
   "ETD": {
     "airline_name": "Etihad Airways",
-    "callsign": "ETIHAD"
+    "callsign": "ETIHAD",
+    "icao_country_code": "OM"
   },
   "ETH": {
     "airline_name": "Ethiopian Airlines",
-    "callsign": "ETHIOPIAN"
+    "callsign": "ETHIOPIAN",
+    "icao_country_code": "HA"
   },
   "EWG": {
     "airline_name": "Eurowings",
-    "callsign": "EUROWINGS"
+    "callsign": "EUROWINGS",
+    "icao_country_code": "ED"
   },
   "EXS": {
     "airline_name": "Jet2",
-    "callsign": "CHANNEX"
+    "callsign": "CHANNEX",
+    "icao_country_code": "EG"
   },
   "EZY": {
     "airline_name": "EasyJet",
-    "callsign": "EASY"
+    "callsign": "EASY",
+    "icao_country_code": "EG"
   },
   "FFT": {
     "airline_name": "Frontier Airlines",
-    "callsign": "FRONTIER FLIGHT"
+    "callsign": "FRONTIER FLIGHT",
+    "icao_country_code": "K"
   },
   "FIN": {
     "airline_name": "Finnair",
-    "callsign": "FINNAIR"
+    "callsign": "FINNAIR",
+    "icao_country_code": "EF"
   },
   "GTI": {
     "airline_name": "Atlas Air",
-    "callsign": "GIANT"
+    "callsign": "GIANT",
+    "icao_country_code": "K"
   },
   "HAL": {
     "airline_name": "Hawaiian Airlines",
-    "callsign": "HAWAIIAN"
+    "callsign": "HAWAIIAN",
+    "icao_country_code": "PH"
   },
   "HDA": {
     "airline_name": "Dragonair (Cathay Dragon)",
-    "callsign": "DRAGON"
+    "callsign": "DRAGON",
+    "icao_country_code": "VH"
   },
   "IBE": {
     "airline_name": "Iberia",
-    "callsign": "IBERIA"
+    "callsign": "IBERIA",
+    "icao_country_code": "LE"
   },
   "IRA": {
     "airline_name": "Iran Air",
-    "callsign": "IRANAIR"
+    "callsign": "IRANAIR",
+    "icao_country_code": "OI"
   },
   "IRC": {
     "airline_name": "Iran Aseman Airlines",
-    "callsign": "ASEMAN"
+    "callsign": "ASEMAN",
+    "icao_country_code": "OI"
   },
   "ISR": {
     "airline_name": "Israir",
-    "callsign": "ISRAIR"
+    "callsign": "ISRAIR",
+    "icao_country_code": "LL"
   },
   "JAL": {
     "airline_name": "Japan Airlines",
-    "callsign": "JAPANAIR"
+    "callsign": "JAPANAIR",
+    "icao_country_code": "RJ"
   },
   "JAT": {
     "airline_name": "Air Serbia",
-    "callsign": "AIR SERBIA"
+    "callsign": "AIR SERBIA",
+    "icao_country_code": "LY"
   },
   "JZA": {
     "airline_name": "Jazz Aviation",
-    "callsign": "JAZZ"
+    "callsign": "JAZZ",
+    "icao_country_code": "C"
   },
   "KAL": {
     "airline_name": "Korean Air",
-    "callsign": "KOREANAIR"
+    "callsign": "KOREANAIR",
+    "icao_country_code": "RK"
   },
   "KLM": {
     "airline_name": "KLM",
-    "callsign": "KLM"
+    "callsign": "KLM",
+    "icao_country_code": "EH"
   },
   "KZR": {
     "airline_name": "Air Astana",
-    "callsign": "ASTANALINE"
+    "callsign": "ASTANALINE",
+    "icao_country_code": "UA"
   },
   "LAN": {
     "airline_name": "LATAM Airlines",
-    "callsign": "LAN CHILE"
+    "callsign": "LAN CHILE",
+    "icao_country_code": "SC"
   },
   "LDM": {
     "airline_name": "LaudaMotion",
-    "callsign": "LAUDA MOTION"
+    "callsign": "LAUDA MOTION",
+    "icao_country_code": "LO"
   },
   "LOT": {
     "airline_name": "LOT Polish Airlines",
-    "callsign": "POLLOT"
+    "callsign": "POLLOT",
+    "icao_country_code": "EP"
   },
   "MAI": {
     "airline_name": "Air Mauritius",
-    "callsign": "AIRMAURITIUS"
+    "callsign": "AIRMAURITIUS",
+    "icao_country_code": "FI"
   },
   "MDG": {
     "airline_name": "Air Madagascar",
-    "callsign": "AIR MADAGASCAR"
+    "callsign": "AIR MADAGASCAR",
+    "icao_country_code": "FM"
   },
   "MGL": {
     "airline_name": "MIAT Mongolian Airlines",
-    "callsign": "MONGOL AIR"
+    "callsign": "MONGOL AIR",
+    "icao_country_code": "ZM"
   },
   "NWS": {
     "airline_name": "Nordwind Airlines",
-    "callsign": "NORDWIND"
+    "callsign": "NORDWIND",
+    "icao_country_code": "U"
   },
   "OAL": {
     "airline_name": "Olympic Air",
-    "callsign": "OLYMPIC"
+    "callsign": "OLYMPIC",
+    "icao_country_code": "LG"
   },
   "OMA": {
     "airline_name": "Oman Air",
-    "callsign": "OMAN AIR"
+    "callsign": "OMAN AIR",
+    "icao_country_code": "OO"
   },
   "PAL": {
     "airline_name": "Philippine Airlines",
-    "callsign": "PHILIPPINE"
+    "callsign": "PHILIPPINE",
+    "icao_country_code": "RP"
   },
   "PGT": {
     "airline_name": "Pegasus Airlines",
-    "callsign": "SANTURK"
+    "callsign": "SANTURK",
+    "icao_country_code": "LT"
   },
   "PIA": {
     "airline_name": "Pakistan International Airlines",
-    "callsign": "PAKISTAN"
+    "callsign": "PAKISTAN",
+    "icao_country_code": "OP"
   },
   "QFA": {
     "airline_name": "Qantas",
-    "callsign": "QANTAS"
+    "callsign": "QANTAS",
+    "icao_country_code": "Y"
   },
   "QTR": {
     "airline_name": "Qatar Airways",
-    "callsign": "QATARI"
+    "callsign": "QATARI",
+    "icao_country_code": "OT"
   },
   "RAM": {
     "airline_name": "Royal Air Maroc",
-    "callsign": "ROYALAIR MAROC"
+    "callsign": "ROYALAIR MAROC",
+    "icao_country_code": "GM"
   },
   "RJA": {
     "airline_name": "Royal Jordanian",
-    "callsign": "JORDANIAN"
+    "callsign": "JORDANIAN",
+    "icao_country_code": "OJ"
   },
   "SAA": {
     "airline_name": "South African Airways",
-    "callsign": "SPRINGBOK"
+    "callsign": "SPRINGBOK",
+    "icao_country_code": "FA"
   },
   "SAS": {
     "airline_name": "SAS Scandinavian Airlines",
-    "callsign": "SCANDINAVIAN"
+    "callsign": "SCANDINAVIAN",
+    "icao_country_code": "E"
   },
   "SBI": {
     "airline_name": "S7 Airlines",
-    "callsign": "SIBERIAN"
+    "callsign": "SIBERIAN",
+    "icao_country_code": "U"
   },
   "SIA": {
     "airline_name": "Singapore Airlines",
-    "callsign": "SINGAPORE"
+    "callsign": "SINGAPORE",
+    "icao_country_code": "WS"
   },
   "SUD": {
     "airline_name": "Sudan Airways",
-    "callsign": "SUDANAIR"
+    "callsign": "SUDANAIR",
+    "icao_country_code": "HS"
   },
   "SWR": {
     "airline_name": "Swiss International Air Lines",
-    "callsign": "SWISS"
+    "callsign": "SWISS",
+    "icao_country_code": "LS"
   },
   "SXD": {
     "airline_name": "SunExpress Deutschland",
-    "callsign": "SUNEXPRESS"
+    "callsign": "SUNEXPRESS",
+    "icao_country_code": "ED"
   },
   "SYR": {
     "airline_name": "Syrian Arab Airlines",
-    "callsign": "SYRIANAIR"
+    "callsign": "SYRIANAIR",
+    "icao_country_code": "OS"
   },
   "TAP": {
     "airline_name": "TAP Air Portugal",
-    "callsign": "AIR PORTUGAL"
+    "callsign": "AIR PORTUGAL",
+    "icao_country_code": "LP"
   },
   "TGW": {
     "airline_name": "Scoot",
-    "callsign": "SCOOTER"
+    "callsign": "SCOOTER",
+    "icao_country_code": "WS"
   },
   "THA": {
     "airline_name": "Thai Airways",
-    "callsign": "THAI"
+    "callsign": "THAI",
+    "icao_country_code": "VT"
   },
   "TUI": {
     "airline_name": "TUIfly Belgium",
-    "callsign": "BEAUTY"
+    "callsign": "BEAUTY",
+    "icao_country_code": "EB"
   },
   "UAL": {
     "airline_name": "United Airlines",
-    "callsign": "UNITED"
+    "callsign": "UNITED",
+    "icao_country_code": "K"
   },
   "UPS": {
     "airline_name": "United Parcel Service",
-    "callsign": "UPS"
+    "callsign": "UPS",
+    "icao_country_code": "K"
   },
   "UTY": {
     "airline_name": "Alliance Airlines",
-    "callsign": "UNITY"
+    "callsign": "UNITY",
+    "icao_country_code": "Y"
   },
   "VAU": {
     "airline_name": "Virgin Australia International",
-    "callsign": "VIRGIN"
+    "callsign": "VIRGIN",
+    "icao_country_code": "Y"
   },
   "VLG": {
     "airline_name": "Vueling Airlines",
-    "callsign": "VUELING"
+    "callsign": "VUELING",
+    "icao_country_code": "LE"
   },
   "VOE": {
     "airline_name": "Volotea",
-    "callsign": "VOLOTEA"
+    "callsign": "VOLOTEA",
+    "icao_country_code": "LE"
   },
   "VVC": {
     "airline_name": "Viva Air Colombia",
-    "callsign": "VIVA COLOMBIA"
+    "callsign": "VIVA COLOMBIA",
+    "icao_country_code": "SK"
   }
 }

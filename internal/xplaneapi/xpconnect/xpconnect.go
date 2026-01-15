@@ -524,6 +524,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
 		aircraft.Flight.Number = flightNum
+		aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 
 		// get parking
 		aircraft.Flight.AssignedParking = xpc.getDataRefValue("trafficglobal/ai/parking", index).(string)

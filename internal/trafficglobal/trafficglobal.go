@@ -3,6 +3,7 @@ package trafficglobal
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -171,7 +172,10 @@ func BGLReader(filePath string) map[string]ScheduledFlight {
                                             reg, flightNum, icao1, icao2, days[depDay], depHr, depMin,
                                             days[arrDay], arrHr, arrMin, cruiseLevelValue, trafficPercent)
 										*/
-										fScheds[strconv.Itoa(int(flightNum)) + "_" + reg] = ScheduledFlight{
+                                        fmt.Printf("[%s] Flt# %-5d | %s -> %s | Departs: %s %02d:%02d\n",
+                                            reg, flightNum, icao1, icao2, days[depDay], depHr, depMin)
+
+                                            fScheds[strconv.Itoa(int(flightNum)) + "_" + reg] = ScheduledFlight{
 											AircraftRegistration: reg,
 											Number: int(flightNum),
 											IcaoOrigin: icao1, 
@@ -213,18 +217,20 @@ func isICAO(b []byte) bool {
 
 func parseFlightHeader(b []byte) (string, uint16) {
     idx := bytes.IndexByte(b, '-')
-    if idx != -1 && idx >= 2 && idx <= len(b)-6 {
+    if idx != -1 && idx >= 2  { //&& idx <= len(b) { //-6 {
         regBytes := b[idx-2 : idx+4]
 
         // Validate that all bytes are printable ASCII
+        /*
         if !isPrintable(regBytes) {
             return "", 0
         }
+        */
 
         reg := string(regBytes)
 
         // The 2 bytes following the registration are usually the Flight Number
-        flightNum := binary.LittleEndian.Uint16(b[idx+5 : idx+7])
+        flightNum := binary.LittleEndian.Uint16(b[idx+len(reg) : idx+len(reg)+2])
 
         return reg, flightNum
     }
