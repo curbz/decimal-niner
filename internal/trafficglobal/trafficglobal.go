@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -170,7 +171,7 @@ func BGLReader(filePath string) map[string]ScheduledFlight {
                                             reg, flightNum, icao1, icao2, days[depDay], depHr, depMin,
                                             days[arrDay], arrHr, arrMin, cruiseLevelValue, trafficPercent)
 										*/
-										fScheds[string(flightNum) + "_" + reg] = ScheduledFlight{
+										fScheds[strconv.Itoa(int(flightNum)) + "_" + reg] = ScheduledFlight{
 											AircraftRegistration: reg,
 											Number: int(flightNum),
 											IcaoOrigin: icao1, 
