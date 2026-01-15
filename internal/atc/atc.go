@@ -12,7 +12,7 @@ import (
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
-	"github.com/curbz/decimal-niner/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 type Service struct {

@@ -16,7 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
-	"github.com/curbz/decimal-niner/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"

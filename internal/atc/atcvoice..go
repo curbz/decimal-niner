@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/curbz/decimal-niner/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 type VoicesConfig struct {

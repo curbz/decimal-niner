@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/curbz/decimal-niner/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 

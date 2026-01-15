@@ -12,7 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
-	"github.com/curbz/decimal-niner/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 
@@ -28,7 +28,7 @@ func main() {
 	var cfgPath string
 	var err error
 
-	// 2. Logic to determine which path to use
+	// logic to determine which path to use
 	if *configFlag != "" {
 		// If user provided a path, use it directly
 		cfgPath = *configFlag
