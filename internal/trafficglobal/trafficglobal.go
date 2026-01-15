@@ -218,7 +218,7 @@ func isICAO(b []byte) bool {
 func parseFlightHeader(b []byte) (string, uint16) {
     idx := bytes.IndexByte(b, '-')
     if idx != -1 && idx >= 2  { //&& idx <= len(b) { //-6 {
-        regBytes := b[idx-2 : idx+4]
+        regBytes := b[idx-2 : idx+5]  // idx+4]
 
         // Validate that all bytes are printable ASCII
         /*
