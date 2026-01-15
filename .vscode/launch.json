@@ -9,14 +9,16 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/cmd/decimalniner"
+            "program": "${workspaceFolder}/cmd/decimalniner",
+            "cwd": "${workspaceFolder}" // This ensures config.yaml is found at "."
         },
         {
             "name": "Launch debug",
             "type": "go",
             "request": "launch",
             "mode": "debug",
-            "program": "${workspaceFolder}/cmd/decimalniner"
+            "program": "${workspaceFolder}/cmd/decimalniner",
+            "cwd": "${workspaceFolder}" // This ensures config.yaml is found at "."
         }
         ,
         // lauch with --mock flag
@@ -26,6 +28,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/decimalniner",
+            "cwd": "${workspaceFolder}", // This ensures config.yaml is found at "."
             "args": [
                 "--mock"
             ]

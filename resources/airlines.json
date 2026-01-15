@@ -1,0 +1,398 @@
+{
+  "AAL": {
+    "airline_name": "American Airlines",
+    "callsign": "AMERICAN"
+  },
+  "AAR": {
+    "airline_name": "Asiana Airlines",
+    "callsign": "ASIANA"
+  },
+  "ABW": {
+    "airline_name": "AirBridgeCargo",
+    "callsign": "AIRBRIDGE CARGO"
+  },
+  "ACA": {
+    "airline_name": "Air Canada",
+    "callsign": "AIR CANADA"
+  },
+  "ADO": {
+    "airline_name": "Air Do",
+    "callsign": "AIR DO"
+  },
+  "AEE": {
+    "airline_name": "Aegean Airlines",
+    "callsign": "AEGEAN"
+  },
+  "AFL": {
+    "airline_name": "Aeroflot",
+    "callsign": "AEROFLOT"
+  },
+  "AFR": {
+    "airline_name": "Air France",
+    "callsign": "AIRFRANS"
+  },
+  "AHY": {
+    "airline_name": "Azerbaijan Airlines",
+    "callsign": "AZAL"
+  },
+  "AIC": {
+    "airline_name": "Air India",
+    "callsign": "AIRINDIA"
+  },
+  "AIZ": {
+    "airline_name": "Arkia Israeli Airlines",
+    "callsign": "ARKIA"
+  },
+  "ALG": {
+    "airline_name": "Air Algerie",
+    "callsign": "AIR ALGERIE"
+  },
+  "ANG": {
+    "airline_name": "Air Niugini",
+    "callsign": "NIUGINI"
+  },
+  "ANZ": {
+    "airline_name": "Air New Zealand",
+    "callsign": "NEW ZEALAND"
+  },
+  "APG": {
+    "airline_name": "Air Panama",
+    "callsign": "AIR PANAMA"
+  },
+  "ARG": {
+    "airline_name": "Aerolineas Argentinas",
+    "callsign": "ARGENTINA"
+  },
+  "AUA": {
+    "airline_name": "Austrian Airlines",
+    "callsign": "AUSTRIAN"
+  },
+  "AUR": {
+    "airline_name": "Aurigny",
+    "callsign": "AYLINE"
+  },
+  "AVA": {
+    "airline_name": "Avianca",
+    "callsign": "AVIANCA"
+  },
+  "AXM": {
+    "airline_name": "AirAsia",
+    "callsign": "ASIAN EXPRESS"
+  },
+  "AZA": {
+    "airline_name": "Alitalia",
+    "callsign": "ALITALIA"
+  },
+  "BAW": {
+    "airline_name": "British Airways",
+    "callsign": "SPEEDBIRD"
+  },
+  "BBC": {
+    "airline_name": "Biman Bangladesh Airlines",
+    "callsign": "BIMAN"
+  },
+  "BEL": {
+    "airline_name": "Brussels Airlines",
+    "callsign": "BEE-LINE"
+  },
+  "BEK": {
+    "airline_name": "Bek Air",
+    "callsign": "BEK AIR"
+  },
+  "BRU": {
+    "airline_name": "Belavia",
+    "callsign": "BELAVIA"
+  },
+  "BTI": {
+    "airline_name": "Air Baltic",
+    "callsign": "AIR BALTIC"
+  },
+  "CAL": {
+    "airline_name": "China Airlines",
+    "callsign": "DYNASTY"
+  },
+  "CCA": {
+    "airline_name": "Air China",
+    "callsign": "AIR CHINA"
+  },
+  "CDG": {
+    "airline_name": "Chengdu Airlines",
+    "callsign": "UNITED EAGLE"
+  },
+  "CES": {
+    "airline_name": "China Eastern Airlines",
+    "callsign": "CHINA EASTERN"
+  },
+  "CHH": {
+    "airline_name": "Hainan Airlines",
+    "callsign": "HAINAN"
+  },
+  "CKS": {
+    "airline_name": "Kalitta Air",
+    "callsign": "CONNIE"
+  },
+  "CPA": {
+    "airline_name": "Cathay Pacific",
+    "callsign": "CATHAY"
+  },
+  "CRQ": {
+    "airline_name": "Air Creebec",
+    "callsign": "CREE"
+  },
+  "CSC": {
+    "airline_name": "Sichuan Airlines",
+    "callsign": "SI CHUAN"
+  },
+  "CSH": {
+    "airline_name": "Shanghai Airlines",
+    "callsign": "SHANGHAI AIR"
+  },
+  "CSN": {
+    "airline_name": "China Southern Airlines",
+    "callsign": "CHINA SOUTHERN"
+  },
+  "CTN": {
+    "airline_name": "Croatia Airlines",
+    "callsign": "CROATIA"
+  },
+  "DAL": {
+    "airline_name": "Delta Air Lines",
+    "callsign": "DELTA"
+  },
+  "DLH": {
+    "airline_name": "Lufthansa",
+    "callsign": "LUFTHANSA"
+  },
+  "EDW": {
+    "airline_name": "Edelweiss Air",
+    "callsign": "EDELWEISS"
+  },
+  "EIN": {
+    "airline_name": "Aer Lingus",
+    "callsign": "SHAMROCK"
+  },
+  "ELY": {
+    "airline_name": "El Al Israel Airlines",
+    "callsign": "EL AL"
+  },
+  "ETD": {
+    "airline_name": "Etihad Airways",
+    "callsign": "ETIHAD"
+  },
+  "ETH": {
+    "airline_name": "Ethiopian Airlines",
+    "callsign": "ETHIOPIAN"
+  },
+  "EWG": {
+    "airline_name": "Eurowings",
+    "callsign": "EUROWINGS"
+  },
+  "EXS": {
+    "airline_name": "Jet2",
+    "callsign": "CHANNEX"
+  },
+  "EZY": {
+    "airline_name": "EasyJet",
+    "callsign": "EASY"
+  },
+  "FFT": {
+    "airline_name": "Frontier Airlines",
+    "callsign": "FRONTIER FLIGHT"
+  },
+  "FIN": {
+    "airline_name": "Finnair",
+    "callsign": "FINNAIR"
+  },
+  "GTI": {
+    "airline_name": "Atlas Air",
+    "callsign": "GIANT"
+  },
+  "HAL": {
+    "airline_name": "Hawaiian Airlines",
+    "callsign": "HAWAIIAN"
+  },
+  "HDA": {
+    "airline_name": "Dragonair (Cathay Dragon)",
+    "callsign": "DRAGON"
+  },
+  "IBE": {
+    "airline_name": "Iberia",
+    "callsign": "IBERIA"
+  },
+  "IRA": {
+    "airline_name": "Iran Air",
+    "callsign": "IRANAIR"
+  },
+  "IRC": {
+    "airline_name": "Iran Aseman Airlines",
+    "callsign": "ASEMAN"
+  },
+  "ISR": {
+    "airline_name": "Israir",
+    "callsign": "ISRAIR"
+  },
+  "JAL": {
+    "airline_name": "Japan Airlines",
+    "callsign": "JAPANAIR"
+  },
+  "JAT": {
+    "airline_name": "Air Serbia",
+    "callsign": "AIR SERBIA"
+  },
+  "JZA": {
+    "airline_name": "Jazz Aviation",
+    "callsign": "JAZZ"
+  },
+  "KAL": {
+    "airline_name": "Korean Air",
+    "callsign": "KOREANAIR"
+  },
+  "KLM": {
+    "airline_name": "KLM",
+    "callsign": "KLM"
+  },
+  "KZR": {
+    "airline_name": "Air Astana",
+    "callsign": "ASTANALINE"
+  },
+  "LAN": {
+    "airline_name": "LATAM Airlines",
+    "callsign": "LAN CHILE"
+  },
+  "LDM": {
+    "airline_name": "LaudaMotion",
+    "callsign": "LAUDA MOTION"
+  },
+  "LOT": {
+    "airline_name": "LOT Polish Airlines",
+    "callsign": "POLLOT"
+  },
+  "MAI": {
+    "airline_name": "Air Mauritius",
+    "callsign": "AIRMAURITIUS"
+  },
+  "MDG": {
+    "airline_name": "Air Madagascar",
+    "callsign": "AIR MADAGASCAR"
+  },
+  "MGL": {
+    "airline_name": "MIAT Mongolian Airlines",
+    "callsign": "MONGOL AIR"
+  },
+  "NWS": {
+    "airline_name": "Nordwind Airlines",
+    "callsign": "NORDWIND"
+  },
+  "OAL": {
+    "airline_name": "Olympic Air",
+    "callsign": "OLYMPIC"
+  },
+  "OMA": {
+    "airline_name": "Oman Air",
+    "callsign": "OMAN AIR"
+  },
+  "PAL": {
+    "airline_name": "Philippine Airlines",
+    "callsign": "PHILIPPINE"
+  },
+  "PGT": {
+    "airline_name": "Pegasus Airlines",
+    "callsign": "SANTURK"
+  },
+  "PIA": {
+    "airline_name": "Pakistan International Airlines",
+    "callsign": "PAKISTAN"
+  },
+  "QFA": {
+    "airline_name": "Qantas",
+    "callsign": "QANTAS"
+  },
+  "QTR": {
+    "airline_name": "Qatar Airways",
+    "callsign": "QATARI"
+  },
+  "RAM": {
+    "airline_name": "Royal Air Maroc",
+    "callsign": "ROYALAIR MAROC"
+  },
+  "RJA": {
+    "airline_name": "Royal Jordanian",
+    "callsign": "JORDANIAN"
+  },
+  "SAA": {
+    "airline_name": "South African Airways",
+    "callsign": "SPRINGBOK"
+  },
+  "SAS": {
+    "airline_name": "SAS Scandinavian Airlines",
+    "callsign": "SCANDINAVIAN"
+  },
+  "SBI": {
+    "airline_name": "S7 Airlines",
+    "callsign": "SIBERIAN"
+  },
+  "SIA": {
+    "airline_name": "Singapore Airlines",
+    "callsign": "SINGAPORE"
+  },
+  "SUD": {
+    "airline_name": "Sudan Airways",
+    "callsign": "SUDANAIR"
+  },
+  "SWR": {
+    "airline_name": "Swiss International Air Lines",
+    "callsign": "SWISS"
+  },
+  "SXD": {
+    "airline_name": "SunExpress Deutschland",
+    "callsign": "SUNEXPRESS"
+  },
+  "SYR": {
+    "airline_name": "Syrian Arab Airlines",
+    "callsign": "SYRIANAIR"
+  },
+  "TAP": {
+    "airline_name": "TAP Air Portugal",
+    "callsign": "AIR PORTUGAL"
+  },
+  "TGW": {
+    "airline_name": "Scoot",
+    "callsign": "SCOOTER"
+  },
+  "THA": {
+    "airline_name": "Thai Airways",
+    "callsign": "THAI"
+  },
+  "TUI": {
+    "airline_name": "TUIfly Belgium",
+    "callsign": "BEAUTY"
+  },
+  "UAL": {
+    "airline_name": "United Airlines",
+    "callsign": "UNITED"
+  },
+  "UPS": {
+    "airline_name": "United Parcel Service",
+    "callsign": "UPS"
+  },
+  "UTY": {
+    "airline_name": "Alliance Airlines",
+    "callsign": "UNITY"
+  },
+  "VAU": {
+    "airline_name": "Virgin Australia International",
+    "callsign": "VIRGIN"
+  },
+  "VLG": {
+    "airline_name": "Vueling Airlines",
+    "callsign": "VUELING"
+  },
+  "VOE": {
+    "airline_name": "Volotea",
+    "callsign": "VOLOTEA"
+  },
+  "VVC": {
+    "airline_name": "Viva Air Colombia",
+    "callsign": "VIVA COLOMBIA"
+  }
+}

@@ -26,19 +26,13 @@ func main() {
 	flag.Parse()
 
 	var cfgPath string
-	var err error
 
 	// logic to determine which path to use
 	if *configFlag != "" {
 		// If user provided a path, use it directly
 		cfgPath = *configFlag
 	} else {
-		// If not, search for "config.yaml" up to 2 levels up
-		cfgPath, err = FindConfigFile("config.yaml")
-		if err != nil {
-			log.Printf("Error locating config: %v\n", err)
-			os.Exit(1)
-		}
+		cfgPath = "config.yaml"
 	}
 
 	if *mock {

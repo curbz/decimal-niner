@@ -1,0 +1,86 @@
+{
+  "pre_flight_parked": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, pre-flight for departure to {DESTINATION}.",
+      "{FACILITY} Traffic, {CALLSIGN}, at {GATE_NUMBER}, getting weather Information {ATIS_CODE}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "startup": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, engine start.",
+      "{FACILITY} Traffic, {CALLSIGN}, at the ramp, starting engines for departure."
+    ],
+    "atc_responses_instructions": []
+  },
+  "taxi_out": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, taxiing to Runway {RUNWAY} via {TAXIWAY}.",
+      "{FACILITY} Traffic, {CALLSIGN}, taxiing to the run-up area for Runway {RUNWAY}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "depart": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, taking the active Runway {RUNWAY} for departure.",
+      "{FACILITY} Traffic, {CALLSIGN}, departing Runway {RUNWAY}, straight out departure."
+    ],
+    "atc_responses_instructions": []
+  },
+  "climb_out": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, airborne Runway {RUNWAY}, climbing to {ALTITUDE}.",
+      "{FACILITY} Traffic, {CALLSIGN}, departing the pattern, climbing through {ALTITUDE}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "cruise": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, level at {ALTITUDE}, transiting the area.",
+      "{FACILITY} Traffic, {CALLSIGN}, {DISTANCE} miles {DIRECTION} of the field, level {ALTITUDE}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "approach": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, {DISTANCE} miles {DIRECTION}, entering left downwind for Runway {RUNWAY}.",
+      "{FACILITY} Traffic, {CALLSIGN}, descending through {ALTITUDE}, entering traffic pattern for {RUNWAY}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "final": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, on short final for Runway {RUNWAY}.",
+      "{FACILITY} Traffic, {CALLSIGN}, established on final, Runway {RUNWAY} full stop."
+    ],
+    "atc_responses_instructions": []
+  },
+  "go_around": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, going around Runway {RUNWAY}.",
+      "{FACILITY} Traffic, {CALLSIGN}, executing missed approach Runway {RUNWAY}, climbing."
+    ],
+    "atc_responses_instructions": []
+  },
+  "braking": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}.",
+      "{FACILITY} Traffic, {CALLSIGN}, vacating Runway {RUNWAY}, taxiing to the ramp."
+    ],
+    "atc_responses_instructions": []
+  },
+  "taxi_in": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, clear of the active, taxiing to the terminal.",
+      "{FACILITY} Traffic, {CALLSIGN}, taxiing to parking via {TAXIWAY}."
+    ],
+    "atc_responses_instructions": []
+  },
+  "post_flight_parked": {
+    "pilot_initial_calls": [
+      "{FACILITY} Traffic, {CALLSIGN}, clear of all taxiways, engine shutdown.",
+      "{FACILITY} Traffic, {CALLSIGN}, safely parked at {GATE_NUMBER}, shutting down."
+    ],
+    "atc_responses_instructions": []
+  }
+}
