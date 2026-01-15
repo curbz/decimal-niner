@@ -2,15 +2,21 @@ package atc
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
+func init() {
+    // This runs before any tests in this package
+    // We move up two levels to the root of the repo so that config.yaml and /resources is found
+    _ = os.Chdir("../../")
+}
 
 func TestPerformSearch(t *testing.T) {
 
-	atcService := New("../../config.yaml", make(map[string]trafficglobal.ScheduledFlight))
+	atcService := New("config.yaml", make(map[string]trafficglobal.ScheduledFlight))
 
 	tests := []struct {
 		label string
