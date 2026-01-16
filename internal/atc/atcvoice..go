@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
+	"github.com/curbz/decimal-niner/pkg/util"
 )
 
 type VoicesConfig struct {
@@ -53,6 +54,8 @@ var prepQueue chan PreparedAudio
 var sessionVoices = make(map[string]string)
 var sessionMutex sync.Mutex
 
+var countryVoicePools map[string][]string
+
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // PiperConfig represents the structure of the Piper ONNX model JSON config
@@ -61,20 +64,6 @@ type PiperConfig struct {
 		SampleRate int `json:"sample_rate"`
 	} `json:"audio"`
 }
-
-// -- Voice selections maps ---
-var RegionalPools = map[string][]string{
-	"UK":      {"en_GB-northern_english_male-medium", "en_GB-alan-low", "en_GB-southern_english_female-low"},
-	"US":      {"en_US-john-medium", "en_US-danny-low"},
-	"FRANCE":  {"fr_FR-gilles-low"},
-	"GERMANY": {"de_DE-thorsten-low"},
-	"GREECE":  {"el_GR-rapunzelina-low"},
-}
-
-var ICAOToRegion = map[string]string{
-	"EG": "UK", "K": "US", "LF": "FRANCE", "ED": "GERMANY", "LG": "GREECE",
-}
-
 
 func loadPhrases(cfg *config) PhraseClasses {
 
@@ -86,6 +75,12 @@ func loadPhrases(cfg *config) PhraseClasses {
 	}
 	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
+	}
+
+	// load country voice pools 
+	err := createVoicePools(cfg.ATC.Voices.Piper.VoiceDirectory)
+	if err != nil {
+		log.Fatalf("error creating voice pools: %v", err)
 	}
 
 	// load phrases from JSON file
@@ -134,6 +129,45 @@ func loadPhrases(cfg *config) PhraseClasses {
 			phrases:       phrases,
 			phrasesUnicom: unicomPhrases,
 		}
+}
+
+func createVoicePools(path string) error {
+	// Initialize the map
+	countryVoicePools = make(map[string][]string)
+
+	files, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		fileName := file.Name()
+
+		// Only process .onnx files
+		if strings.HasSuffix(fileName, ".onnx") {
+			// Extract the prefix (first 2 letters) for the key
+			if len(fileName) >= 5 {
+				code := strings.ToUpper(fileName[3:5])
+
+				// Remove the extension for the value
+				// filepath.Ext(fileName) returns ".onnx"
+				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+				// Populate map
+				countryVoicePools[code] = append(countryVoicePools[code], cleanName)
+			}
+		}
+	}
+
+	if len(countryVoicePools) == 0 {
+		log.Fatalf("no voice files found in folder %s", path)
+	}
+
+	return nil
 }
 
 // main function to recieve aircraft updates for phrase generation
@@ -327,23 +361,22 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 
 	selectedVoice, exists := sessionVoices[key]
 	if !exists {
+		// assign voice logic
 		var pool []string
-		if msg.Role != "PILOT" {
-			region := "UK"
-			for prefix, r := range ICAOToRegion {
-				if strings.HasPrefix(msg.ICAO, prefix) {
-					region = r
-					break
-				}
-			}
-			pool = RegionalPools[region]
-		} else {
-			region, known := ICAOToRegion[msg.CountryCode]
-			if !known {
-				allRegions := []string{"UK", "US", "FRANCE", "GERMANY", "GREECE"}
-				region = allRegions[rng.Intn(len(allRegions))]
-			}
-			pool = RegionalPools[region]
+		isoCountry, err := convertIcaoToIso(msg.CountryCode)
+		if err != nil {
+			//no country found - pick a random country
+			rKey := util.PickRandomFromMap(icaoToIsoMap).(string)
+			isoCountry = icaoToIsoMap[rKey]
+			log.Printf("country code %s not found, %s selected at random", msg.CountryCode, isoCountry)
+		}
+		var found bool
+		pool, found = countryVoicePools[isoCountry]
+		if !found {
+			// no pool found for country, pick random pool
+			rKey := util.PickRandomFromMap(countryVoicePools).(string)
+			pool = countryVoicePools[rKey]
+			log.Printf("no voice pool found for country %s, selected %s at random", isoCountry, rKey)
 		}
 
 		rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
@@ -432,3 +465,4 @@ func translateRunway(runway string) string {
 	runway = strings.Replace(runway, "R", "right", 1)
 	return runway
 }
+

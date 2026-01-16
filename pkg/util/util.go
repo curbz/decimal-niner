@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 
 	"github.com/gorilla/websocket"
@@ -92,4 +93,24 @@ func LoadConfig[T any](filepath string) (*T, error) {
 	return &config, nil
 }
 
+
+// PickRandomFromMap returns a random key from the given map 
+func PickRandomFromMap[K comparable, V any](m map[K]V) (randomKey any) {
+	
+	if len(m) == 0 {
+		return nil
+	}
+
+	// Create a slice of keys (maps still require conversion for indexing)
+	keys := make([]any, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	// Use rand.IntN from v2 (automatically seeded)
+	randomIndex := rand.Intn(len(keys))
+	randomKey = keys[randomIndex]
+
+	return randomKey
+}
 
