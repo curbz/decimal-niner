@@ -126,52 +126,12 @@ func BGLReader(filePath string) map[string]ScheduledFlight {
 
                             if reg != "" {
                                 // Step 2: Extract Time Metadata and Flight Parameters
-                                // After the second ICAO: departure time (2 bytes), flight duration (2 bytes),
-                                // traffic density (1 byte), cruise level (2 bytes)
+                                // After the second ICAO: departure time (2 bytes)
                                 if j+13 < n {
                                     depTime := binary.LittleEndian.Uint16(buffer[j+4 : j+6])
 									depDay, depHr, depMin := decodeTime(depTime)
-
-									/*
-                                    flightDuration := binary.LittleEndian.Uint16(buffer[j+6 : j+8])
-                                    trafficDensity := buffer[j+8]
-                                    cruiseLevel := binary.LittleEndian.Uint16(buffer[j+9 : j+11])
-
-                                    arrTime := depTime + flightDuration
-                                    arrDay, arrHr, arrMin := decodeTime(arrTime)
-
-                                    // Handle week rollover: if arrival >= 10080 minutes (7 days), wrap
-                                    if arrTime >= 10080 {
-                                        arrTime -= 10080
-                                        arrDay, arrHr, arrMin = decodeTime(arrTime)
-                                    }
-
-                                    // Cruise level scaling: try different factors
-                                    cruiseLevelValue := cruiseLevel / 100
-                                    if cruiseLevelValue == 0 {
-                                        cruiseLevelValue = cruiseLevel
-                                    }
-									*/
 									
-									if depDay < 7 { // Simple validation for the decoded times
-                                    //if depDay < 7 && arrDay < 7 { // Simple validation for the decoded times
-                                        // Traffic density should be 1-100, handle out-of-range values
-										/*
-                                        trafficPercent := int(trafficDensity)
-                                        if trafficPercent < 1 {
-                                            trafficPercent = 1
-                                        } else if trafficPercent > 100 {
-                                            trafficPercent = trafficPercent % 100
-                                            if trafficPercent == 0 {
-                                                trafficPercent = 100
-                                            }
-                                        }
-										*/
-										/*
-                                        fmt.Printf("[%s] Flt# %-5d | %s -> %s | Departs: %s %02d:%02d | Arrives: %s %02d:%02d | Cruise: FL%d | Traffic: %d%%\n",
-                                            reg, flightNum, icao1, icao2, days[depDay], depHr, depMin,
-                                            days[arrDay], arrHr, arrMin, cruiseLevelValue, trafficPercent)
-										*/
+									if depDay < 7 { 
                                         fmt.Printf("[%s] Flt# %-5d | %s -> %s | Departs: %s %02d:%02d\n",
                                             reg, flightNum, icao1, icao2, days[depDay], depHr, depMin)
 
@@ -220,13 +180,6 @@ func parseFlightHeader(b []byte) (string, uint16) {
     if idx != -1 && idx >= 2  { //&& idx <= len(b) { //-6 {
         regBytes := b[idx-2 : idx+5]  // idx+4]
 
-        // Validate that all bytes are printable ASCII
-        /*
-        if !isPrintable(regBytes) {
-            return "", 0
-        }
-        */
-
         reg := string(regBytes)
 
         // The 2 bytes following the registration are usually the Flight Number
@@ -235,15 +188,6 @@ func parseFlightHeader(b []byte) (string, uint16) {
         return reg, flightNum
     }
     return "", 0
-}
-
-func isPrintable(b []byte) bool {
-    for _, v := range b {
-        if v < 32 || v > 126 {
-            return false
-        }
-    }
-    return true
 }
 
 func decodeTime(t uint16) (int, int, int) {
