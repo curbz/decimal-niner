@@ -164,7 +164,7 @@ func parseGeneric(path string, isRegion bool) []Controller {
 }
 
 
-// ConvertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or 
+// convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or 
 // a country prefix (e.g., "EG") and returns the ISO country code.
 func convertIcaoToIso(icao string) (string, error) {
 	icao = strings.ToUpper(strings.TrimSpace(icao))

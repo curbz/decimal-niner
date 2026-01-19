@@ -21,3 +21,4 @@ atc:
       voice_directory:    "/home/dmorris/piper-voices"
 trafficglobal:
   bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Global_Airlines.bgl"
+  #bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Sample.bgl"

@@ -55,6 +55,7 @@ var sessionVoices = make(map[string]string)
 var sessionMutex sync.Mutex
 
 var countryVoicePools map[string][]string
+var regionVoicePools map[string][]string
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -132,8 +133,10 @@ func loadPhrases(cfg *config) PhraseClasses {
 }
 
 func createVoicePools(path string) error {
+
 	// Initialize the map
 	countryVoicePools = make(map[string][]string)
+	regionVoicePools = make(map[string][]string)
 
 	files, err := os.ReadDir(path)
 	if err != nil {
@@ -167,6 +170,15 @@ func createVoicePools(path string) error {
 		log.Fatalf("no voice files found in folder %s", path)
 	}
 
+	// create region voice pools
+	for k,v := range icaoToIsoMap {
+		cvp, cvpfound := countryVoicePools[v]
+		if !cvpfound {
+			continue
+		}
+		regionCode := k[:1]
+		regionVoicePools[regionCode] = append(regionVoicePools[regionCode], cvp...)
+	}
 	return nil
 }
 
@@ -368,15 +380,22 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 			//no country found - pick a random country
 			rKey := util.PickRandomFromMap(icaoToIsoMap).(string)
 			isoCountry = icaoToIsoMap[rKey]
-			log.Printf("country code %s not found, %s selected at random", msg.CountryCode, isoCountry)
+			log.Printf("icao country code %s not found, %s iso country code selected at random for voice", msg.CountryCode, isoCountry)
 		}
 		var found bool
 		pool, found = countryVoicePools[isoCountry]
 		if !found {
-			// no pool found for country, pick random pool
-			rKey := util.PickRandomFromMap(countryVoicePools).(string)
-			pool = countryVoicePools[rKey]
-			log.Printf("no voice pool found for country %s, selected %s at random", isoCountry, rKey)
+			// no country voice pool found, pick from region pool
+			regionCode := msg.CountryCode[:1]
+			pool, found = regionVoicePools[regionCode]
+			if !found {
+				// no pool found for region, pick random pool
+				rKey := util.PickRandomFromMap(countryVoicePools).(string)
+				pool = countryVoicePools[rKey]
+				log.Printf("no voice pool found for icao region %s, selected iso country %s at random for voice", regionCode, rKey)
+			} else {
+				log.Printf("no voice pool found for country code %s not found, %s selected at icoa region pool %s for voice", isoCountry, regionCode)
+			}
 		}
 
 		rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
