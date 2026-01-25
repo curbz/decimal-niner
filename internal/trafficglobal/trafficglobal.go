@@ -1,13 +1,13 @@
 package trafficglobal
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"log"
 	"os"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -31,7 +31,20 @@ const (
 	Holding				// Holding, waiting for a flow to complete changing.
 )
 
-var days = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+// ScheduledFlight is the requested output struct for each parsed leg.
+type ScheduledFlight struct {
+    AircraftRegistration string
+    Number               int
+    IcaoOrigin           string
+    IcaoDest             string
+    DepartureDayOfWeek   int
+    DepatureHour         int
+    DepartureMin         int
+    ArrivalDayOfWeek     int
+    ArrivalHour          int
+    ArrivalMin           int
+    CruiseAlt            int
+}
 
 func (fp FlightPhase) String() string {
 	return [...]string{
@@ -56,19 +69,6 @@ func (fp FlightPhase) Index() int {
 	return int(fp)
 }
 
-type ScheduledFlight struct {
-	AircraftRegistration string
-	Number int
-	IcaoOrigin string
-	IcaoDest string
-	DayOfWeek int
-	DepatureHour int
-	DepartureMin int
-	ArrivalHour int
-	ArrivalMin int
-	CruiseAlt int
-}
-
 type config struct {
 	TG struct {
 		BGLFile string          `yaml:"bgl_file"`
@@ -90,111 +90,366 @@ func LoadConfig(cfgPath string) *config {
 //TODO: pass in current sim time and only load flights that are either in progress
 // or due to depart within 12 hours
 func BGLReader(filePath string) map[string]ScheduledFlight {
-	
-	fScheds := make(map[string]ScheduledFlight)
 
-    file, err := os.Open(filePath)
-    if err != nil {
-        log.Fatalf("Fatal: %v\n", err)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatalf("error reading bgl file: %v\n", err)
+	}
+
+	legs := collectAllLegsSequential(data)
+    if len(legs) == 0 {
+        log.Fatalf("no legs extracted from bgl file %s", filePath)
     }
-    defer file.Close()
+	log.Printf("total legs extracted from bgl file: %d\n", len(legs))
 
-    buffer := make([]byte, 1024*1024)
+	//TODO: store an array in the map to handle multiple legs with same key
+	schedules := make(map[string]ScheduledFlight)
+	for _, l := range legs {
+		key := fmt.Sprintf("%s_%d_%d_%d", l.AircraftRegistration,l.Number,l.DepartureDayOfWeek,l.ArrivalDayOfWeek)
+		schedules[key] = l
+	}
 
-    cnt := 0
-    for {
-        n, err := file.Read(buffer)
-        if n == 0 {
-            break
-        }
+	log.Printf("total schedules found: %d\n", len(schedules))
+	return schedules
+}
 
-        for i := 0; i < n-20; i++ {
-            if isICAO(buffer[i : i+4]) {
-                icao1 := string(buffer[i : i+4])
+const (
+    LEG_SIZE    = 16
+    ICAO_OFFSET = 9
+    ICAO_LEN    = 4
+    FL_OFFSET   = 13
 
-                for j := i + 5; j < i+30 && j+4 < n; j++ {
-                    if isICAO(buffer[j : j+4]) {
-                        icao2 := string(buffer[j : j+4])
+    ALIGN_SEARCH_MAX      = 128 // increased to be more tolerant
+    INVALID_LEG_TOLERANCE = 2
+)
 
-                        if icao1 != icao2 {
-                            // Step 1: Extract Aircraft and Flight Number
-                            var reg string
-                            var flightNum uint16
-                            if i >= 50 {
-                                reg, flightNum = parseFlightHeader(buffer[i-50 : i])
-                            }
+var (
+    icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 
-                            if reg != "" {
-                                // Step 2: Extract Time Metadata and Flight Parameters
-                                // After the second ICAO: departure time (2 bytes)
-                                if j+13 < n {
-                                    depTime := binary.LittleEndian.Uint16(buffer[j+4 : j+6])
-									depDay, depHr, depMin := decodeTime(depTime)
-									
-									if depDay < 7 { 
-                                        fmt.Printf("[%s] Flt# %-5d | %s -> %s | Departs: %s %02d:%02d\n",
-                                            reg, flightNum, icao1, icao2, days[depDay], depHr, depMin)
+    // runtime knobs (set via flags)
+    TIMEZONE_OFFSET_MINUTES = 0
+    WEEK_ROTATION           = 0
 
-                                            fScheds[strconv.Itoa(int(flightNum)) + "_" + reg] = ScheduledFlight{
-											AircraftRegistration: reg,
-											Number: int(flightNum),
-											IcaoOrigin: icao1, 
-											IcaoDest: icao2,
-											DayOfWeek: depDay,
-											DepatureHour: depHr,
-											DepartureMin: depMin,
-										}
-                                    }
+    FLAG_BASE     int
+    FLAG_MAX_DIFF int
+    FLAG_MAX_FL   int
+    FLAG_NO_NORM  bool
+)
 
-                                    i = j + 3
-                                    cnt++
-                                    break
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if err == io.EOF {
-            break
-        }
+
+// ----------------- helpers -----------------
+
+func isRegCharUpper(b byte) bool {
+    if (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' {
+        return true
     }
-
-	log.Printf("Loaded %d Traffic Global flight schedules", len(fScheds))
-
-	return fScheds
+    return false
 }
 
 func isICAO(b []byte) bool {
-    for _, v := range b {
-        if v < 'A' || v > 'Z' {
+    if len(b) < 4 {
+        return false
+    }
+    for i := 0; i < 4; i++ {
+        if b[i] < 'A' || b[i] > 'Z' {
             return false
         }
     }
     return true
 }
 
-func parseFlightHeader(b []byte) (string, uint16) {
-    idx := bytes.IndexByte(b, '-')
-    if idx != -1 && idx >= 2  { //&& idx <= len(b) { //-6 {
-        regBytes := b[idx-2 : idx+5]  // idx+4]
-
-        reg := string(regBytes)
-
-        // The 2 bytes following the registration are usually the Flight Number
-        flightNum := binary.LittleEndian.Uint16(b[idx+len(reg) : idx+len(reg)+2])
-
-        return reg, flightNum
+func decodeBGLTime24(b1, b2, b3 byte) (int, string) {
+    val := int64(uint32(b1) | uint32(b2)<<8 | uint32(b3)<<16)
+    // 1664.4 == 8322 / 5  -> val / 1664.4 == val * 5 / 8322
+    num := val * 5
+    denom := int64(8322)
+    totalMinutes := int((num + denom/2) / denom) // rounded
+    day := totalMinutes / 1440
+    minsOfDay := totalMinutes % 1440
+    if minsOfDay < 0 {
+        minsOfDay += 1440
     }
-    return "", 0
+    h := minsOfDay / 60
+    m := minsOfDay % 60
+    return day, fmt.Sprintf("%02d:%02d:00", h, m)
 }
 
-func decodeTime(t uint16) (int, int, int) {
-    // Standard FSX/TrafficGlobal Weekly Minutes
-    d := int(t / 1440)
-    h := int((t % 1440) / 60)
-    m := int(t % 60)
-    return d, h, m
+func decodeTime3(b []byte) (string, bool) {
+    if len(b) < 3 {
+        return "", false
+    }
+    h, m, s := int(b[0]), int(b[1]), int(b[2])
+    if h >= 0 && h < 24 && m >= 0 && m < 60 && s >= 0 && s < 60 {
+        return fmt.Sprintf("%02d:%02d:%02d", h, m, s), true
+    }
+    return "", false
+}
+
+func tryFlightNum(block []byte) (int, string, int) {
+    // returns (number int, rawHex string, rawVal int)
+    if len(block) >= 16 {
+        val := int(block[14]) | int(block[15])<<8
+        rawHex := fmt.Sprintf("%02X%02X", block[15], block[14])
+        if val > 0 {
+            printed := val / 4
+            if printed > 0 && printed < 100000 {
+                return printed, rawHex, val
+            }
+        }
+        if len(block) > 1 {
+            fn := int(block[1])
+            if fn > 0 && fn < 100000 {
+                return fn, rawHex, val
+            }
+        }
+        return 0, rawHex, val
+    }
+    if len(block) > 1 {
+        fn := int(block[1])
+        if fn > 0 && fn < 100000 {
+            return fn, "----", 0
+        }
+    }
+    return 0, "----", 0
+}
+
+func validateLeg(block []byte) bool {
+    if ICAO_OFFSET+ICAO_LEN > len(block) {
+        return false
+    }
+    cand := block[ICAO_OFFSET : ICAO_OFFSET+ICAO_LEN]
+    if !isPrintableASCII(cand) || !icaoRe.Match(cand) {
+        return false
+    }
+    if _, ok := decodeTime3(block[2:5]); ok {
+        return true
+    }
+    if _, ok := decodeTime3(block[6:9]); ok {
+        return true
+    }
+    // accept if ICAO valid even if times not strictly valid
+    return true
+}
+
+func isPrintableASCII(b []byte) bool {
+    for _, c := range b {
+        if c < 0x20 || c > 0x7E {
+            return false
+        }
+    }
+    return true
+}
+
+// decodeFlightLevel implements the user's strict rule:
+// If primary <= FLAG_MAX_DIFF then FL = FLAG_BASE + primary,
+// otherwise FL = primary unchanged.
+func decodeFlightLevel(block []byte) int {
+    if len(block) <= FL_OFFSET {
+        if len(block) > FL_OFFSET {
+            return int(block[FL_OFFSET])
+        }
+        return 0
+    }
+    primary := int(block[FL_OFFSET])
+    if primary >= 0 && primary <= FLAG_MAX_DIFF {
+        return FLAG_BASE + primary
+    }
+    return primary
+}
+
+// ----------------- sequential collection -----------------
+
+// helper: detect if a registration starts at pos (quick check)
+func looksLikeRegistrationAt(data []byte, pos int) bool {
+    n := len(data)
+    if pos >= n {
+        return false
+    }
+    // must start with reg char
+    if !isRegCharUpper(data[pos]) {
+        return false
+    }
+    // find end within 1..8 chars
+    j := pos
+    for j < n && isRegCharUpper(data[j]) {
+        j++
+    }
+    if j == pos || j-pos > 8 || j-pos < 2 {
+        return false
+    }
+    // terminator must be NUL or space
+    if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
+        return false
+    }
+    // quick ICAO sanity at expected offset
+    firstICAOOffset := 18
+    icaoPos := pos + firstICAOOffset
+    if icaoPos+ICAO_LEN >= n {
+        return false
+    }
+    if !isICAO(data[icaoPos : icaoPos+ICAO_LEN]) {
+        return false
+    }
+    return true
+}
+
+// collectAllLegsSequential scans the file sequentially. When it finds a registration
+// it attempts to align to the first leg within ALIGN_SEARCH_MAX bytes and then
+// parses contiguous 16-byte legs until INVALID_LEG_TOLERANCE consecutive invalid legs
+// or until another registration is encountered.
+func collectAllLegsSequential(data []byte) []ScheduledFlight {
+    const firstICAOOffset = 18
+    n := len(data)
+    var out []ScheduledFlight
+
+    i := 0
+    for i < n {
+        // look for registration start
+        if !isRegCharUpper(data[i]) {
+            i++
+            continue
+        }
+        // parse registration
+        j := i
+        for j < n && isRegCharUpper(data[j]) {
+            j++
+        }
+        // must be reasonable length
+        if j == i || j-i > 8 || j-i < 2 {
+            i = j
+            continue
+        }
+        // terminator must be NUL or space
+        if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
+            i = j
+            continue
+        }
+        regStr := string(data[i:j])
+        // validate that an ICAO exists at expected offset (quick sanity)
+        icao1Pos := i + firstICAOOffset
+        if icao1Pos+ICAO_LEN >= n || !isICAO(data[icao1Pos:icao1Pos+ICAO_LEN]) {
+            // not a registration block we understand; skip ahead
+            i = j
+            continue
+        }
+
+        // attempt to find alignment for first leg starting at regEnd + shift
+        regEnd := j
+        foundAlign := -1
+        for shift := 0; shift <= ALIGN_SEARCH_MAX && regEnd+shift+LEG_SIZE <= n; shift++ {
+            block := data[regEnd+shift : regEnd+shift+LEG_SIZE]
+            if validateLeg(block) {
+                foundAlign = regEnd + shift
+                break
+            }
+        }
+        if foundAlign == -1 {
+            // no leg block found nearby; continue scanning after registration
+            i = j
+            continue
+        }
+
+        // parse contiguous legs
+        cursor := foundAlign
+        invalidCount := 0
+        var blockLegs []ScheduledFlight
+        for cursor+LEG_SIZE <= n {
+            // if a new registration starts here, stop parsing legs so outer loop can handle it
+            if looksLikeRegistrationAt(data, cursor) {
+                break
+            }
+
+            block := data[cursor : cursor+LEG_SIZE]
+            if !validateLeg(block) {
+                invalidCount++
+                if invalidCount >= INVALID_LEG_TOLERANCE {
+                    break
+                }
+                cursor += LEG_SIZE
+                continue
+            }
+            invalidCount = 0
+
+            // extract fields
+            icaoDest := string(block[ICAO_OFFSET : ICAO_OFFSET+ICAO_LEN])
+            fn, _, _ := tryFlightNum(block)
+            // departure bytes 1..3
+            dd, dt := decodeBGLTime24(block[1], block[2], block[3])
+            // arrival bytes 5..7
+            ad, at := decodeBGLTime24(block[5], block[6], block[7])
+
+            // parse hours/mins from dt and at ("HH:MM:00")
+            depHour, depMin := 0, 0
+            arrHour, arrMin := 0, 0
+            if len(dt) >= 5 {
+                parts := strings.Split(dt, ":")
+                if len(parts) >= 2 {
+                    depHour, _ = strconv.Atoi(parts[0])
+                    depMin, _ = strconv.Atoi(parts[1])
+                }
+            }
+            if len(at) >= 5 {
+                parts := strings.Split(at, ":")
+                if len(parts) >= 2 {
+                    arrHour, _ = strconv.Atoi(parts[0])
+                    arrMin, _ = strconv.Atoi(parts[1])
+                }
+            }
+
+            cruise := decodeFlightLevel(block)
+
+            sf := ScheduledFlight{
+                AircraftRegistration: regStr,
+                Number:               fn,
+                IcaoOrigin:           "", // will set later (previous leg's dest)
+                IcaoDest:             icaoDest,
+                DepartureDayOfWeek:   dd,
+                DepatureHour:         depHour,
+                DepartureMin:         depMin,
+                ArrivalDayOfWeek:     ad,
+                ArrivalHour:          arrHour,
+                ArrivalMin:           arrMin,
+                CruiseAlt:            cruise,
+            }
+            blockLegs = append(blockLegs, sf)
+            cursor += LEG_SIZE
+        }
+
+        // if we collected legs, set IcaoOrigin for each leg as previous leg's dest,
+        // and for the first leg set origin to last leg's dest (wrap-around) as requested.
+        if len(blockLegs) > 0 {
+            // set previous dest as origin
+            for k := 1; k < len(blockLegs); k++ {
+                blockLegs[k].IcaoOrigin = blockLegs[k-1].IcaoDest
+            }
+            // first leg origin = last leg dest
+            blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
+
+            // append to global out
+            for _, s := range blockLegs {
+                out = append(out, s)
+            }
+        }
+
+        // advance i to just after the registration string (regEnd+1) so we don't skip
+        // any registrations that may start inside or immediately after the parsed block.
+        i = regEnd + 1
+    }
+
+    // sort output by registration then departure day then departure time for deterministic CSV
+    sort.Slice(out, func(a, b int) bool {
+        if out[a].AircraftRegistration != out[b].AircraftRegistration {
+            return out[a].AircraftRegistration < out[b].AircraftRegistration
+        }
+        if out[a].DepartureDayOfWeek != out[b].DepartureDayOfWeek {
+            return out[a].DepartureDayOfWeek < out[b].DepartureDayOfWeek
+        }
+        if out[a].DepatureHour != out[b].DepatureHour {
+            return out[a].DepatureHour < out[b].DepatureHour
+        }
+        return out[a].DepartureMin < out[b].DepartureMin
+    })
+
+    return out
 }
 

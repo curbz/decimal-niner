@@ -394,7 +394,7 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 				pool = countryVoicePools[rKey]
 				log.Printf("no voice pool found for icao region %s, selected iso country %s at random for voice", regionCode, rKey)
 			} else {
-				log.Printf("no voice pool found for country code %s not found, %s selected at icoa region pool %s for voice", isoCountry, regionCode)
+				log.Printf("no voice pool found for country code %s not found, selected icoa region pool %s for voice", isoCountry, regionCode)
 			}
 		}
 

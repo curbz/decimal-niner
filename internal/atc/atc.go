@@ -117,12 +117,12 @@ func (s *Service) NotifyAircraftChange(ac Aircraft) {
 		aiFac := s.LocateController(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
-			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, "")
 
 		// Fallback: If no Tower/Ground found, look for Unicom (Role 0)
 		if aiFac == nil {
 			aiFac = s.LocateController("AI_FALLBACK", 0, 0,
-				ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+				ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, "")
 		}
 
 		if aiFac == nil {
@@ -194,6 +194,7 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 			uFreq,                // Search by freq
 			tunedFacilities[idx], // role
 			pos.Lat, pos.Long, pos.Altitude,
+			"",
 		)
 
 		if controller != nil {
@@ -207,7 +208,7 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 	}
 }
 
-func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64) *Controller {
+func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
 	var bestMatch *Controller
 	closestDist := math.MaxFloat64
 	smallestArea := math.MaxFloat64
@@ -216,6 +217,12 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 	for i := range s.Database {
 		c := &s.Database[i]
+
+		// If we are looking for a specific airport (Origin/Destination), 
+        // we skip any controller that isn't tied to that ICAO.
+        if targetICAO != "" && c.ICAO != targetICAO {
+            continue
+        }
 
 		// Short-circuit 1: Role
 		if tRole > 0 && c.RoleID != tRole {

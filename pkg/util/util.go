@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
@@ -90,6 +91,8 @@ func LoadConfig[T any](filepath string) (*T, error) {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
+	log.Printf("Configuration loaded from %s", filepath)
+
 	return &config, nil
 }
 
@@ -113,4 +116,29 @@ func PickRandomFromMap[K comparable, V any](m map[K]V) (randomKey any) {
 
 	return randomKey
 }
+
+func ParseHour(timeStr string) int {
+
+	if len(timeStr) < 2 {
+		return 0
+	}
+	hourStr := timeStr[:2]
+	hour, err := strconv.Atoi(hourStr)
+	if err != nil {
+		return 0
+	}
+	return hour
+}
+
+func ParseMinute(timeStr string) int {
+	if len(timeStr) < 4 {
+		return 0
+	}
+	minuteStr := timeStr[2:4]
+	minute, err := strconv.Atoi(minuteStr)
+	if err != nil {
+		return 0
+	}
+	return minute
+}	
 
