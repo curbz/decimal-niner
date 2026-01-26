@@ -264,12 +264,15 @@ func decodeFlightLevel(block []byte) int {
     return primary
 }
 
-// ----------------- sequential collection -----------------
-
 // helper: detect if a registration starts at pos (quick check)
+// Now requires the registration to be preceded by 0x00 and rejects 0x07 prefix (ICAO).
 func looksLikeRegistrationAt(data []byte, pos int) bool {
     n := len(data)
-    if pos >= n {
+    if pos <= 0 || pos >= n {
+        return false
+    }
+    // registration must be preceded by 0x00 (not 0x07 which marks ICAO)
+    if data[pos-1] != 0x00 {
         return false
     }
     // must start with reg char
@@ -300,6 +303,7 @@ func looksLikeRegistrationAt(data []byte, pos int) bool {
     return true
 }
 
+
 // collectAllLegsSequential scans the file sequentially. When it finds a registration
 // it attempts to align to the first leg within ALIGN_SEARCH_MAX bytes and then
 // parses contiguous 16-byte legs until INVALID_LEG_TOLERANCE consecutive invalid legs
@@ -311,11 +315,11 @@ func collectAllLegsSequential(data []byte) []ScheduledFlight {
 
     i := 0
     for i < n {
-        // look for registration start
-        if !isRegCharUpper(data[i]) {
-            i++
-            continue
-        }
+		// look for registration start: must be reg char and preceded by 0x00
+		if !isRegCharUpper(data[i]) || i == 0 || data[i-1] != 0x00 {
+			i++
+			continue
+		}
         // parse registration
         j := i
         for j < n && isRegCharUpper(data[j]) {
