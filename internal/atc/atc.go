@@ -45,7 +45,7 @@ type config struct {
 	} `yaml:"atc"`
 }
 
-func New(cfgPath string, fScheds map[string]trafficglobal.ScheduledFlight) *Service {
+func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Service {
 
 	log.Println("Starting ATC service - loading all configurations")
 

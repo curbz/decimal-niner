@@ -16,7 +16,7 @@ func init() {
 
 func TestPerformSearch(t *testing.T) {
 
-	atcService := New("config.yaml", make(map[string]trafficglobal.ScheduledFlight))
+	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight))
 
 	tests := []struct {
 		label string

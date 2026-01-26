@@ -89,7 +89,9 @@ func LoadConfig(cfgPath string) *config {
 
 //TODO: pass in current sim time and only load flights that are either in progress
 // or due to depart within 12 hours
-func BGLReader(filePath string) map[string]ScheduledFlight {
+func BGLReader(filePath string) map[string][]ScheduledFlight {
+
+	log.Printf("Loading Traffic Global BGL file: %s\n", filePath)
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -102,14 +104,19 @@ func BGLReader(filePath string) map[string]ScheduledFlight {
     }
 	log.Printf("total legs extracted from bgl file: %d\n", len(legs))
 
-	//TODO: store an array in the map to handle multiple legs with same key
-	schedules := make(map[string]ScheduledFlight)
+	schedules := make(map[string][]ScheduledFlight)
 	for _, l := range legs {
 		key := fmt.Sprintf("%s_%d_%d_%d", l.AircraftRegistration,l.Number,l.DepartureDayOfWeek,l.ArrivalDayOfWeek)
-		schedules[key] = l
+		existingLegs, found := schedules[key]
+		if found {
+			schedules[key] = append(existingLegs, l)
+			continue
+		} else {
+			schedules[key] = []ScheduledFlight{l}
+		}
+
 	}
 
-	log.Printf("total schedules found: %d\n", len(schedules))
 	return schedules
 }
 
