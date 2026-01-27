@@ -22,7 +22,7 @@ type Service struct {
 	PhraseClasses 	PhraseClasses
 	UserState     	UserState
 	Airlines 	  	map[string]AirlineInfo
-	FlightSchedules map[int]trafficglobal.ScheduledFlight
+	FlightSchedules map[string][]trafficglobal.ScheduledFlight
 }
 
 type ServiceInterface interface {
@@ -95,6 +95,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 		Database: db,
 		PhraseClasses: phraseClasses,
 		Airlines: airlinesData,
+		FlightSchedules: fScheds,
 	}
 }
 
@@ -296,4 +297,76 @@ func (s *Service) getAITargetRole(phase int) int {
 		// If we don't know, Ground is the safest place for a radio to be tuned
 		return 2
 	}
+}
+
+func (s *Service) addFlightPlan(ac *Aircraft, simTime time.Time) {
+
+	simTodayDayOfWeek := util.GetISOWeekday(simTime)
+	simYesterdayDayOfWeek := (simTodayDayOfWeek + 6) % 7
+	simMinsSinceMidnight := simTime.Hour() * 60 + simTime.Minute()
+
+	candidateScheds := make([]trafficglobal.ScheduledFlight, 0)
+
+	adjDep := 0
+	adjArr := 0
+	
+	for cnt := 0 ; cnt < 2; cnt++ {
+
+		// get all scheds for yesterday and filter. For yesterday's departures, active
+		// flights are those where the arrival day of week is today and arrival time is greater 
+		// or eqaul to the current time
+		key := fmt.Sprintf("%s_%d_%d", ac.Registration, ac.Flight.Number, simYesterdayDayOfWeek)
+		scheds, found := s.FlightSchedules[key]
+		if found {
+			for _, f := range scheds {
+				schedArrMinsSinceMidnight := f.ArrivalHour * 60 + f.ArrivalMin + adjArr
+				if f.ArrivalDayOfWeek == simTodayDayOfWeek && schedArrMinsSinceMidnight >= simMinsSinceMidnight {
+					candidateScheds = append(candidateScheds, f)
+				}
+			}
+		}
+
+		// get all scheds for today and filter. For today's departures, active
+		// flights are those where the current time is between the departure time
+		// and arrival time
+		key = fmt.Sprintf("%s_%d_%d", ac.Registration, ac.Flight.Number, simTodayDayOfWeek)
+		scheds, found = s.FlightSchedules[key]
+		if found {
+			for _, f := range scheds {
+				schedDepMinsSinceMidnight := f.DepatureHour * 60 + f.DepartureMin + adjDep
+				schedArrMinsSinceMidnight := f.ArrivalHour * 60 + f.ArrivalMin + adjArr
+				if simMinsSinceMidnight >= schedDepMinsSinceMidnight && simMinsSinceMidnight <= schedArrMinsSinceMidnight {
+					candidateScheds = append(candidateScheds, f)
+				}
+			}
+		}
+
+		if len(candidateScheds) > 0 {
+			break
+		}
+
+		adjDep = -20
+		adjArr = 20
+	}
+
+	if len(candidateScheds) == 0 {
+		log.Printf("no active flight plan found for registration %s flight number %d days %d and %d", 
+			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
+		return
+	}
+
+	// there should only be one flight in the candidates, but capturing instances where
+	// there is multiple for debugging
+	if len(candidateScheds) > 1 {
+		log.Printf("multiple active flight plans found for registration %s flight number %d days %d and %d", 
+			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
+		for i, c := range candidateScheds {
+			log.Printf("duplicate active flight %d/%d: %v", i+1, len(candidateScheds), c)
+		}
+	}
+
+	// use first candidate
+	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
+	ac.Flight.Destination = candidateScheds[0].IcaoDest
+
 }

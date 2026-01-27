@@ -106,7 +106,7 @@ func BGLReader(filePath string) map[string][]ScheduledFlight {
 
 	schedules := make(map[string][]ScheduledFlight)
 	for _, l := range legs {
-		key := fmt.Sprintf("%s_%d_%d_%d", l.AircraftRegistration,l.Number,l.DepartureDayOfWeek,l.ArrivalDayOfWeek)
+		key := fmt.Sprintf("%s_%d_%d", l.AircraftRegistration,l.Number,l.DepartureDayOfWeek)
 		existingLegs, found := schedules[key]
 		if found {
 			schedules[key] = append(existingLegs, l)

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
@@ -142,3 +143,7 @@ func ParseMinute(timeStr string) int {
 	return minute
 }	
 
+// GetISOWeekday returns an int where Monday=0...Sunday=6
+func GetISOWeekday(t time.Time) int {
+	return (int(t.Weekday()) + 6) % 7
+}
