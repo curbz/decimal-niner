@@ -115,12 +115,34 @@ func (s *Service) NotifyAircraftChange(ac Aircraft) {
 	}
 
 	go func() {
+
+		var searchICAO string
+
+		switch ac.Flight.Phase.Current {
+		// Phase 1: Departure context
+		case trafficglobal.Parked.Index(), trafficglobal.Startup.Index(), trafficglobal.TaxiOut.Index(), 
+				trafficglobal.Depart.Index(), trafficglobal.Climbout.Index():
+			searchICAO = ac.Flight.Origin
+
+		// Phase 2: No specific airport context (Transition to Cruise)
+		case trafficglobal.Cruise.Index():
+			searchICAO = "" // This forces the coordinate/polygon distance search
+
+		// Phase 3: Arrival context
+		case trafficglobal.Approach.Index(), trafficglobal.Final.Index(), trafficglobal.Braking.Index(),
+		 		trafficglobal.TaxiIn.Index(), trafficglobal.Shutdown.Index(), trafficglobal.GoAround.Index():
+			searchICAO = ac.Flight.Destination
+
+		default:
+			searchICAO = ""
+		}
+
 		// Identify AI's intended facility
 		aiRole := s.getAITargetRole(ac.Flight.Phase.Current)
 		aiFac := s.LocateController(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
-			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, "")
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, searchICAO)
 
 		// Fallback: If no Tower/Ground found, look for Unicom (Role 0)
 		if aiFac == nil {
@@ -216,7 +238,8 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	closestDist := math.MaxFloat64
 	smallestArea := math.MaxFloat64
 
-	log.Printf("Searching for %s at %f, %f elev %f. Target Role: %d  Freq: %d", label, uLa, uLo, uAl, tRole, tFreq)
+	log.Printf("Searching for %s at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s", 
+					label, uLa, uLo, uAl, tRole, tFreq, targetICAO)
 
 	for i := range s.Database {
 		c := &s.Database[i]
@@ -227,12 +250,12 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
             continue
         }
 
-		// Short-circuit 1: Role
+		// Short-circuit on role
 		if tRole > 0 && c.RoleID != tRole {
 			continue
 		}
 
-		// Short-circuit 2: Freq
+		// Short-circuit on freq
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {

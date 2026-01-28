@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -30,6 +29,18 @@ const (
 	Braking				// Short period from touchdown to when fast-taxi speed is reached.
 	Holding				// Holding, waiting for a flow to complete changing.
 )
+
+const (
+    LEG_SIZE    = 16
+    ICAO_OFFSET = 9
+    ICAO_LEN    = 4
+    FL_OFFSET   = 13
+
+    ALIGN_SEARCH_MAX      = 128 
+    INVALID_LEG_TOLERANCE = 2
+)
+
+var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 
 // ScheduledFlight is the requested output struct for each parsed leg.
 type ScheduledFlight struct {
@@ -119,32 +130,6 @@ func BGLReader(filePath string) map[string][]ScheduledFlight {
 
 	return schedules
 }
-
-const (
-    LEG_SIZE    = 16
-    ICAO_OFFSET = 9
-    ICAO_LEN    = 4
-    FL_OFFSET   = 13
-
-    ALIGN_SEARCH_MAX      = 128 // increased to be more tolerant
-    INVALID_LEG_TOLERANCE = 2
-)
-
-var (
-    icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
-
-    // runtime knobs (set via flags)
-    TIMEZONE_OFFSET_MINUTES = 0
-    WEEK_ROTATION           = 0
-
-    FLAG_BASE     int
-    FLAG_MAX_DIFF int
-    FLAG_MAX_FL   int
-    FLAG_NO_NORM  bool
-)
-
-
-// ----------------- helpers -----------------
 
 func isRegCharUpper(b byte) bool {
     if (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' {
@@ -247,9 +232,7 @@ func isPrintableASCII(b []byte) bool {
     return true
 }
 
-// decodeFlightLevel implements the user's strict rule:
-// If primary <= FLAG_MAX_DIFF then FL = FLAG_BASE + primary,
-// otherwise FL = primary unchanged.
+// decodeFlightLevel decodes the flight level
 func decodeFlightLevel(block []byte) int {
     if len(block) <= FL_OFFSET {
         if len(block) > FL_OFFSET {
@@ -258,14 +241,14 @@ func decodeFlightLevel(block []byte) int {
         return 0
     }
     primary := int(block[FL_OFFSET])
-    if primary >= 0 && primary <= FLAG_MAX_DIFF {
-        return FLAG_BASE + primary
+    if primary >= 0 && primary <= 128 {
+        return 255 + primary
     }
     return primary
 }
 
-// helper: detect if a registration starts at pos (quick check)
-// Now requires the registration to be preceded by 0x00 and rejects 0x07 prefix (ICAO).
+// looksLikeRegistrationAt detect if a registration starts at pos 
+// requires the registration to be preceded by 0x00 and rejects 0x07 prefix (ICAO).
 func looksLikeRegistrationAt(data []byte, pos int) bool {
     n := len(data)
     if pos <= 0 || pos >= n {
@@ -446,20 +429,6 @@ func collectAllLegsSequential(data []byte) []ScheduledFlight {
         // any registrations that may start inside or immediately after the parsed block.
         i = regEnd + 1
     }
-
-    // sort output by registration then departure day then departure time for deterministic CSV
-    sort.Slice(out, func(a, b int) bool {
-        if out[a].AircraftRegistration != out[b].AircraftRegistration {
-            return out[a].AircraftRegistration < out[b].AircraftRegistration
-        }
-        if out[a].DepartureDayOfWeek != out[b].DepartureDayOfWeek {
-            return out[a].DepartureDayOfWeek < out[b].DepartureDayOfWeek
-        }
-        if out[a].DepatureHour != out[b].DepatureHour {
-            return out[a].DepatureHour < out[b].DepatureHour
-        }
-        return out[a].DepartureMin < out[b].DepartureMin
-    })
 
     return out
 }
