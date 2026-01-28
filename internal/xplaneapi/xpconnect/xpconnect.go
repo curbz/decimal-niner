@@ -104,10 +104,6 @@ var datarefs = []xpapimodel.Dataref{
 	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	//{Name: "trafficglobal/ai/source_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-	//{Name: "trafficglobal/ai/dest_icao", // Binary array of zero-terminated char strings, and int array of XPLMNavRef <-- only returns int array [16803074,16803074,16803074]
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
 	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
@@ -119,14 +115,6 @@ var datarefs = []xpapimodel.Dataref{
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
 	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
-
-	// If the AI is taxying, this will contain the comma-separated list of taxi edge names. Consecutive duplicates and blanks are removed.
-	//{Name: "trafficglobal/ai/taxi_route", // <-- "" (no aircraft was taxiing at time of query)
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "string_array"},
-
-	// Structured data containing details of all nearby airport flows - ICAO code, active and pending flows, active runways.
-	//{Name: "trafficglobal/airport_flows", // <-- decoding resulted in special character - raw data for LGIR airport flows: "CwAGAA=="
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "?"},
 }
 
 func (xpc *XPConnect) Start() {
@@ -468,6 +456,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft, exists := xpc.aircraftMap[tailNumber]
 		newAircraft := !exists
 		if newAircraft {
+			// set flight phase to unknown initially
 			fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
 			aircraft = &atc.Aircraft{
 				Registration: tailNumber,
@@ -490,8 +479,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft.Flight.Phase.Current = updatedFlightPhase
 		}
 
-		// --- UPDATE POSITION DATA ---
-		// We use the 'index' from the loop to pull the correct element from the AI arrays
+		// Update position
 		lat := xpc.getDataRefValue("trafficglobal/ai/position_lat", index)
 		lon := xpc.getDataRefValue("trafficglobal/ai/position_long", index)
 		alt := xpc.getDataRefValue("trafficglobal/ai/position_elev", index)
@@ -506,24 +494,34 @@ func (xpc *XPConnect) updateAircraftData() {
 			}
 		}
 
+		// get flight number
+		previousFlightNum := aircraft.Flight.Number
+		flightNum := 0
+		if index < len(flightNums) {
+			flightNum = flightNums[index]
+		}
+		aircraft.Flight.Number = flightNum
+
+		// Add flight plan - only need to do this when adding as a new aircraft or  if flight number has changed
+		if newAircraft || (!newAircraft && previousFlightNum != flightNum) {
+			// TODO: change time to simulator time
+			simTime := time.Date(2026, time.January, 16, 11, 0, 0, 0,time.UTC)  // Friday, 16th Jan 2026 11am zulu
+			xpc.atcService.AddFlightPlan(aircraft, simTime)	
+		}
+
+		// update airline code
 		airlineCode := "unknown"
 		if index < len(airlineCodes) {
 			airlineCode = airlineCodes[index]
 		}
+
 		// lookup callsign for airline code, default to airline code value if not found in map
 		callsign := airlineCode
 		airlineInfo := xpc.atcService.GetAirline(airlineCode)
 		if airlineInfo != nil {
 			callsign = airlineInfo.Callsign
 		}
-
-		// get flight number
-		flightNum := 0
-		if index < len(flightNums) {
-			flightNum = flightNums[index]
-		}
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
-		aircraft.Flight.Number = flightNum
 		aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 
 		// get parking

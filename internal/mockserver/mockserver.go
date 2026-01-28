@@ -56,15 +56,9 @@ var (
 		"trafficglobal/ai/ai_class":   "int[]",
 		"trafficglobal/ai/flight_num": "int[]",
 
-		// Some implementations return ICAO as both binary strings and ints; use binary[] for mock
-		"trafficglobal/ai/source_icao": "binary[]",
-		"trafficglobal/ai/dest_icao":   "binary[]",
-
 		"trafficglobal/ai/parking":      "binary[]",
 		"trafficglobal/ai/flight_phase": "int[]",
 		"trafficglobal/ai/runway":       "int[]",
-		"trafficglobal/ai/taxi_route":   "binary[]",
-		"trafficglobal/airport_flows":   "binary[]",
 	}
 )
 
@@ -247,14 +241,17 @@ switch name {
             51.4710 + (float64(iter)*0.001), // AC2: Taxiing toward 27R
             51.4770 + (float64(iter)*0.005), // AC3: On Final Approach
         }
+
     case "trafficglobal/ai/position_long":
         return []float64{
             -0.4870, 
             -0.4600 + (float64(iter)*0.001), 
             -0.3500 + (float64(iter)*0.005),
         }
+
     case "trafficglobal/ai/position_heading":
         return []float64{90.0, 270.0, 270.0}
+
     case "trafficglobal/ai/position_elev":
         return []float64{
             25.0,   // Ground
@@ -266,17 +263,11 @@ switch name {
         // A320, B738, A359
         s := "A320\x00B738\x00A359\x00"
         return base64.StdEncoding.EncodeToString([]byte(s))
+
     case "trafficglobal/ai/airline_code":
         s := "BAW\x00EZY\x00BAW\x00" // British Airways and EasyJet
         return base64.StdEncoding.EncodeToString([]byte(s))
     
-    case "trafficglobal/ai/source_icao":
-        s := "EGLL\x00EGLL\x00LFPG\x00" // Two departing, one arriving from Paris
-        return base64.StdEncoding.EncodeToString([]byte(s))
-    case "trafficglobal/ai/dest_icao":
-        s := "KJFK\x00EGPH\x00EGLL\x00"
-        return base64.StdEncoding.EncodeToString([]byte(s))
-
     case "trafficglobal/ai/flight_phase":
         return []int{
             7, // AC1: Parked (Startup)
@@ -287,15 +278,21 @@ switch name {
 	case "trafficglobal/ai/runway":
 		return []float64{4994866, 5388082, 5388082, 5388082}
 
-	case "trafficglobal/ai/taxi_route":
-		// empty string when no taxiing
-		s := ""
-		return base64.StdEncoding.EncodeToString([]byte(s))
+	case "trafficglobal/ai/tail_number":
+		// G-AOWK,281,EGLL,KLAX,4,10,25,4,21,45,154
+		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289
+		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309
 
-	case "trafficglobal/airport_flows":
-		// return a short binary blob encoded as base64
-		return base64.StdEncoding.EncodeToString([]byte{0x0b, 0x00, 0x01})
-	}
+		s := "G-AOWK\x00G-ARBD\x00G-BCOL\x00"
+		return base64.StdEncoding.EncodeToString([]byte(s))	
+
+	case "trafficglobal/ai/flight_num": 
+				return []int{281,343,700}		
+			
+	case "trafficglobal/ai/parking":
+		s := "GATE 22\x00GATE 5\x00RAMP 9\x00"
+		return base64.StdEncoding.EncodeToString([]byte(s))	
+	}		
 
 	// Fallback based on declared value type
 	switch vt {

@@ -31,6 +31,7 @@ type ServiceInterface interface {
 	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int) 
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
+	AddFlightPlan(ac *Aircraft, simTime time.Time)
 }
 
 // --- configuration structures ---
@@ -42,6 +43,7 @@ type config struct {
 		AirportsDataFile  string       `yaml:"airports_data_file"`
 		AirlinesFile 	  string 	   `yaml:"airlines_file"`
 		Voices            VoicesConfig `yaml:"voices"`
+		ListenAllFreqs	  bool		   `yaml:"listen_all_frequencies"`
 	} `yaml:"atc"`
 }
 
@@ -150,8 +152,8 @@ func (s *Service) NotifyAircraftChange(ac Aircraft) {
 				match = (userFac.Name == aiFac.Name)
 			}
 
-			if match {
-				log.Printf("User on same frequency as aircraft %s - sending for phrase generation", ac.Registration)
+			if match || s.Config.ATC.ListenAllFreqs {
+				log.Printf("User on same frequency as aircraft %s - sending for phrase generation (listen all frequencies is %v)", ac.Registration, s.Config.ATC.ListenAllFreqs)
 				s.Channel <- ac
 				return
 			} else {
@@ -299,7 +301,7 @@ func (s *Service) getAITargetRole(phase int) int {
 	}
 }
 
-func (s *Service) addFlightPlan(ac *Aircraft, simTime time.Time) {
+func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 	simTodayDayOfWeek := util.GetISOWeekday(simTime)
 	simYesterdayDayOfWeek := (simTodayDayOfWeek + 6) % 7
@@ -368,5 +370,8 @@ func (s *Service) addFlightPlan(ac *Aircraft, simTime time.Time) {
 	// use first candidate
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
+
+	log.Printf("reg %s flight num %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
+	log.Printf("reg %s flight num %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
 
 }

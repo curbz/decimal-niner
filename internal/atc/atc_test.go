@@ -206,7 +206,7 @@ func TestAddFlightPlan(t *testing.T) {
 				},
 			}
 
-			atcService.addFlightPlan(ac, tt.simTime)
+			atcService.AddFlightPlan(ac, tt.simTime)
 
 			if tt.expectNoMatch {
 				if ac.Flight.Origin != "" || ac.Flight.Destination != "" {

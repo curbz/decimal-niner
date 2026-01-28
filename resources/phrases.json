@@ -58,7 +58,7 @@
       "atc_responses_instructions": [
         "{CALLSIGN}, Runway {RUNWAY}, cleared for takeoff, fly runway heading, wind {WIND}.",
         "{CALLSIGN}, Runway {RUNWAY}, line up and wait.",
-        "{CALLSIGN}, behind departing traffic, line up and wait Runway {RUNWAY}.",
+        "{CALLSIGN}, behind departing traffic, line up and wait, Runway {RUNWAY}.",
         "{CALLSIGN}, IFR release at {TIME}, hold short Runway {RUNWAY}.",
         "{CALLSIGN}, fly the published departure, Runway {RUNWAY} cleared for takeoff."
       ]
