@@ -270,18 +270,18 @@ switch name {
     
     case "trafficglobal/ai/flight_phase":
         return []int{
-            7, // AC1: Parked (Startup)
-            8 + iter, // AC2: TaxiOut
-            3, // AC3: Final
+            10 + iter, 
+            1 + iter,
+            4 + iter, 
         }
 
 	case "trafficglobal/ai/runway":
 		return []float64{4994866, 5388082, 5388082, 5388082}
 
 	case "trafficglobal/ai/tail_number":
-		// G-AOWK,281,EGLL,KLAX,4,10,25,4,21,45,154
-		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289
-		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309
+		// G-AOWK,281,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
+		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
+		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
 
 		s := "G-AOWK\x00G-ARBD\x00G-BCOL\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))	

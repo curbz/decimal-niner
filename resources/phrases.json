@@ -1,13 +1,13 @@
 {
     "pre_flight_parked": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Clearance, {CALLSIGN}, at {LOCATION}, requesting IFR to {DESTINATION} with Information {ATIS_CODE}.",
         "{FACILITY} Delivery, {CALLSIGN}, IFR to {DESTINATION}, ready to copy.",
         "{FACILITY} Clearance, {CALLSIGN}, requesting IFR clearance to {DESTINATION} as filed.",
         "{FACILITY} Delivery, {CALLSIGN}, at {GATE_NUMBER}, requesting IFR to {DESTINATION}.",
         "{FACILITY} Clearance, {CALLSIGN}, IFR {DESTINATION}, ready for clearance."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, {FACILITY} Clearance, cleared to {DESTINATION} as filed, maintain initial altitude, squawk {SQUAWK}.",
         "{CALLSIGN}, {FACILITY} Clearance, standby for IFR release to {DESTINATION}, I have a flow time of {TIME}.",
         "{CALLSIGN}, {FACILITY} Delivery, cleared to {DESTINATION} as filed, fly runway heading, maintain assigned altitude, squawk {SQUAWK}.",
@@ -16,14 +16,14 @@
       ]
     },
     "startup": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Ground, {CALLSIGN}, at {GATE_NUMBER}, requesting engine start.",
         "{FACILITY} Ground, {CALLSIGN}, requesting pushback and start.",
         "{FACILITY} Ground, {CALLSIGN}, at {LOCATION}, ready for start-up.",
         "{FACILITY} Ground, {CALLSIGN}, requesting engine start, Information {ATIS_CODE} current.",
         "{FACILITY} Ground, {CALLSIGN}, start-up complete, requesting taxi."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, start approved, QNH {ALTIMETER}, report ready for taxi.",
         "{CALLSIGN}, push and start approved, tail {TAXIWAY}, report ready for taxi.",
         "{CALLSIGN}, engine start is at your discretion, altimeter {ALTIMETER}.",
@@ -32,14 +32,14 @@
       ]
     },
     "taxi_out": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Ground, {CALLSIGN}, at {LOCATION}, ready for taxi with {ATIS_CODE}.",
         "{FACILITY} Ground, {CALLSIGN}, requesting taxi to Runway {RUNWAY} for IFR to {DESTINATION}.",
         "{FACILITY} Ground, {CALLSIGN}, ready to taxi for departure to {DESTINATION}.",
         "{FACILITY} Ground, {CALLSIGN}, at {GATE_NUMBER}, requesting taxi.",
         "{FACILITY} Ground, {CALLSIGN}, requesting taxi to the run-up area."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, taxi to Runway {RUNWAY} via {TAXIWAY_ROUTING}, hold short of Runway {RUNWAY}.",
         "{CALLSIGN}, taxi to Runway {RUNWAY} via {TAXIWAY_ROUTING}, hold short of {TAXIWAY}.",
         "{CALLSIGN}, follow traffic on {TAXIWAY}, taxi to Runway {RUNWAY}.",
@@ -48,14 +48,14 @@
       ]
     },
     "depart": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Tower, {CALLSIGN}, holding short Runway {RUNWAY}, ready for departure.",
         "{FACILITY} Tower, {CALLSIGN}, ready for takeoff for {DESTINATION}.",
         "{FACILITY} Tower, {CALLSIGN}, number one, ready for departure.",
         "{FACILITY} Tower, {CALLSIGN}, holding short Runway {RUNWAY}, ready for takeoff.",
         "{FACILITY} Tower, {CALLSIGN}, ready for departure from Runway {RUNWAY}."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, Runway {RUNWAY}, cleared for takeoff, fly runway heading, wind {WIND}.",
         "{CALLSIGN}, Runway {RUNWAY}, line up and wait.",
         "{CALLSIGN}, behind departing traffic, line up and wait, Runway {RUNWAY}.",
@@ -64,14 +64,14 @@
       ]
     },
     "climb_out": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Departure, {CALLSIGN}, passing {ALTITUDE} for assigned altitude.",
         "{FACILITY} Departure, {CALLSIGN}, climbing through {ALTITUDE} on the departure.",
         "{FACILITY} Departure, {CALLSIGN}, radar contact check, passing {ALTITUDE}.",
         "{FACILITY} Departure, {CALLSIGN}, airborne Runway {RUNWAY}, passing {ALTITUDE}.",
         "{FACILITY} Departure, {CALLSIGN}, leaving {ALTITUDE} for assigned altitude."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, {FACILITY} Departure, radar contact, climb and maintain assigned altitude.",
         "{CALLSIGN}, identified, resume own navigation, climb and maintain level instructed.",
         "{CALLSIGN}, contact {FACILITY} on {FREQUENCY}, good day.",
@@ -80,14 +80,14 @@
       ]
     },
     "cruise": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Center, {CALLSIGN}, level at current altitude.",
         "{FACILITY} Control, {CALLSIGN}, maintaining assigned level, requesting deviation for ride quality.",
         "{FACILITY} Center, {CALLSIGN}, requesting direct {WAYPOINT}.",
         "{FACILITY} Control, {CALLSIGN}, checking in at current altitude.",
         "{FACILITY} Center, {CALLSIGN}, requesting climb to avoid weather."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, {FACILITY} Center, Roger, altimeter {ALTIMETER}.",
         "{CALLSIGN}, {FACILITY}, fly heading {HEADING}, vectors for traffic.",
         "{CALLSIGN}, cleared direct {WAYPOINT}, resume own navigation.",
@@ -96,14 +96,14 @@
       ]
     },
     "approach": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Approach, {CALLSIGN}, descending through {ALTITUDE} with {ATIS_CODE}.",
         "{FACILITY} Approach, {CALLSIGN}, requesting the approach to Runway {RUNWAY}.",
         "{FACILITY} Approach, {CALLSIGN}, checking in, {ALTITUDE}, expect the arrival.",
         "{FACILITY} Approach, {CALLSIGN}, ready for the descent.",
         "{FACILITY} Approach, {CALLSIGN}, requesting vectors for the approach to Runway {RUNWAY}."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, {FACILITY} Approach, fly heading {HEADING}, descend and maintain assigned altitude.",
         "{CALLSIGN}, expect the approach Runway {RUNWAY}, altimeter {ALTIMETER}.",
         "{CALLSIGN}, cleared to {WAYPOINT}, join the localizer for the approach Runway {RUNWAY}.",
@@ -112,14 +112,14 @@
       ]
     },
     "final": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Tower, {CALLSIGN}, established on the localizer Runway {RUNWAY}.",
         "{FACILITY} Tower, {CALLSIGN}, established inbound, final approach fix.",
         "{FACILITY} Tower, {CALLSIGN}, landing gear down.",
         "{FACILITY} Tower, {CALLSIGN}, short final Runway {RUNWAY}.",
         "{FACILITY} Tower, {CALLSIGN}, established on the glide path Runway {RUNWAY}."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, Runway {RUNWAY}, cleared to land, wind {WIND}.",
         "{CALLSIGN}, continue approach Runway {RUNWAY}, traffic departing Runway {RUNWAY}.",
         "{CALLSIGN}, number two for the runway, follow traffic on three mile final.",
@@ -128,14 +128,14 @@
       ]
     },
     "go_around": {
-      "pilot_initial_calls": [
+      "pilot": [
         "Going around, {CALLSIGN}, executing published missed approach.",
         "{FACILITY} Tower, {CALLSIGN}, on the go, missed approach Runway {RUNWAY}.",
         "{FACILITY} Tower, {CALLSIGN}, executing missed approach, climbing.",
         "{FACILITY} Tower, {CALLSIGN}, missed approach Runway {RUNWAY}, requesting vectors.",
         "Going around, {CALLSIGN}, runway not clear."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, execute missed approach, climb and maintain assigned altitude, contact {FACILITY} on {FREQUENCY}.",
         "{CALLSIGN}, Roger, fly runway heading, climb and maintain assigned altitude.",
         "{CALLSIGN}, climb and maintain assigned altitude, follow published missed approach procedure.",
@@ -144,14 +144,14 @@
       ]
     },
     "braking": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Tower, {CALLSIGN}, vacating Runway {RUNWAY} at {TAXIWAY}.",
         "{FACILITY} Tower, {CALLSIGN}, runway vacated, requesting taxi to parking.",
         "{FACILITY} Tower, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}, switching to Ground.",
         "{FACILITY} Tower, {CALLSIGN}, runway vacated at {TAXIWAY}.",
         "{FACILITY} Tower, {CALLSIGN}, clear of the active."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, clear of Runway {RUNWAY} when able, contact Ground on {FREQUENCY}.",
         "{CALLSIGN}, turn next taxiway, hold short of Runway {RUNWAY}, contact Ground.",
         "{CALLSIGN}, no delay vacating, traffic on short final.",
@@ -160,14 +160,14 @@
       ]
     },
     "taxi_in": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Ground, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}, taxi to {GATE_NUMBER}.",
         "{FACILITY} Ground, {CALLSIGN}, requesting IFR taxi to the ramp.",
         "{FACILITY} Ground, {CALLSIGN}, at {LOCATION}, taxi to the gate.",
         "{FACILITY} Ground, {CALLSIGN}, requesting taxi to the terminal.",
         "{FACILITY} Ground, {CALLSIGN}, taxiing to parking via {TAXIWAY}."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, taxi to {GATE_NUMBER} via {TAXIWAY_ROUTING}.",
         "{CALLSIGN}, follow traffic on {TAXIWAY} to the gate.",
         "{CALLSIGN}, hold short of {TAXIWAY}, cross traffic on the parallel taxiway.",
@@ -176,14 +176,14 @@
       ]
     },
     "post_flight_parked": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Ground, {CALLSIGN}, on blocks at {GATE_NUMBER}, switching to company.",
         "{FACILITY} Ground, {CALLSIGN}, parked at {GATE_NUMBER}, engines shutdown, thanks for the help.",
         "{FACILITY} Ground, {CALLSIGN}, at the gate, good day.",
         "{FACILITY} Ground, {CALLSIGN}, shutdown complete at {GATE_NUMBER}.",
         "{FACILITY} Ground, {CALLSIGN}, safely parked, shutting down."
       ],
-      "atc_responses_instructions": [
+      "atc": [
         "{CALLSIGN}, {FACILITY} Ground, Roger, IFR flight plan closed at {TIME}, good day.",
         "{CALLSIGN}, Roger, on blocks at {TIME}, contact company on their frequency.",
         "{CALLSIGN}, welcome to {FACILITY}, stay on frequency.",
@@ -191,8 +191,24 @@
         "{CALLSIGN}, Roger, shutdown acknowledged, have a safe rest of your day."
       ]
     },
+    "holding": {
+      "pilot": [
+        "{FACILITY} Approach, {CALLSIGN}, descending to holding altitude {ALTITUDE}.",
+        "{FACILITY} Approach, {CALLSIGN}, entering the holding pattern as published.",
+        "{FACILITY} Approach, {CALLSIGN}, established in holding at {WAYPOINT}.",
+        "{FACILITY} Approach, {CALLSIGN}, inbound leg at {ALTITUDE}, request clearance.",
+        "{FACILITY} Approach, {CALLSIGN}, maintaining {ALTITUDE} in the hold."
+      ],
+      "atc": [
+        "{CALLSIGN}, hold as published at {WAYPOINT}, expect clearance at {TIME}.",
+        "{CALLSIGN}, enter the holding pattern, hold northwest of the station, altitude {ALTITUDE}.",
+        "{CALLSIGN}, cleared to hold at {WAYPOINT}, fly standard turns, maintain {ALTITUDE}.",
+        "{CALLSIGN}, expect further clearance at {TIME}, continue holding.",
+        "{CALLSIGN}, resume approach, cleared to {WAYPOINT}, descend and maintain {ALTITUDE}."
+      ]
+    },
     "unicom_advisory": {
-      "pilot_initial_calls": [
+      "pilot": [
         "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, taxiing to Runway {RUNWAY} for departure.",
         "{FACILITY} Traffic, {CALLSIGN}, entering Runway {RUNWAY} for departure.",
         "{FACILITY} Traffic, {CALLSIGN}, downwind Runway {RUNWAY}, full stop landing.",

@@ -191,87 +191,31 @@ func (s *Service) startComms() {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a response to the communication
 
-			var phaseGroup map[string][]string
-			var facility string
-
 			var phraseSource map[string]map[string][]string
 			if ac.Flight.Comms.Controller.RoleID == 0 {
 				phraseSource = s.PhraseClasses.phrasesUnicom
 			} else {
 				phraseSource = s.PhraseClasses.phrases
 			}
-			switch ac.Flight.Phase.Current {
-			// --- PRE-FLIGHT & DEPARTURE ---
-			case trafficglobal.Parked.Index():
-				phaseGroup = phraseSource["pre_flight_parked"]
-				facility = "Clearance" // or Delivery
 
-			case trafficglobal.Startup.Index():
-				phaseGroup = phraseSource["startup"]
-				facility = "Ground"
-
-			case trafficglobal.TaxiOut.Index():
-				phaseGroup = phraseSource["taxi_out"]
-				facility = "Ground"
-
-			case trafficglobal.Depart.Index():
-				phaseGroup = phraseSource["depart"]
-				facility = "Tower"
-
-			// --- IN-FLIGHT ---
-			case trafficglobal.Climbout.Index():
-				phaseGroup = phraseSource["climb_out"]
-				facility = "Departure"
-
-			case trafficglobal.Cruise.Index():
-				phaseGroup = phraseSource["cruise"]
-				facility = "Center"
-
-			case trafficglobal.Approach.Index():
-				phaseGroup = phraseSource["approach"]
-				facility = "Approach"
-
-			case trafficglobal.Final.Index():
-				phaseGroup = phraseSource["final"]
-				facility = "Tower"
-
-			case trafficglobal.GoAround.Index():
-				phaseGroup = phraseSource["go_around"]
-				facility = "Tower"
-
-			// --- ARRIVAL & TAXI-IN ---
-			case trafficglobal.Braking.Index():
-				// In Traffic Global, Braking usually covers the rollout and runway exit
-				phaseGroup = phraseSource["braking"]
-				facility = "Tower"
-
-			case trafficglobal.TaxiIn.Index():
-				phaseGroup = phraseSource["taxi_in"]
-				facility = "Ground"
-
-			case trafficglobal.Shutdown.Index():
-				// Usually uses the end of Taxi-In or a "On Blocks" message
-				phaseGroup = phraseSource["post_flight_parked"]
-				facility = "Ground"
-
-			default:
+			phraseDef := getPhraseDef(phraseSource, ac.Flight.Phase.Current)
+			if phraseDef == nil {
 				log.Printf("No ATC instructions for aircraft %s flight phase %d role id %d",
 					ac.Registration, ac.Flight.Phase.Current, ac.Flight.Comms.Controller.RoleID)
 				continue
 			}
 
-			callAndResponse := []string{"pilot_initial_calls", "atc_responses_instructions"}
-
-			for i, groupName := range callAndResponse {
+			for i, groupName := range phraseDef.callAndResponse {
 				// select random phrase
-				phrases := phaseGroup[groupName]
+				phrases := phraseDef.phaseGroup[groupName]
 				if len(phrases) == 0 {
-					log.Printf("No phrases found for phase group %s role id %d", phaseGroup, ac.Flight.Comms.Controller.RoleID)
+					log.Printf("No phrases found for phase group %s role id %d", phraseDef.phaseGroup, ac.Flight.Comms.Controller.RoleID)
 					continue
 				}
 				selectedPhrase := phrases[rand.Intn(len(phrases))]
 
 				// construct message and replace all possible variables
+				// TODO: add more as defined in phrase files
 				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 				message = strings.ReplaceAll(message, "{FACILITY}", ac.Flight.Comms.Controller.Name)
 				message = strings.ReplaceAll(message, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
@@ -284,7 +228,7 @@ func (s *Service) startComms() {
 					role = "PILOT"
 					ac.Flight.Comms.LastTransmission = message
 				} else {
-					role = facility
+					role = phraseDef.facility
 					ac.Flight.Comms.LastInstruction = message
 				}
 
@@ -485,3 +429,86 @@ func translateRunway(runway string) string {
 	return runway
 }
 
+type phraseDef struct {
+	phaseGroup      map[string][]string
+	facility        string
+	callAndResponse []string
+}
+
+func getPhraseDef(phraseSource map[string]map[string][]string, flightPhase int) *phraseDef {
+
+	var phaseGroup map[string][]string
+	var facility string
+
+	var callAndResponse[]string
+	pilotInitiates := []string{"pilot", "atc"}
+	atcInitiates := []string{"atc", "pilot"}
+
+	switch flightPhase {
+	// --- PRE-FLIGHT & DEPARTURE ---
+	case trafficglobal.Parked.Index():
+		phaseGroup = phraseSource["pre_flight_parked"]
+		facility = "Clearance" // or Delivery
+		callAndResponse = pilotInitiates
+	case trafficglobal.Startup.Index():
+		phaseGroup = phraseSource["startup"]
+		facility = "Ground"
+		callAndResponse = pilotInitiates
+	case trafficglobal.TaxiOut.Index():
+		phaseGroup = phraseSource["taxi_out"]
+		facility = "Ground"
+		callAndResponse = atcInitiates
+	case trafficglobal.Depart.Index():
+		phaseGroup = phraseSource["depart"]
+		facility = "Tower"
+		callAndResponse = atcInitiates
+	case trafficglobal.Climbout.Index():
+		phaseGroup = phraseSource["climb_out"]
+		facility = "Departure"
+		callAndResponse = atcInitiates
+	// --- ENROUTE & ARRIVAL ---
+	case trafficglobal.Cruise.Index():
+		phaseGroup = phraseSource["cruise"]
+		facility = "Center"
+		callAndResponse = atcInitiates
+	case trafficglobal.Approach.Index():
+		phaseGroup = phraseSource["approach"]
+		facility = "Approach"
+		callAndResponse = atcInitiates
+	case trafficglobal.Holding.Index():
+		phaseGroup = phraseSource["holding"]
+		facility = "Approach"
+		callAndResponse = atcInitiates
+	case trafficglobal.Final.Index():
+		phaseGroup = phraseSource["final"]
+		facility = "Tower"
+		callAndResponse = atcInitiates
+	case trafficglobal.GoAround.Index():
+		phaseGroup = phraseSource["go_around"]
+		facility = "Tower"
+		callAndResponse = pilotInitiates
+	// --- LANDING & TAXI-IN ---
+	case trafficglobal.Braking.Index():
+		// In Traffic Global, Braking usually covers the rollout and runway exit
+		phaseGroup = phraseSource["braking"]
+		facility = "Tower"
+		callAndResponse = atcInitiates
+	case trafficglobal.TaxiIn.Index():
+		phaseGroup = phraseSource["taxi_in"]
+		facility = "Ground"
+		callAndResponse = atcInitiates
+	case trafficglobal.Shutdown.Index():
+		// Usually uses the end of Taxi-In or a "On Blocks" message
+		phaseGroup = phraseSource["post_flight_parked"]
+		facility = "Ground"
+		callAndResponse = pilotInitiates
+	default:
+		return nil
+	}
+
+	return &phraseDef{
+		phaseGroup: phaseGroup,
+		facility: facility,
+		callAndResponse: callAndResponse,
+	}
+}

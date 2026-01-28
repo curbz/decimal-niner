@@ -72,7 +72,7 @@ func (fp FlightPhase) String() string {
 		"Go Around",
 		"Climbout",
 		"Braking",
-		"Waiting for flow change",
+		"Holding",
 	}[fp+1]
 }
 
