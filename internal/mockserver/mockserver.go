@@ -78,8 +78,8 @@ func idFor(name string) int64 {
 // It returns the *http.Server so the caller can shut it down when desired.
 func Start(port string) *http.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v2/datarefs", datarefsHandler)
-	mux.HandleFunc("/api/v2", wsHandler)
+	mux.HandleFunc("/api/v3/datarefs", datarefsHandler)
+	mux.HandleFunc("/api/v3", wsHandler)
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
 	go func() {

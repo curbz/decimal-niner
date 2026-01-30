@@ -1,7 +1,7 @@
 # X-Plane Connection Settings
 xplane_api:
-  web_api_http_url:       "http://127.0.0.1:8086/api/v2"
-  web_api_websocket_url:  "ws://127.0.0.1:8086/api/v2"
+  web_api_http_url:       "http://127.0.0.1:8086/api/v3"
+  web_api_websocket_url:  "ws://127.0.0.1:8086/api/v3"
 
 # ATC Settings
 atc:
