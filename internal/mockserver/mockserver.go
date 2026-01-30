@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +44,10 @@ var (
 		"sim/atc/com1_tuned_facility": "int",
 		"sim/atc/com2_tuned_facility": "int",
 
+		"sim/time/local_date_days": "int",
+		"sim/time/local_time_sec":  "float",
+		"sim/time/zulu_time_sec":   "float",
+
 		"trafficglobal/ai/position_lat":     "float[]",
 		"trafficglobal/ai/position_long":    "float[]",
 		"trafficglobal/ai/position_heading": "float[]",
@@ -78,7 +83,12 @@ func idFor(name string) int64 {
 // It returns the *http.Server so the caller can shut it down when desired.
 func Start(port string) *http.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v3/datarefs", datarefsHandler)
+	// register both exact and subtree patterns so requests to
+	// /api/v3/datarefs and /api/v3/datarefs/{id}/value are routed
+	// to the dispatcher which will further route to the value
+	// handler when the path ends with "/value".
+	mux.HandleFunc("/api/v3/datarefs", datarefsDispatcher)
+	mux.HandleFunc("/api/v3/datarefs/", datarefsDispatcher)
 	mux.HandleFunc("/api/v3", wsHandler)
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
@@ -94,9 +104,9 @@ func Start(port string) *http.Server {
 func datarefsHandler(w http.ResponseWriter, r *http.Request) {
 	// Collect requested filters
 	q := r.URL.Query()["filter[name]"]
-	// If none provided, return a small default set
+	// If none provided, return the sim time datarefs
 	if len(q) == 0 {
-		q = []string{"trafficglobal/ai/aircraft_code"}
+		q = []string{"sim/time/local_date_days", "sim/time/local_time_sec", "sim/time/zulu_time_sec"}
 	}
 
 	data := make([]DatarefInfo, 0, len(q))
@@ -116,6 +126,51 @@ func datarefsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]interface{}{"data": data}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func datarefsDispatcher(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/value") {
+		datarefValueHandler(w, r)
+	} else {
+		datarefsHandler(w, r)
+	}
+}
+
+func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
+	// Path should be /api/v3/datarefs/{id}/value
+	path := r.URL.Path
+	if !strings.HasSuffix(path, "/value") {
+		http.NotFound(w, r)
+		return
+	}
+	// Extract id from /api/v3/datarefs/{id}/value
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v3/datarefs/"), "/")
+	if len(parts) != 2 || parts[1] != "value" {
+		http.NotFound(w, r)
+		return
+	}
+	idStr := parts[0]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	mu.Lock()
+	name := idToName[id]
+	vt := idToValueType[id]
+	mu.Unlock()
+
+	if name == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	value := samplePayloadForName(name, vt, 0)
+
+	resp := map[string]interface{}{"data": value}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -213,67 +268,75 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // matches what the client expects for that type (e.g., numeric arrays or
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
-switch name {
-    // --- User Position (Heathrow Center) ---
-    case "sim/flightmodel/position/latitude":
-        return 51.4700 + (float64(iter) * 0.0001)
-    case "sim/flightmodel/position/longitude":
-        return -0.4543 + (float64(iter) * 0.0001)
-    case "sim/flightmodel/position/elevation":
-        return 25.0 + float64(iter) // EGLL is ~80ft MSL
-    case "sim/flightmodel/position/psi":
-        return 270.5 // Facing West towards Runway 27R
+	switch name {
+	// --- User Position (Heathrow Center) ---
+	case "sim/flightmodel/position/latitude":
+		return 51.4700 + (float64(iter) * 0.0001)
+	case "sim/flightmodel/position/longitude":
+		return -0.4543 + (float64(iter) * 0.0001)
+	case "sim/flightmodel/position/elevation":
+		return 25.0 + float64(iter) // EGLL is ~80ft MSL
+	case "sim/flightmodel/position/psi":
+		return 270.5 // Facing West towards Runway 27R
 
-    // --- User Radios (Heathrow Frequencies) ---
-    case "sim/cockpit/radios/com1_freq_hz":
-        return int(11850) // EGLL Tower
-    case "sim/cockpit/radios/com2_freq_hz":
-        return int(12190) // EGLL Ground
+	// --- User Radios (Heathrow Frequencies) ---
+	case "sim/cockpit/radios/com1_freq_hz":
+		return int(11850) // EGLL Tower
+	case "sim/cockpit/radios/com2_freq_hz":
+		return int(12190) // EGLL Ground
 	case "sim/atc/com1_tuned_facility":
 		return 3 // Tower
 	case "sim/atc/com2_tuned_facility":
 		return 2 // Ground
 
-    // --- AI Aircraft Data (Moving around EGLL) ---
-    case "trafficglobal/ai/position_lat":
-        return []float64{
-            51.4695,                     // AC1: Near Terminal 5
-            51.4710 + (float64(iter)*0.001), // AC2: Taxiing toward 27R
-            51.4770 + (float64(iter)*0.005), // AC3: On Final Approach
-        }
+	// --- Sim Time ---
+	case "sim/time/local_date_days":
+		return 18627 // Example: days since 1900 or whatever, say Jan 1, 2025
+	case "sim/time/local_time_sec":
+		return 43200.0 + float64(iter) // 12:00:00 local time
+	case "sim/time/zulu_time_sec":
+		return 43200.0 + float64(iter) // 12:00:00 Zulu
 
-    case "trafficglobal/ai/position_long":
-        return []float64{
-            -0.4870, 
-            -0.4600 + (float64(iter)*0.001), 
-            -0.3500 + (float64(iter)*0.005),
-        }
+	// --- AI Aircraft Data (Moving around EGLL) ---
+	case "trafficglobal/ai/position_lat":
+		return []float64{
+			51.4695,                           // AC1: Near Terminal 5
+			51.4710 + (float64(iter) * 0.001), // AC2: Taxiing toward 27R
+			51.4770 + (float64(iter) * 0.005), // AC3: On Final Approach
+		}
 
-    case "trafficglobal/ai/position_heading":
-        return []float64{90.0, 270.0, 270.0}
+	case "trafficglobal/ai/position_long":
+		return []float64{
+			-0.4870,
+			-0.4600 + (float64(iter) * 0.001),
+			-0.3500 + (float64(iter) * 0.005),
+		}
 
-    case "trafficglobal/ai/position_elev":
-        return []float64{
-            25.0,   // Ground
-            25.0,   // Ground
-            300.5,  // Descending on Final
-        }
+	case "trafficglobal/ai/position_heading":
+		return []float64{90.0, 270.0, 270.0}
 
-    case "trafficglobal/ai/aircraft_code":
-        // A320, B738, A359
-        s := "A320\x00B738\x00A359\x00"
-        return base64.StdEncoding.EncodeToString([]byte(s))
+	case "trafficglobal/ai/position_elev":
+		return []float64{
+			25.0,  // Ground
+			25.0,  // Ground
+			300.5, // Descending on Final
+		}
 
-    case "trafficglobal/ai/airline_code":
-        s := "BAW\x00EZY\x00BAW\x00" // British Airways and EasyJet
-        return base64.StdEncoding.EncodeToString([]byte(s))
-    
-    case "trafficglobal/ai/flight_phase":
-        return []int{
-            10 + iter, 
-            1 + iter,
-            4 + iter, 
-        }
+	case "trafficglobal/ai/aircraft_code":
+		// A320, B738, A359
+		s := "A320\x00B738\x00A359\x00"
+		return base64.StdEncoding.EncodeToString([]byte(s))
+
+	case "trafficglobal/ai/airline_code":
+		s := "BAW\x00EZY\x00BAW\x00" // British Airways and EasyJet
+		return base64.StdEncoding.EncodeToString([]byte(s))
+
+	case "trafficglobal/ai/flight_phase":
+		return []int{
+			10 + iter,
+			1 + iter,
+			4 + iter,
+		}
 
 	case "trafficglobal/ai/runway":
 		return []float64{4994866, 5388082, 5388082, 5388082}
@@ -284,15 +347,15 @@ switch name {
 		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
 
 		s := "G-AOWK\x00G-ARBD\x00G-BCOL\x00"
-		return base64.StdEncoding.EncodeToString([]byte(s))	
+		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case "trafficglobal/ai/flight_num": 
-				return []int{281,343,700}		
-			
+	case "trafficglobal/ai/flight_num":
+		return []int{281, 343, 700}
+
 	case "trafficglobal/ai/parking":
 		s := "GATE 22\x00GATE 5\x00RAMP 9\x00"
-		return base64.StdEncoding.EncodeToString([]byte(s))	
-	}		
+		return base64.StdEncoding.EncodeToString([]byte(s))
+	}
 
 	// Fallback based on declared value type
 	switch vt {

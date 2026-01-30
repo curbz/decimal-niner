@@ -133,7 +133,10 @@ func (xpc *XPConnect) Start() {
 	var err error
 	xpc.simInitTime, err = xpc.getSimTime()
 	if err != nil {
-		log.Fatalf("FATAL: Could not get sim time: %v", err)	
+		//log.Fatalf("FATAL: Could not get sim time: %v", err)	
+		// TODO: remove hardcoded time once sim time retrieval is working in mockserver
+		log.Printf("WARNING: Could not get sim time: %v", err)
+		xpc.simInitTime = time.Date(2026, time.January, 16, 11, 0, 0, 0,time.UTC) 
 	}
 	xpc.sessionInitTime = time.Now()
 
@@ -215,9 +218,9 @@ func (xpc *XPConnect) getSimTime() (time.Time, error) {
 			//sim time
 		{Name: "sim/time/local_date_days",
 			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/cockpit2/clock_timer/local_time_sec",
+		{Name: "sim/time/local_time_sec",
 			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/cockpit2/clock_timer/zulu_time_sec",
+		{Name: "sim/time/zulu_time_sec",
 			APIInfo: xpapimodel.DatarefInfo{}},
 	}
 
@@ -229,17 +232,37 @@ func (xpc *XPConnect) getSimTime() (time.Time, error) {
 		return time.Time{}, fmt.Errorf("error:not all sim time dataref indices were retrieved")
 	}
 
-	simData := XPlaneTime{
-		LocalDateDays: int(xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[0].Name, 0).(float64)),
-		LocalTimeSecs: xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[1].Name, 0).(float64),
-		ZuluTimeSecs:  xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[2].Name, 0).(float64),
-	}
-
+	// Example:
 	// simData := XPlaneTime{
 	// 	LocalDateDays: 0,       // Jan 1st
 	// 	LocalTimeSecs: 70200.0, // 19:30:00
 	// 	ZuluTimeSecs:  1800.0,  // 00:30:00
 	// }
+
+	simData := XPlaneTime{}
+	// fetch each dataref value
+	for _, dr := range simTimeDatarefs {
+		memDref := xpc.getDataRefByName(simTimeIndexMap, dr.Name)
+		drefId := memDref.APIInfo.ID
+		value, err := xpc.webGetDataRefValue(drefId)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("error retrieving sim time dataref %s value: %w", dr.Name, err)
+		}
+		//update the value of dataref in memory
+		err = xpc.updateMemDatarefValue(memDref, value)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("error updating sim time dataref %s value: %w", dr.Name, err)
+		}
+
+		switch dr.Name {
+		case "sim/time/local_date_days":
+			simData.LocalDateDays = int(value.(float64))
+		case "sim/time/local_time_sec":
+			simData.LocalTimeSecs = value.(float64)
+		case "sim/time/zulu_time_sec":
+			simData.ZuluTimeSecs = value.(float64)
+		}
+	}
 	
 	zuluResult := getZuluDateTime(simData)
 
@@ -256,7 +279,7 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 	// Store the received indices in a map
 	m := make(map[int]*xpapimodel.Dataref)
 
-	response, err := xpc.webGetDatarefs(drefs)
+	response, err := xpc.webGetDatarefIndices(drefs)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving dataref indices from web api: %w", err)
 	}
@@ -280,7 +303,41 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 	return m, nil
 }
 
-func (xpc *XPConnect) webGetDatarefs(drefs []xpapimodel.Dataref) (xpapimodel.APIResponseDatarefs, error) {
+func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {	
+
+	var response xpapimodel.APIResponseDatarefValue
+	fullURL := fmt.Sprintf("%s/datarefs/%d/value", xpc.config.XPlane.RestBaseURL, datarefId)
+	log.Printf("Querying web api: %s", fullURL)
+	// Create the HTTP Request object
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating HTTP request: %w", err)
+	}
+	// Set required header
+	req.Header.Set("Accept", "application/json")
+	// Send the HTTP GET request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read body for detailed X-Plane error message
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
+	}
+
+	// read the response body
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error decoding response body: %w", err)
+	}
+
+	return response.Data, nil
+}
+
+func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimodel.APIResponseDatarefs, error) {
 
 	var response xpapimodel.APIResponseDatarefs
 
@@ -289,7 +346,8 @@ func (xpc *XPConnect) webGetDatarefs(drefs []xpapimodel.Dataref) (xpapimodel.API
 	if err != nil {
 		return response, err
 	}
-	log.Printf("Querying: %s", fullURL)
+
+	log.Printf("Querying web api: %s", fullURL)
 
 	// Create the HTTP Request object
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
@@ -313,7 +371,6 @@ func (xpc *XPConnect) webGetDatarefs(drefs []xpapimodel.Dataref) (xpapimodel.API
 		return response, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
 	}
 
-	defer resp.Body.Close()
 	// read the response body
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return response, fmt.Errorf("error decoding response body: %w", err)
@@ -346,7 +403,6 @@ func (xpc *XPConnect) sendDatarefSubscription() {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
-
 	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.dataRefIndexMap))
 	for index := range xpc.dataRefIndexMap {
 		subDataref := xpapimodel.SubDataref{
@@ -381,7 +437,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 
 	switch response.Type {
 	case "dataref_update_values":
-		xpc.handleDatarefUpdate(response.Data)
+		xpc.handleSubscribedDatarefUpdate(response.Data)
 	case "result":
 		if response.Success {
 			log.Printf("<- Received Response ID %d: Success", response.RequestID)
@@ -394,7 +450,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 	}
 }
 
-func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
+func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	for id, value := range datarefs {
 
@@ -405,54 +461,74 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 			continue
 		}
 
-		// get the stored dataref from the xpconnect map
-		dr, exists := xpc.dataRefIndexMap[idInt]
-		if !exists {
-			log.Printf("Received update for unknown DataRef ID %d", idInt)
+		err = xpc.updateMemDatarefValueInMap(xpc.dataRefIndexMap, idInt, value)
+		if err != nil {
+			log.Printf("Error updating dataref ID %d value: %v", idInt, err)
 			continue
 		}
 
-		// Decode based on expected type
-		switch dr.DecodedDataType {
-		case "base64_string_array":
-			// Attempt to decode as base64-null-terminated string blob
-			if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
-				log.Printf("DataRef %s: decoded strings: %v\n", id, decoded)
-				dr.Value = decoded
-				continue
-			}
-			// Otherwise, print raw string
-			log.Printf("error decoding null terminated string: DataRef %s: raw value: %v error: %v\n", id, value, err)
-		case "uint32_string_array":
-			strArray := make([]string, len(value.([]any)))
-			for i, elem := range value.([]any) {
-				strArray[i] = util.DecodeUint32(uint32(elem.(float64)))
-			}
-			dr.Value = strArray
-			log.Printf("DataRef %s: uint32 decoded: %v\n", id, strArray)			
-		case "float_array":
-			floatArray := make([]float64, len(value.([]any)))
-			for i, elem := range value.([]any) {
-				floatArray[i] = elem.(float64)
-			}
-			dr.Value = floatArray
-			log.Printf("DataRef %s: floats: %v\n", id, floatArray)
-		case "int_array":
-			intArray := make([]int, len(value.([]any)))
-			for i, elem := range value.([]any) {
-				intArray[i] = int(elem.(float64))
-			}
-			dr.Value = intArray
-			log.Printf("DataRef %s: ints: %v\n", id, intArray)
-		default:
-			// Unknown or unspecified type — print raw
-			log.Printf("DataRef %s: raw payload: %v\n", id, value)
-			dr.Value = value
-		}
 	}
-
 	xpc.updateUserData()
 	xpc.updateAircraftData()
+}
+
+func (xpc *XPConnect) updateMemDatarefValueInMap(datarefIndicesMap map[int]*xpapimodel.Dataref, id int, value any) error {
+
+	// get the stored dataref from the map
+	dr, exists := datarefIndicesMap[id]
+	if !exists {
+		return fmt.Errorf("unable to update dataref id %d - not found in map", id)
+	}
+
+	err := xpc.updateMemDatarefValue(dr, value)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) error {
+
+	// Decode based on expected type
+	switch dr.DecodedDataType {
+	case "base64_string_array":
+		// Attempt to decode as base64-null-terminated string blob
+		if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
+			log.Printf("DataRef %s id: %s decoded strings: %v\n", dr.APIInfo.Name, dr.APIInfo.ID,decoded)
+			dr.Value = decoded
+		} else {
+			// Otherwise, print raw string
+			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %s raw value: %v error: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
+		}
+	case "uint32_string_array":
+		strArray := make([]string, len(value.([]any)))
+		for i, elem := range value.([]any) {
+			strArray[i] = util.DecodeUint32(uint32(elem.(float64)))
+		}
+		dr.Value = strArray
+		log.Printf("DataRef %s id: %s uint32 decoded: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, strArray)			
+	case "float_array":
+		floatArray := make([]float64, len(value.([]any)))
+		for i, elem := range value.([]any) {
+			floatArray[i] = elem.(float64)
+		}
+		dr.Value = floatArray
+		log.Printf("DataRef %s id: %s floats: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, floatArray)
+	case "int_array":
+		intArray := make([]int, len(value.([]any)))
+		for i, elem := range value.([]any) {
+			intArray[i] = int(elem.(float64))
+		}
+		dr.Value = intArray
+		log.Printf("DataRef %s id: %s ints: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, intArray)
+	default:
+		// Unknown or unspecified type — print raw
+		log.Printf("DataRef %s id: %s raw payload: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		dr.Value = value
+	}
+
+	return nil
 }
 
 // determine if user has changed tuned frequencies and inform the ATC service if they have

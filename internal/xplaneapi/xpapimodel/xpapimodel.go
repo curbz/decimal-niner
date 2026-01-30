@@ -4,6 +4,10 @@ type APIResponseDatarefs struct {
 	Data []DatarefInfo `json:"data"`
 }
 
+type APIResponseDatarefValue struct {
+	Data any `json:"data"`
+}
+
 type DatarefInfo struct {
 	ID         int    `json:"id"`
 	IsWritable bool   `json:"is_writable"`
