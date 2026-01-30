@@ -30,11 +30,20 @@ type XPConnect struct {
 	aircraftMap     map[string]*atc.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
+	simInitTime		time.Time
+	sessionInitTime	time.Time
 }
 
 type XPConnectInterface interface {
 	Start()
 	Stop()
+}
+
+// XPlaneTime represents the raw values pulled from X-Plane Datarefs
+type XPlaneTime struct {
+	LocalDateDays int     // sim/time/local_date_days (0-indexed)
+	LocalTimeSecs float64 // sim/time/local_time_sec
+	ZuluTimeSecs  float64 // sim/time/zulu_time_sec
 }
 
 type config struct {
@@ -119,10 +128,19 @@ var datarefs = []xpapimodel.Dataref{
 
 func (xpc *XPConnect) Start() {
 
-	log.Println("--- Stage 1: Get DataRef Indices via REST (HTTP GET) ---")
+	log.Println("get sim time from x-plane web api")
 
+	var err error
+	xpc.simInitTime, err = xpc.getSimTime()
+	if err != nil {
+		log.Fatalf("FATAL: Could not get sim time: %v", err)	
+	}
+	xpc.sessionInitTime = time.Now()
+
+	log.Println("get traffic global dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
-	if err := xpc.getDataRefIndices(); err != nil {
+	xpc.dataRefIndexMap, err = xpc.getDataRefIndices(datarefs)
+	if err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
 	}
 
@@ -146,7 +164,7 @@ func (xpc *XPConnect) Start() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	u, _ := url.Parse(xpc.config.XPlane.WebSocketURL)
-	var err error
+	
 	xpc.conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Fatalf("FATAL: Could not connect to X-Plane WebSocket: %v", err)
@@ -190,71 +208,65 @@ func (xpc *XPConnect) Stop() {
 	// TODO: closedown if needed
 }
 
-// buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
-func buildURLWithFilters(urlStr string) (string, error) {
-	// 1. Parse the base URL
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		return "", fmt.Errorf("error parsing base URL: %w", err)
+// getSimTime fetches the current simulator time via HTTP GET.
+func (xpc *XPConnect) getSimTime() (time.Time, error) {
+
+	simTimeDatarefs := []xpapimodel.Dataref{
+			//sim time
+		{Name: "sim/time/local_date_days",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/cockpit2/clock_timer/local_time_sec",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/cockpit2/clock_timer/zulu_time_sec",
+			APIInfo: xpapimodel.DatarefInfo{}},
 	}
 
-	// 2. Add filter parameters
-	q := u.Query()
-	for _, dataref := range datarefs {
-		// The spec requires filter[name] for each dataref
-		q.Add("filter[name]", dataref.Name)
+	simTimeIndexMap, err := xpc.getDataRefIndices(simTimeDatarefs)
+	if err != nil  {
+		return time.Time{}, fmt.Errorf("error retrieving sim time and date dataref indices: %w", err)
 	}
-	u.RawQuery = q.Encode()
+	if len(simTimeIndexMap) != len(simTimeDatarefs) {
+		return time.Time{}, fmt.Errorf("error:not all sim time dataref indices were retrieved")
+	}
 
-	return u.String(), nil
+	simData := XPlaneTime{
+		LocalDateDays: int(xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[0].Name, 0).(float64)),
+		LocalTimeSecs: xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[1].Name, 0).(float64),
+		ZuluTimeSecs:  xpc.getDataRefValue(simTimeIndexMap, simTimeIndexMap[2].Name, 0).(float64),
+	}
+
+	// simData := XPlaneTime{
+	// 	LocalDateDays: 0,       // Jan 1st
+	// 	LocalTimeSecs: 70200.0, // 19:30:00
+	// 	ZuluTimeSecs:  1800.0,  // 00:30:00
+	// }
+	
+	zuluResult := getZuluDateTime(simData)
+
+	fmt.Println("--- X-Plane Time Conversion ---")
+	fmt.Printf("Sim Local Date Days: %d\n", simData.LocalDateDays)
+	fmt.Printf("Calculated Zulu:     %s\n", zuluResult.Format("2006-01-02 15:04:05"))
+
+	return zuluResult, nil
 }
 
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
-func (xpc *XPConnect) getDataRefIndices() error {
-	// Build the full URL with GET parameters
-	fullURL, err := buildURLWithFilters(xpc.config.XPlane.RestBaseURL + "/datarefs")
-	if err != nil {
-		return err
-	}
-	log.Printf("Querying: %s", fullURL)
-
-	// Create the HTTP Request object
-	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
-	if err != nil {
-		return fmt.Errorf("error creating HTTP request: %w", err)
-	}
-
-	// Set required header
-	req.Header.Set("Accept", "application/json")
-
-	// Send the HTTP GET request
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// Read body for detailed X-Plane error message
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
-	}
-
-	// read the response body
-	var response xpapimodel.APIResponseDatarefs
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return fmt.Errorf("error decoding response body: %w", err)
-	}
+func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xpapimodel.Dataref, error) {
 
 	// Store the received indices in a map
-	xpc.dataRefIndexMap = make(map[int]*xpapimodel.Dataref)
+	m := make(map[int]*xpapimodel.Dataref)
+
+	response, err := xpc.webGetDatarefs(drefs)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving dataref indices from web api: %w", err)
+	}
+
 	for _, dataref := range response.Data {
 		// find the corresponding dataref by name
 		for _, dr := range datarefs {
 			if dr.Name == dataref.Name {
 				// store in map
-				xpc.dataRefIndexMap[dataref.ID] = &xpapimodel.Dataref{
+				m[dataref.ID] = &xpapimodel.Dataref{
 					Name:            dr.Name,
 					APIInfo:         dataref,
 					Value:           nil,
@@ -265,7 +277,68 @@ func (xpc *XPConnect) getDataRefIndices() error {
 		}
 	}
 
-	return nil
+	return m, nil
+}
+
+func (xpc *XPConnect) webGetDatarefs(drefs []xpapimodel.Dataref) (xpapimodel.APIResponseDatarefs, error) {
+
+	var response xpapimodel.APIResponseDatarefs
+
+	// Build the full URL with GET parameters
+	fullURL, err := buildURLWithFilters(xpc.config.XPlane.RestBaseURL + "/datarefs", drefs)
+	if err != nil {
+		return response, err
+	}
+	log.Printf("Querying: %s", fullURL)
+
+	// Create the HTTP Request object
+	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+	if err != nil {
+		return response, fmt.Errorf("error creating HTTP request: %w", err)
+	}
+
+	// Set required header
+	req.Header.Set("Accept", "application/json")
+
+	// Send the HTTP GET request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return response, fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Read body for detailed X-Plane error message
+		body, _ := io.ReadAll(resp.Body)
+		return response, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
+	}
+
+	defer resp.Body.Close()
+	// read the response body
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return response, fmt.Errorf("error decoding response body: %w", err)
+	}
+
+	return response, nil
+}
+
+// buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
+func buildURLWithFilters(urlStr string, drefs []xpapimodel.Dataref) (string, error) {
+	// 1. Parse the base URL
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return "", fmt.Errorf("error parsing base URL: %w", err)
+	}
+
+	// 2. Add filter parameters
+	q := u.Query()
+	for _, dataref := range drefs {
+		// The spec requires filter[name] for each dataref
+		q.Add("filter[name]", dataref.Name)
+	}
+	u.RawQuery = q.Encode()
+
+	return u.String(), nil
 }
 
 // sendDatarefSubscription sends a request to subscribe to a dataref.
@@ -385,10 +458,10 @@ func (xpc *XPConnect) handleDatarefUpdate(datarefs map[string]any) {
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
-	com1FreqVal := xpc.getDataRefValue("sim/cockpit/radios/com1_freq_hz", 0)
-	com2FreqVal := xpc.getDataRefValue("sim/cockpit/radios/com2_freq_hz", 0)
-	com1FacilityVal := xpc.getDataRefValue("sim/atc/com1_tuned_facility", 0)
-	com2FacilityVal := xpc.getDataRefValue("sim/atc/com2_tuned_facility", 0)
+	com1FreqVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
+	com2FreqVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
+	com1FacilityVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
+	com2FacilityVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
@@ -412,9 +485,9 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	xpc.atcService.NotifyUserChange(atc.Position{
-		Lat:      xpc.getDataRefValue("sim/flightmodel/position/latitude", 0).(float64),
-		Long:     xpc.getDataRefValue("sim/flightmodel/position/longitude", 0).(float64),
-		Altitude: xpc.getDataRefValue("sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
+		Lat:      xpc.getDataRefValue(xpc.dataRefIndexMap,"sim/flightmodel/position/latitude", 0).(float64),
+		Long:     xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/flightmodel/position/longitude", 0).(float64),
+		Altitude: xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
 	}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
 
 }
@@ -423,7 +496,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getDataRefByName("trafficglobal/ai/tail_number")
+	tailNumbersDR := xpc.getDataRefByName(xpc.dataRefIndexMap, "trafficglobal/ai/tail_number")
 	if tailNumbersDR == nil {
 		log.Println("Error: tail number dataref not found")
 		return
@@ -436,8 +509,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getDataRefByName("trafficglobal/ai/airline_code")
-	flightNumsDR := xpc.getDataRefByName("trafficglobal/ai/flight_num")
+	airlineCodesDR := xpc.getDataRefByName(xpc.dataRefIndexMap,"trafficglobal/ai/airline_code")
+	flightNumsDR := xpc.getDataRefByName(xpc.dataRefIndexMap, "trafficglobal/ai/flight_num")
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		log.Println("Error: airline code or flight number dataref not found")
 	} else {
@@ -472,7 +545,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase := xpc.getDataRefValue("trafficglobal/ai/flight_phase", index)
+		flightPhase := xpc.getDataRefValue(xpc.dataRefIndexMap,"trafficglobal/ai/flight_phase", index)
 		if flightPhase != nil {
 			updatedFlightPhase := flightPhase.(int)
 			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
@@ -480,10 +553,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-		lat := xpc.getDataRefValue("trafficglobal/ai/position_lat", index)
-		lon := xpc.getDataRefValue("trafficglobal/ai/position_long", index)
-		alt := xpc.getDataRefValue("trafficglobal/ai/position_elev", index)
-		hdg := xpc.getDataRefValue("trafficglobal/ai/position_heading", index)
+		lat := xpc.getDataRefValue(xpc.dataRefIndexMap,"trafficglobal/ai/position_lat", index)
+		lon := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_long", index)
+		alt := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_elev", index)
+		hdg := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_heading", index)
 
 		if lat != nil && lon != nil && alt != nil && hdg != nil {
 			aircraft.Flight.Position = atc.Position{
@@ -504,8 +577,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 		// Add flight plan - only need to do this when adding as a new aircraft or  if flight number has changed
 		if newAircraft || (!newAircraft && previousFlightNum != flightNum) {
-			// TODO: change time to simulator time
-			simTime := time.Date(2026, time.January, 16, 11, 0, 0, 0,time.UTC)  // Friday, 16th Jan 2026 11am zulu
+			// use sim init time + time since session started
+			simTime := xpc.simInitTime.Add(time.Since(xpc.sessionInitTime))
 			xpc.atcService.AddFlightPlan(aircraft, simTime)	
 		}
 
@@ -525,10 +598,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 
 		// get parking
-		aircraft.Flight.AssignedParking = xpc.getDataRefValue("trafficglobal/ai/parking", index).(string)
+		aircraft.Flight.AssignedParking = xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/parking", index).(string)
 
 		// get assigned runway
-		aircraft.Flight.AssignedRunway = xpc.getDataRefValue("trafficglobal/ai/runway", index).(string)
+		aircraft.Flight.AssignedRunway = xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/runway", index).(string)
 
 	}
 
@@ -556,8 +629,9 @@ func (xpc *XPConnect) updateAircraftData() {
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
 // If the dataref is not found, returns nil.
 // If the dataref is not an array type, index is ignored.
-func (xpc *XPConnect) getDataRefValue(s string, index int) any {
-	dr := xpc.getDataRefByName(s)
+func (xpc *XPConnect) getDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) any {
+	
+	dr := xpc.getDataRefByName(datarefIndicesMap, s)
 	if dr == nil {
 		return nil
 	}
@@ -589,9 +663,9 @@ func (xpc *XPConnect) getDataRefValue(s string, index int) any {
 }
 
 // getDataRefByName retrieves the Dataref struct by its name.
-func (xpc *XPConnect) getDataRefByName(s string) *xpapimodel.Dataref {
+func (xpc *XPConnect) getDataRefByName(datarefIndicesMap map[int]*xpapimodel.Dataref, s string) *xpapimodel.Dataref {
 
-	for _, dr := range xpc.dataRefIndexMap {
+	for _, dr := range datarefIndicesMap {
 		if dr.Name == s {
 			return dr
 		}
@@ -604,4 +678,34 @@ func (xpc *XPConnect) printAircraftData() {
 	for _, ac := range xpc.aircraftMap {
 		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
 	}
+}
+
+// GetZuluDateTime converts sim datarefs into a standard Go time.Time object
+func getZuluDateTime(xp XPlaneTime) time.Time {
+	// 1. Establish the Year. XP doesn't provide this, so we use current system year.
+	currentYear := time.Now().Year()
+
+	// 2. Create the Local Date.
+	// Jan 1st of current year + local_date_days.
+	// We use 00:00:00 as the starting point for this date.
+	localDate := time.Date(currentYear, time.January, 1, 0, 0, 0, 0, time.UTC).
+		AddDate(0, 0, xp.LocalDateDays)
+
+	// 3. Combine Local Date with Local Time to get a full "Local Timestamp"
+	localFull := localDate.Add(time.Duration(xp.LocalTimeSecs) * time.Second)
+
+	// 4. Calculate the Offset (Local - Zulu)
+	// We handle the midnight rollover by checking if the diff exceeds 12 hours.
+	diff := xp.LocalTimeSecs - xp.ZuluTimeSecs
+	if diff > 43200 {
+		diff -= 86400
+	} else if diff < -43200 {
+		diff += 86400
+	}
+
+	// 5. Subtract the offset from the Local Timestamp to get the Zulu Timestamp
+	// If Local is 5 hours ahead of Zulu, subtracting 5 hours gives us Zulu.
+	zuluDateTime := localFull.Add(time.Duration(-diff) * time.Second)
+
+	return zuluDateTime
 }
