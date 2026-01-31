@@ -492,11 +492,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 	case "base64_string_array":
 		// Attempt to decode as base64-null-terminated string blob
 		if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
-			log.Printf("DataRef %s id: %s decoded strings: %v\n", dr.APIInfo.Name, dr.APIInfo.ID,decoded)
+			log.Printf("DataRef %s id: %d decoded strings: %v\n", dr.APIInfo.Name, dr.APIInfo.ID,decoded)
 			dr.Value = decoded
 		} else {
 			// Otherwise, print raw string
-			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %s raw value: %v error: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
+			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value: %v error: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
 		}
 	case "uint32_string_array":
 		strArray := make([]string, len(value.([]any)))
@@ -504,24 +504,24 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			strArray[i] = util.DecodeUint32(uint32(elem.(float64)))
 		}
 		dr.Value = strArray
-		log.Printf("DataRef %s id: %s uint32 decoded: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, strArray)			
+		log.Printf("DataRef %s id: %d uint32 decoded: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, strArray)			
 	case "float_array":
 		floatArray := make([]float64, len(value.([]any)))
 		for i, elem := range value.([]any) {
 			floatArray[i] = elem.(float64)
 		}
 		dr.Value = floatArray
-		log.Printf("DataRef %s id: %s floats: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, floatArray)
+		log.Printf("DataRef %s id: %d floats: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, floatArray)
 	case "int_array":
 		intArray := make([]int, len(value.([]any)))
 		for i, elem := range value.([]any) {
 			intArray[i] = int(elem.(float64))
 		}
 		dr.Value = intArray
-		log.Printf("DataRef %s id: %s ints: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, intArray)
+		log.Printf("DataRef %s id: %d ints: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, intArray)
 	default:
 		// Unknown or unspecified type — print raw
-		log.Printf("DataRef %s id: %s raw payload: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		log.Printf("DataRef %s id: %d raw payload: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value)
 		dr.Value = value
 	}
 
