@@ -133,10 +133,7 @@ func (xpc *XPConnect) Start() {
 	var err error
 	xpc.simInitTime, err = xpc.getSimTime()
 	if err != nil {
-		//log.Fatalf("FATAL: Could not get sim time: %v", err)	
-		// TODO: remove hardcoded time once sim time retrieval is working in mockserver
-		log.Printf("WARNING: Could not get sim time: %v", err)
-		xpc.simInitTime = time.Date(2026, time.January, 16, 11, 0, 0, 0,time.UTC) 
+		log.Fatalf("FATAL: Could not get sim time: %v", err)	
 	}
 	xpc.sessionInitTime = time.Now()
 
@@ -286,7 +283,7 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 
 	for _, dataref := range response.Data {
 		// find the corresponding dataref by name
-		for _, dr := range datarefs {
+		for _, dr := range drefs {
 			if dr.Name == dataref.Name {
 				// store in map
 				m[dataref.ID] = &xpapimodel.Dataref{

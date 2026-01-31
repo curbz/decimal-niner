@@ -291,11 +291,11 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	// --- Sim Time ---
 	case "sim/time/local_date_days":
-		return 18627 // Example: days since 1900 or whatever, say Jan 1, 2025
+		return 15 // Example: days since Jan 1
 	case "sim/time/local_time_sec":
-		return 43200.0 + float64(iter) // 12:00:00 local time
+		return 39600.0 + float64(iter) // 11:00:00 am local time
 	case "sim/time/zulu_time_sec":
-		return 43200.0 + float64(iter) // 12:00:00 Zulu
+		return 39600.0 + float64(iter) // 12:00:00 Zulu
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
 	case "trafficglobal/ai/position_lat":
