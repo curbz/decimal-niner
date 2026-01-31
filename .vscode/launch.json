@@ -19,8 +19,7 @@
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/decimalniner",
             "cwd": "${workspaceFolder}" // This ensures config.yaml is found at "."
-        }
-        ,
+        },
         // lauch with --mock flag
         {
             "name": "Launch debug with mock",
@@ -30,6 +29,33 @@
             "program": "${workspaceFolder}/cmd/decimalniner",
             "cwd": "${workspaceFolder}", // This ensures config.yaml is found at "."
             "args": [
+                "--mock"
+            ]
+        },
+        // launch with custom config file
+        {
+            "name": "Launch with custom config",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/decimalniner",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--config",
+                "E:\\decimal-niner\\config.yaml"
+            ]
+        },
+        // launch with custom config file and mock
+        {
+            "name": "Launch with custom config and mock",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/decimalniner",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--config",
+                "E:\\decimal-niner\\config.yaml",
                 "--mock"
             ]
         }
