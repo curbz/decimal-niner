@@ -71,6 +71,9 @@ func loadPhrases(cfg *config) PhraseClasses {
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
 	}
+		if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
+	}
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
 	}
@@ -124,7 +127,7 @@ func loadPhrases(cfg *config) PhraseClasses {
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
 	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
-	go RadioPlayer()                                                                     // Converts Piper Process -> Speakers
+	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                                                     // Converts Piper Process -> Speakers
 
 	return PhraseClasses{
 			phrases:       phrases,
@@ -281,9 +284,9 @@ func PrepSpeech(piperPath, voiceDir string) {
 }
 
 // RadioPlayer takes prepared Piper processes and pipes them to SoX sequentially
-func RadioPlayer() {
+func RadioPlayer(soxPath string) {
 	for audio := range prepQueue {
-		playCmd := exec.Command("play",
+		playCmd := exec.Command(soxPath,
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
 			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",

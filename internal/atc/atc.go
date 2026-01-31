@@ -89,7 +89,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
 	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
-	go RadioPlayer()                                                                     // Converts Piper Process -> Speakers
+	go RadioPlayer(cfg.ATC.Voices.Sox.Application) // Converts Piper Process -> Speakers
 
 	return &Service{
 		Config:   cfg,
