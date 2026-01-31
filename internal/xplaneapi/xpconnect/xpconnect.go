@@ -26,7 +26,8 @@ type XPConnect struct {
 	config config
 	conn   *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-	dataRefIndexMap map[int]*xpapimodel.Dataref
+	memDataRefIndexMap map[int]*xpapimodel.Dataref
+	memDataRefs     []xpapimodel.Dataref
 	aircraftMap     map[string]*atc.Aircraft
 	atcService      atc.ServiceInterface
 	initialised     bool
@@ -60,71 +61,73 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
+	datarefs := []xpapimodel.Dataref{
+
+		//user position datarefs
+		{Name: "sim/flightmodel/position/latitude",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/flightmodel/position/longitude",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/flightmodel/position/elevation",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/flightmodel/position/psi",
+			APIInfo: xpapimodel.DatarefInfo{}},
+
+		//user tuned atc facilities and frequencies
+		{Name: "sim/cockpit/radios/com1_freq_hz",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/cockpit/radios/com2_freq_hz",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/atc/com1_tuned_facility",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/atc/com2_tuned_facility",
+			APIInfo: xpapimodel.DatarefInfo{}},
+
+		//traffic global datarefs
+		{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
+		//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		//{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+		//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+
+		// The runway is the designator at the source airport if the flight phase is one of:
+		//   FP_TaxiOut, FP_Depart, FP_Climbout
+		// ... and at the destination airport if the flight phase is one of:
+		//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
+		{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
+	}
+
 	return &XPConnect{
 		aircraftMap: make(map[string]*atc.Aircraft),
 		atcService:  atcService,
 		config:      *cfg,
+		memDataRefs: datarefs,
 	}
 
 }
 
 var requestCounter atomic.Int64
 
-var datarefs = []xpapimodel.Dataref{
-
-	//user position datarefs
-	{Name: "sim/flightmodel/position/latitude",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/longitude",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/elevation",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/psi",
-		APIInfo: xpapimodel.DatarefInfo{}},
-
-	//user tuned atc facilities and frequencies
-	{Name: "sim/cockpit/radios/com1_freq_hz",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/cockpit/radios/com2_freq_hz",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/atc/com1_tuned_facility",
-		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/atc/com2_tuned_facility",
-		APIInfo: xpapimodel.DatarefInfo{}},
-
-	//traffic global datarefs
-	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	//{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
-	//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-
-	// The runway is the designator at the source airport if the flight phase is one of:
-	//   FP_TaxiOut, FP_Depart, FP_Climbout
-	// ... and at the destination airport if the flight phase is one of:
-	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
-		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
-}
 
 func (xpc *XPConnect) Start() {
 
@@ -139,20 +142,20 @@ func (xpc *XPConnect) Start() {
 
 	log.Println("get traffic global dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
-	xpc.dataRefIndexMap, err = xpc.getDataRefIndices(datarefs)
+	xpc.memDataRefIndexMap, err = xpc.getDataRefIndices(xpc.memDataRefs)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
 	}
 
 	// Log results
 	log.Println("Retrieved DataRef Indices:")
-	for id, datarefInfo := range xpc.dataRefIndexMap {
+	for id, datarefInfo := range xpc.memDataRefIndexMap {
 		log.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 	}
-	if len(xpc.dataRefIndexMap) == len(datarefs) {
+	if len(xpc.memDataRefIndexMap) == len(xpc.memDataRefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
-	} else if len(xpc.dataRefIndexMap) > 0 {
-		log.Fatalf("Only %d of %d dataref indices were received", len(xpc.dataRefIndexMap), len(datarefs))
+	} else if len(xpc.memDataRefIndexMap) > 0 {
+		log.Fatalf("Only %d of %d dataref indices were received", len(xpc.memDataRefIndexMap), len(xpc.memDataRefs))
 	} else {
 		log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
 	}
@@ -239,7 +242,7 @@ func (xpc *XPConnect) getSimTime() (time.Time, error) {
 	simData := XPlaneTime{}
 	// fetch each dataref value
 	for _, dr := range simTimeDatarefs {
-		memDref := xpc.getDataRefByName(simTimeIndexMap, dr.Name)
+		memDref := xpc.getMemDataRefByName(simTimeIndexMap, dr.Name)
 		drefId := memDref.APIInfo.ID
 		value, err := xpc.webGetDataRefValue(drefId)
 		if err != nil {
@@ -376,32 +379,13 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 	return response, nil
 }
 
-// buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
-func buildURLWithFilters(urlStr string, drefs []xpapimodel.Dataref) (string, error) {
-	// 1. Parse the base URL
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		return "", fmt.Errorf("error parsing base URL: %w", err)
-	}
-
-	// 2. Add filter parameters
-	q := u.Query()
-	for _, dataref := range drefs {
-		// The spec requires filter[name] for each dataref
-		q.Add("filter[name]", dataref.Name)
-	}
-	u.RawQuery = q.Encode()
-
-	return u.String(), nil
-}
-
 // sendDatarefSubscription sends a request to subscribe to a dataref.
 func (xpc *XPConnect) sendDatarefSubscription() {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
-	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.dataRefIndexMap))
-	for index := range xpc.dataRefIndexMap {
+	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.memDataRefIndexMap))
+	for index := range xpc.memDataRefIndexMap {
 		subDataref := xpapimodel.SubDataref{
 			Id: index,
 		}
@@ -458,7 +442,7 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 			continue
 		}
 
-		err = xpc.updateMemDatarefValueInMap(xpc.dataRefIndexMap, idInt, value)
+		err = xpc.updateMemDatarefValueInMap(xpc.memDataRefIndexMap, idInt, value)
 		if err != nil {
 			log.Printf("Error updating dataref ID %d value: %v", idInt, err)
 			continue
@@ -531,10 +515,10 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
-	com1FreqVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
-	com2FreqVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
-	com1FacilityVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
-	com2FacilityVal := xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
+	com1FreqVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
+	com2FreqVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
+	com1FacilityVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
+	com2FacilityVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
@@ -558,9 +542,9 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	xpc.atcService.NotifyUserChange(atc.Position{
-		Lat:      xpc.getDataRefValue(xpc.dataRefIndexMap,"sim/flightmodel/position/latitude", 0).(float64),
-		Long:     xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/flightmodel/position/longitude", 0).(float64),
-		Altitude: xpc.getDataRefValue(xpc.dataRefIndexMap, "sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
+		Lat:      xpc.getMemDataRefValue(xpc.memDataRefIndexMap,"sim/flightmodel/position/latitude", 0).(float64),
+		Long:     xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/longitude", 0).(float64),
+		Altitude: xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
 	}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
 
 }
@@ -569,7 +553,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getDataRefByName(xpc.dataRefIndexMap, "trafficglobal/ai/tail_number")
+	tailNumbersDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, "trafficglobal/ai/tail_number")
 	if tailNumbersDR == nil {
 		log.Println("Error: tail number dataref not found")
 		return
@@ -582,8 +566,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getDataRefByName(xpc.dataRefIndexMap,"trafficglobal/ai/airline_code")
-	flightNumsDR := xpc.getDataRefByName(xpc.dataRefIndexMap, "trafficglobal/ai/flight_num")
+	airlineCodesDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap,"trafficglobal/ai/airline_code")
+	flightNumsDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, "trafficglobal/ai/flight_num")
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		log.Println("Error: airline code or flight number dataref not found")
 	} else {
@@ -618,7 +602,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase := xpc.getDataRefValue(xpc.dataRefIndexMap,"trafficglobal/ai/flight_phase", index)
+		flightPhase := xpc.getMemDataRefValue(xpc.memDataRefIndexMap,"trafficglobal/ai/flight_phase", index)
 		if flightPhase != nil {
 			updatedFlightPhase := flightPhase.(int)
 			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
@@ -626,10 +610,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-		lat := xpc.getDataRefValue(xpc.dataRefIndexMap,"trafficglobal/ai/position_lat", index)
-		lon := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_long", index)
-		alt := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_elev", index)
-		hdg := xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/position_heading", index)
+		lat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap,"trafficglobal/ai/position_lat", index)
+		lon := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_long", index)
+		alt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_elev", index)
+		hdg := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_heading", index)
 
 		if lat != nil && lon != nil && alt != nil && hdg != nil {
 			aircraft.Flight.Position = atc.Position{
@@ -671,10 +655,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 
 		// get parking
-		aircraft.Flight.AssignedParking = xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/parking", index).(string)
+		aircraft.Flight.AssignedParking = xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/parking", index).(string)
 
 		// get assigned runway
-		aircraft.Flight.AssignedRunway = xpc.getDataRefValue(xpc.dataRefIndexMap, "trafficglobal/ai/runway", index).(string)
+		aircraft.Flight.AssignedRunway = xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/runway", index).(string)
 
 	}
 
@@ -702,9 +686,9 @@ func (xpc *XPConnect) updateAircraftData() {
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
 // If the dataref is not found, returns nil.
 // If the dataref is not an array type, index is ignored.
-func (xpc *XPConnect) getDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) any {
+func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) any {
 	
-	dr := xpc.getDataRefByName(datarefIndicesMap, s)
+	dr := xpc.getMemDataRefByName(datarefIndicesMap, s)
 	if dr == nil {
 		return nil
 	}
@@ -736,7 +720,7 @@ func (xpc *XPConnect) getDataRefValue(datarefIndicesMap map[int]*xpapimodel.Data
 }
 
 // getDataRefByName retrieves the Dataref struct by its name.
-func (xpc *XPConnect) getDataRefByName(datarefIndicesMap map[int]*xpapimodel.Dataref, s string) *xpapimodel.Dataref {
+func (xpc *XPConnect) getMemDataRefByName(datarefIndicesMap map[int]*xpapimodel.Dataref, s string) *xpapimodel.Dataref {
 
 	for _, dr := range datarefIndicesMap {
 		if dr.Name == s {
@@ -751,6 +735,28 @@ func (xpc *XPConnect) printAircraftData() {
 	for _, ac := range xpc.aircraftMap {
 		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
 	}
+}
+
+
+// --- Helper functions ---
+
+// buildURLWithFilters constructs the complete URL with filter[name]=... parameters.
+func buildURLWithFilters(urlStr string, drefs []xpapimodel.Dataref) (string, error) {
+	// 1. Parse the base URL
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return "", fmt.Errorf("error parsing base URL: %w", err)
+	}
+
+	// 2. Add filter parameters
+	q := u.Query()
+	for _, dataref := range drefs {
+		// The spec requires filter[name] for each dataref
+		q.Add("filter[name]", dataref.Name)
+	}
+	u.RawQuery = q.Encode()
+
+	return u.String(), nil
 }
 
 // GetZuluDateTime converts sim datarefs into a standard Go time.Time object
