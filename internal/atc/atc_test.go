@@ -55,7 +55,7 @@ func TestAddFlightPlan(t *testing.T) {
 			name:         "Match today's flight within time window",
 			registration: "N12345",
 			flightNumber: 101,
-			simTime:      time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC), // Monday 10:30
+			simTime:      time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 10:30
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
@@ -63,7 +63,7 @@ func TestAddFlightPlan(t *testing.T) {
 						IcaoDest:         "KLAX",
 						DepatureHour:     10,
 						DepartureMin:     0,
-						DepartureDayOfWeek:0,
+						DepartureDayOfWeek:0, // Monday
 						ArrivalHour:      13,
 						ArrivalMin:       0,
 						ArrivalDayOfWeek: 0,
@@ -78,7 +78,7 @@ func TestAddFlightPlan(t *testing.T) {
 			name:         "Match today's flight in extended arrival time window",
 			registration: "N12345",
 			flightNumber: 101,
-			simTime:      time.Date(2024, 1, 1, 13, 15, 0, 0, time.UTC), // Monday 13:15
+			simTime:      time.Date(2024, 1, 1, 13, 15, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 13:15
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
@@ -101,7 +101,7 @@ func TestAddFlightPlan(t *testing.T) {
 			name:         "Match today's flight in extended departure time window",
 			registration: "N12345",
 			flightNumber: 101,
-			simTime:      time.Date(2024, 1, 1, 9, 45, 0, 0, time.UTC), // Monday 09:45
+			simTime:      time.Date(2024, 1, 1, 9, 45, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 09:45
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
@@ -124,7 +124,7 @@ func TestAddFlightPlan(t *testing.T) {
 			name:         "Match yesterday's flight arriving today",
 			registration: "N54321",
 			flightNumber: 202,
-			simTime:      time.Date(2026, 1, 27, 6, 0, 0, 0, time.UTC), // Tuesday 08:00
+			simTime:      time.Date(2026, 1, 27, 6, 0, 0, 0, time.UTC), // this date in 2024 resolves to a Tuesday at 08:00
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N54321_202_0": { // Monday
 					{
