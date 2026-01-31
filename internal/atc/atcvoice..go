@@ -257,8 +257,16 @@ func PrepSpeech(piperPath, voiceDir string) {
 		voice, onnx, rate, noise := resolveVoice(msg, voiceDir)
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.8")
-		stdin, _ := cmd.StdinPipe()
-		stdout, _ := cmd.StdoutPipe()
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Printf("Error obtaining piper stdin pipe: %v", err)
+			continue
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Printf("Error obtaining piper stdout pipe: %v", err)
+			continue
+		}
 
 		if err := cmd.Start(); err != nil {
 			log.Printf("Error starting piper: %v", err)
@@ -267,8 +275,15 @@ func PrepSpeech(piperPath, voiceDir string) {
 
 		// Feed text immediately so Piper starts synthesizing in the background
 		go func(s io.WriteCloser, t string) {
-			io.WriteString(s, t)
-			s.Close()
+			size, err := io.WriteString(s, t)
+			if err != nil {
+				log.Printf("Error writing to piper stdin: %v", err)
+			}
+			log.Printf("Wrote %d bytes to piper stdin", size)
+			err = s.Close()
+			if err != nil {
+				log.Printf("Error closing piper stdin: %v", err)
+			}
 		}(stdin, msg.Text)
 
 		// Send the running process to the player queue
@@ -293,12 +308,22 @@ func RadioPlayer(soxPath string) {
 		)
 		playCmd.Stdin = audio.PiperOut
 
-		_ = playCmd.Start()
+		err := playCmd.Start()
+		if err != nil {
+			log.Printf("Error starting sox: %v", err)
+			continue
+		}
 
 		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
 
-		_ = audio.PiperCmd.Wait()
-		_ = playCmd.Wait()
+		err = audio.PiperCmd.Wait()
+		if err != nil {
+			log.Printf("Error waiting for piper to finish: %v", err)
+		}
+		err = playCmd.Wait()
+		if err != nil {
+			log.Printf("Error waiting for sox to finish: %v", err)
+		}
 
 		// Small gap between transmissions
 		min := 400
