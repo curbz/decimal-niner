@@ -71,7 +71,7 @@ func loadPhrases(cfg *config) PhraseClasses {
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
 	}
-		if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
+	if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
 		log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
 	}
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
@@ -81,7 +81,7 @@ func loadPhrases(cfg *config) PhraseClasses {
 		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
 	}
 
-	// load country voice pools 
+	// load country voice pools
 	err := createVoicePools(cfg.ATC.Voices.Piper.VoiceDirectory)
 	if err != nil {
 		log.Fatalf("error creating voice pools: %v", err)
@@ -127,12 +127,12 @@ func loadPhrases(cfg *config) PhraseClasses {
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
 	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                                                     // Converts Piper Process -> Speakers
+	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                       // Converts Piper Process -> Speakers
 
 	return PhraseClasses{
-			phrases:       phrases,
-			phrasesUnicom: unicomPhrases,
-		}
+		phrases:       phrases,
+		phrasesUnicom: unicomPhrases,
+	}
 }
 
 func createVoicePools(path string) error {
@@ -174,7 +174,7 @@ func createVoicePools(path string) error {
 	}
 
 	// create region voice pools
-	for k,v := range icaoToIsoMap {
+	for k, v := range icaoToIsoMap {
 		cvp, cvpfound := countryVoicePools[v]
 		if !cvpfound {
 			continue
@@ -256,7 +256,7 @@ func PrepSpeech(piperPath, voiceDir string) {
 
 		voice, onnx, rate, noise := resolveVoice(msg, voiceDir)
 
-		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.8")
+		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
 			log.Printf("Error obtaining piper stdin pipe: %v", err)
@@ -274,16 +274,15 @@ func PrepSpeech(piperPath, voiceDir string) {
 		}
 
 		// Feed text immediately so Piper starts synthesizing in the background
+		// Must close stdin to signal EOF to piper
 		go func(s io.WriteCloser, t string) {
+			defer s.Close()
 			size, err := io.WriteString(s, t)
 			if err != nil {
 				log.Printf("Error writing to piper stdin: %v", err)
+				return
 			}
 			log.Printf("Wrote %d bytes to piper stdin", size)
-			err = s.Close()
-			if err != nil {
-				log.Printf("Error closing piper stdin: %v", err)
-			}
 		}(stdin, msg.Text)
 
 		// Send the running process to the player queue
@@ -303,18 +302,19 @@ func RadioPlayer(soxPath string) {
 	for audio := range prepQueue {
 		playCmd := exec.Command(soxPath,
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
+			"-d",
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
 			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",
 		)
 		playCmd.Stdin = audio.PiperOut
+
+		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
 
 		err := playCmd.Start()
 		if err != nil {
 			log.Printf("Error starting sox: %v", err)
 			continue
 		}
-
-		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
 
 		err = audio.PiperCmd.Wait()
 		if err != nil {
@@ -330,6 +330,8 @@ func RadioPlayer(soxPath string) {
 		max := 1200
 		randomMillis := rand.Intn(max-min+1) + min
 		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
+
+		log.Println("playback complete")
 	}
 }
 
@@ -468,7 +470,7 @@ func getPhraseDef(phraseSource map[string]map[string][]string, flightPhase int) 
 	var phaseGroup map[string][]string
 	var facility string
 
-	var callAndResponse[]string
+	var callAndResponse []string
 	pilotInitiates := []string{"pilot", "atc"}
 	atcInitiates := []string{"atc", "pilot"}
 
@@ -535,8 +537,8 @@ func getPhraseDef(phraseSource map[string]map[string][]string, flightPhase int) 
 	}
 
 	return &phraseDef{
-		phaseGroup: phaseGroup,
-		facility: facility,
+		phaseGroup:      phaseGroup,
+		facility:        facility,
 		callAndResponse: callAndResponse,
 	}
 }

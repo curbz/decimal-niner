@@ -1,6 +1,6 @@
 package atc
 
-// icaoToIsoMap contains the comprehensive list of ICAO nationality 
+// icaoToIsoMap contains the comprehensive list of ICAO nationality
 // prefixes mapped to ISO 3166-1 alpha-2 country codes.
 var icaoToIsoMap = map[string]string{
 	// --- 1-Letter Major Prefixes ---

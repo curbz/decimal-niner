@@ -1,7 +1,6 @@
 package atc
 
 import (
-
 	"fmt"
 	"os"
 	"strconv"
@@ -163,8 +162,7 @@ func parseGeneric(path string, isRegion bool) []Controller {
 	return list
 }
 
-
-// convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or 
+// convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or
 // a country prefix (e.g., "EG") and returns the ISO country code.
 func convertIcaoToIso(icao string) (string, error) {
 	icao = strings.ToUpper(strings.TrimSpace(icao))
@@ -188,5 +186,3 @@ func convertIcaoToIso(icao string) (string, error) {
 
 	return "", fmt.Errorf("no ISO mapping found for ICAO code: %s", icao)
 }
-
-

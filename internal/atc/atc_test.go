@@ -59,14 +59,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
-						IcaoOrigin:       "KJFK",
-						IcaoDest:         "KLAX",
-						DepatureHour:     10,
-						DepartureMin:     0,
-						DepartureDayOfWeek:0, // Monday
-						ArrivalHour:      13,
-						ArrivalMin:       0,
-						ArrivalDayOfWeek: 0,
+						IcaoOrigin:         "KJFK",
+						IcaoDest:           "KLAX",
+						DepatureHour:       10,
+						DepartureMin:       0,
+						DepartureDayOfWeek: 0, // Monday
+						ArrivalHour:        13,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   0,
 					},
 				},
 			},
@@ -82,14 +82,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
-						IcaoOrigin:       "KJFK",
-						IcaoDest:         "KLAX",
-						DepatureHour:     10,
-						DepartureMin:     0,
-						DepartureDayOfWeek:0,
-						ArrivalHour:      13,
-						ArrivalMin:       0,
-						ArrivalDayOfWeek: 0,
+						IcaoOrigin:         "KJFK",
+						IcaoDest:           "KLAX",
+						DepatureHour:       10,
+						DepartureMin:       0,
+						DepartureDayOfWeek: 0,
+						ArrivalHour:        13,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   0,
 					},
 				},
 			},
@@ -97,7 +97,7 @@ func TestAddFlightPlan(t *testing.T) {
 			expectDest:    "KLAX",
 			expectNoMatch: false,
 		},
-				{
+		{
 			name:         "Match today's flight in extended departure time window",
 			registration: "N12345",
 			flightNumber: 101,
@@ -105,14 +105,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N12345_101_0": {
 					{
-						IcaoOrigin:       "KJFK",
-						IcaoDest:         "KLAX",
-						DepatureHour:     10,
-						DepartureMin:     0,
-						DepartureDayOfWeek:0,
-						ArrivalHour:      13,
-						ArrivalMin:       0,
-						ArrivalDayOfWeek: 0,
+						IcaoOrigin:         "KJFK",
+						IcaoDest:           "KLAX",
+						DepatureHour:       10,
+						DepartureMin:       0,
+						DepartureDayOfWeek: 0,
+						ArrivalHour:        13,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   0,
 					},
 				},
 			},
@@ -128,14 +128,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N54321_202_0": { // Monday
 					{
-						IcaoOrigin:       "EGLL",
-						IcaoDest:         "LFPG",
-						DepatureHour:     22,
-						DepartureMin:     0,
+						IcaoOrigin:         "EGLL",
+						IcaoDest:           "LFPG",
+						DepatureHour:       22,
+						DepartureMin:       0,
 						DepartureDayOfWeek: 0, // Monday
-						ArrivalHour:      7,
-						ArrivalMin:       30,
-						ArrivalDayOfWeek: 1, // Tuesday
+						ArrivalHour:        7,
+						ArrivalMin:         30,
+						ArrivalDayOfWeek:   1, // Tuesday
 					},
 				},
 			},
@@ -159,14 +159,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N11111_111_1": {
 					{
-						IcaoOrigin:       "KATL",
-						IcaoDest:         "KMIA",
-						DepatureHour:     10,
-						DepartureMin:     0,
+						IcaoOrigin:         "KATL",
+						IcaoDest:           "KMIA",
+						DepatureHour:       10,
+						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
-						ArrivalHour:      12,
-						ArrivalMin:       0,
-						ArrivalDayOfWeek: 1,
+						ArrivalHour:        12,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   1,
 					},
 				},
 			},
@@ -180,14 +180,14 @@ func TestAddFlightPlan(t *testing.T) {
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N22222_222_1": {
 					{
-						IcaoOrigin:       "KDFW",
-						IcaoDest:         "KORD",
-						DepatureHour:     10,
-						DepartureMin:     0,
+						IcaoOrigin:         "KDFW",
+						IcaoDest:           "KORD",
+						DepatureHour:       10,
+						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
-						ArrivalHour:      13,
-						ArrivalMin:       0,
-						ArrivalDayOfWeek: 1,
+						ArrivalHour:        13,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   1,
 					},
 				},
 			},

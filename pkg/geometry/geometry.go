@@ -62,4 +62,3 @@ func CalculateRoughArea(pts [][2]float64) float64 {
 	}
 	return (maxLat - minLat) * (maxLon - minLon)
 }
-

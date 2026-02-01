@@ -55,7 +55,7 @@ type Phase struct {
 type Comms struct {
 	Callsign         string
 	Controller       *Controller
-	CountryCode		 string
+	CountryCode      string
 	LastTransmission string
 	LastInstruction  string
 }

@@ -97,10 +97,9 @@ func LoadConfig[T any](filepath string) (*T, error) {
 	return &config, nil
 }
 
-
-// PickRandomFromMap returns a random key from the given map 
+// PickRandomFromMap returns a random key from the given map
 func PickRandomFromMap[K comparable, V any](m map[K]V) (randomKey any) {
-	
+
 	if len(m) == 0 {
 		return nil
 	}
@@ -141,7 +140,7 @@ func ParseMinute(timeStr string) int {
 		return 0
 	}
 	return minute
-}	
+}
 
 // GetISOWeekday returns an int where Monday=0...Sunday=6
 func GetISOWeekday(t time.Time) int {

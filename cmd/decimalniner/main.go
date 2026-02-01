@@ -11,18 +11,17 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/mockserver"
-	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 )
-
 
 func main() {
 
 	configFlag := flag.String("config", "", "Path to the config file (optional)")
-	
+
 	// mock server to emulate X-Plane REST+WebSocket
 	mock := flag.Bool("mock", false, "start mock X-Plane server locally")
-	
+
 	flag.Parse()
 
 	var cfgPath string
@@ -77,12 +76,10 @@ func FindConfigFile(filename string) (string, error) {
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		}
-		
+
 		// Move up one level
 		currDir = filepath.Dir(currDir)
 	}
 
 	return "", fmt.Errorf("config file %q not found in current or parent directories", filename)
 }
-
-
