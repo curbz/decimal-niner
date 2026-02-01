@@ -84,12 +84,12 @@ func idFor(name string) int64 {
 func Start(port string) *http.Server {
 	mux := http.NewServeMux()
 	// register both exact and subtree patterns so requests to
-	// /api/v3/datarefs and /api/v3/datarefs/{id}/value are routed
+	// /api/v2/datarefs and /api/v2/datarefs/{id}/value are routed
 	// to the dispatcher which will further route to the value
 	// handler when the path ends with "/value".
-	mux.HandleFunc("/api/v3/datarefs", datarefsDispatcher)
-	mux.HandleFunc("/api/v3/datarefs/", datarefsDispatcher)
-	mux.HandleFunc("/api/v3", wsHandler)
+	mux.HandleFunc("/api/v2/datarefs", datarefsDispatcher)
+	mux.HandleFunc("/api/v2/datarefs/", datarefsDispatcher)
+	mux.HandleFunc("/api/v2", wsHandler)
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
 	go func() {
@@ -139,14 +139,14 @@ func datarefsDispatcher(w http.ResponseWriter, r *http.Request) {
 }
 
 func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
-	// Path should be /api/v3/datarefs/{id}/value
+	// Path should be /api/v2/datarefs/{id}/value
 	path := r.URL.Path
 	if !strings.HasSuffix(path, "/value") {
 		http.NotFound(w, r)
 		return
 	}
-	// Extract id from /api/v3/datarefs/{id}/value
-	parts := strings.Split(strings.TrimPrefix(path, "/api/v3/datarefs/"), "/")
+	// Extract id from /api/v2/datarefs/{id}/value
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v2/datarefs/"), "/")
 	if len(parts) != 2 || parts[1] != "value" {
 		http.NotFound(w, r)
 		return

@@ -302,7 +302,8 @@ func RadioPlayer(soxPath string) {
 	for audio := range prepQueue {
 		playCmd := exec.Command(soxPath,
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-			"-d",
+			// TODO add -d for windows only
+			//"-d",
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
 			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",
 		)
