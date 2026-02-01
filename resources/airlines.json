@@ -479,6 +479,11 @@
     "callsign": "VIRGIN",
     "icao_country_code": "Y"
   },
+    "VIR": {
+    "airline_name": "Virgin Atlantic",
+    "callsign": "VIRGIN",
+    "icao_country_code": "EG"
+  },
   "VLG": {
     "airline_name": "Vueling Airlines",
     "callsign": "VUELING",

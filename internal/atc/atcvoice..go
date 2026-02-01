@@ -360,6 +360,7 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 		pool, found = countryVoicePools[isoCountry]
 		if !found {
 			// no country voice pool found, pick from region pool
+			//TODO: handle empty msg.CountryCode ("")
 			regionCode := msg.CountryCode[:1]
 			pool, found = regionVoicePools[regionCode]
 			if !found {
