@@ -98,8 +98,6 @@ func LoadConfig(cfgPath string) *config {
 	return cfg
 }
 
-// TODO: pass in current sim time and only load flights that are either in progress
-// or due to depart within 12 hours
 func BGLReader(filePath string) map[string][]ScheduledFlight {
 
 	log.Printf("Loading Traffic Global BGL file: %s\n", filePath)

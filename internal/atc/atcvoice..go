@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -299,11 +300,16 @@ func PrepSpeech(piperPath, voiceDir string) {
 
 // RadioPlayer takes prepared Piper processes and pipes them to SoX sequentially
 func RadioPlayer(soxPath string) {
+
+	defaultAudioDeviceFlag := ""
+	if runtime.GOOS == "windows" {
+		defaultAudioDeviceFlag = "-d"
+	}
+
 	for audio := range prepQueue {
 		playCmd := exec.Command(soxPath,
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-			// TODO add -d for windows only
-			//"-d",
+			defaultAudioDeviceFlag,
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
 			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",
 		)
@@ -355,22 +361,26 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 			//no country found - pick a random country
 			rKey := util.PickRandomFromMap(icaoToIsoMap).(string)
 			isoCountry = icaoToIsoMap[rKey]
-			log.Printf("icao country code %s not found, %s iso country code selected at random for voice", msg.CountryCode, isoCountry)
+			log.Printf("icao country code '%s' not found, '%s' iso country code selected at random for voice", msg.CountryCode, isoCountry)
 		}
 		var found bool
 		pool, found = countryVoicePools[isoCountry]
 		if !found {
 			// no country voice pool found, pick from region pool
-			//TODO: handle empty msg.CountryCode ("")
-			regionCode := msg.CountryCode[:1]
-			pool, found = regionVoicePools[regionCode]
+			regionCode := ""
+			if msg.CountryCode != "" {
+				regionCode = msg.CountryCode[:1]
+				pool, found = regionVoicePools[regionCode]
+			} else {
+				log.Printf("WARN: no country code provided in message, cannot determine region code: %v", msg)
+			}
 			if !found {
 				// no pool found for region, pick random pool
 				rKey := util.PickRandomFromMap(countryVoicePools).(string)
 				pool = countryVoicePools[rKey]
-				log.Printf("no voice pool found for icao region %s, selected iso country %s at random for voice", regionCode, rKey)
+				log.Printf("no voice pool found for icao region '%s', selected iso country '%s' at random for voice", regionCode, rKey)
 			} else {
-				log.Printf("no voice pool found for country code %s not found, selected icoa region pool %s for voice", isoCountry, regionCode)
+				log.Printf("no voice pool found for iso country code '%s' not found, selected icoa region pool '%s' for voice", isoCountry, regionCode)
 			}
 		}
 

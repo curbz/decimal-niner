@@ -76,18 +76,18 @@ func TestAddFlightPlan(t *testing.T) {
 		},
 		{
 			name:         "Match today's flight in extended arrival time window",
-			registration: "N12345",
+			registration: "N12346",
 			flightNumber: 101,
 			simTime:      time.Date(2024, 1, 1, 13, 15, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 13:15
 			schedules: map[string][]trafficglobal.ScheduledFlight{
-				"N12345_101_0": {
+				"N12346_101_0": {
 					{
 						IcaoOrigin:         "KJFK",
 						IcaoDest:           "KLAX",
 						DepatureHour:       10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0,
-						ArrivalHour:        13,
+						ArrivalHour:        13,  // actual scheduled arrival is 13:15
 						ArrivalMin:         0,
 						ArrivalDayOfWeek:   0,
 					},
@@ -99,15 +99,15 @@ func TestAddFlightPlan(t *testing.T) {
 		},
 		{
 			name:         "Match today's flight in extended departure time window",
-			registration: "N12345",
+			registration: "N12347",
 			flightNumber: 101,
 			simTime:      time.Date(2024, 1, 1, 9, 45, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 09:45
 			schedules: map[string][]trafficglobal.ScheduledFlight{
-				"N12345_101_0": {
+				"N12347_101_0": {
 					{
 						IcaoOrigin:         "KJFK",
 						IcaoDest:           "KLAX",
-						DepatureHour:       10,
+						DepatureHour:       10, // actual scheduled departure is 10:00 am
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0,
 						ArrivalHour:        13,
@@ -152,10 +152,10 @@ func TestAddFlightPlan(t *testing.T) {
 			expectNoMatch: true,
 		},
 		{
-			name:         "Flight departure time not reached yet",
+			name:         "Time is earlier than flight departure time",
 			registration: "N11111",
 			flightNumber: 111,
-			simTime:      time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC), // Before 10:00 departure
+			simTime:      time.Date(2026, 1, 27, 5, 0, 0, 0, time.UTC), // 5am Tuesday, this is before 10:00 departure and outside max extended search window
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N11111_111_1": {
 					{
@@ -173,10 +173,10 @@ func TestAddFlightPlan(t *testing.T) {
 			expectNoMatch: true,
 		},
 		{
-			name:         "Flight arrival time passed",
+			name:         "Flight arrival time has passed",
 			registration: "N22222",
 			flightNumber: 222,
-			simTime:      time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC), // After 13:00 arrival
+			simTime:      time.Date(2024, 1, 27, 18, 0, 0, 0, time.UTC), // 6pm Tuesday is after 13:00 arrival and outside max extended search window
 			schedules: map[string][]trafficglobal.ScheduledFlight{
 				"N22222_222_1": {
 					{

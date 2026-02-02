@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"runtime"
 	"time"
 
 	"fmt"
@@ -85,7 +86,13 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 	}
 	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
 
-	log.Println("(Windows only) AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
+	if runtime.GOOS == "windows" {
+		if os.Getenv("AUDIODRIVER") == "" {
+			log.Println("AUDIODRIVER env var is not set, setting for sox usage...")
+			os.Setenv("AUDIODRIVER", "waveaudio")
+		}
+		log.Println("AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
+	}
 
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
@@ -335,9 +342,13 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	candidateScheds := make([]trafficglobal.ScheduledFlight, 0)
 
 	adjDep := 0
-	adjArr := 0
+	//adjArr := 0
 
-	for cnt := 0; cnt < 2; cnt++ {
+	// find active flights using schedule times
+	// when no flight found, expand search by 20 minutes up to 4 hours
+	for adjArr := 0; adjArr <= 240; adjArr = adjArr + 20 {
+
+		adjDep = -adjArr  //-20
 
 		// get all scheds for yesterday and filter. For yesterday's departures, active
 		// flights are those where the arrival day of week is today and arrival time is greater
@@ -372,8 +383,6 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 			break
 		}
 
-		adjDep = -20
-		adjArr = 20
 	}
 
 	if len(candidateScheds) == 0 {
