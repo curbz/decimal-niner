@@ -301,18 +301,16 @@ func PrepSpeech(piperPath, voiceDir string) {
 // RadioPlayer takes prepared Piper processes and pipes them to SoX sequentially
 func RadioPlayer(soxPath string) {
 
-	defaultAudioDeviceFlag := ""
-	if runtime.GOOS == "windows" {
-		defaultAudioDeviceFlag = "-d"
-	}
-
 	for audio := range prepQueue {
-		playCmd := exec.Command(soxPath,
+		args := []string{
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-			defaultAudioDeviceFlag,
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
-			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",
-		)
+			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",}
+		if runtime.GOOS == "windows" {
+			args = append(args, "-d")
+		}
+
+		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
 		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
