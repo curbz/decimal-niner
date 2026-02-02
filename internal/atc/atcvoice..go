@@ -305,7 +305,7 @@ func RadioPlayer(soxPath string) {
 		args := []string{
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
 			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
-			"synth", audio.NoiseType, "mix", "1", "pad", "0", "0.1",}
+			"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix",}
 		if runtime.GOOS == "windows" {
 			args = append(args, "-d")
 		}
