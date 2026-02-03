@@ -284,7 +284,13 @@ func PrepAndQueuePhrase(phrase, role string, ac Aircraft) {
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
 	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
+	// TODO: if parking contains numbers, does not contain RAMP or STOP, prefix with GATE
 	phrase = strings.ReplaceAll(phrase, "{PARKING}", ac.Flight.AssignedParking)
+	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
+	// TODO: lookup destination name from airport code
+	if ac.Flight.Destination != "" {
+		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", ac.Flight.Destination)
+	}
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
 
@@ -331,12 +337,11 @@ func PrepSpeech(piperPath, voiceDir string) {
 		// Must close stdin to signal EOF to piper
 		go func(s io.WriteCloser, t string) {
 			defer s.Close()
-			size, err := io.WriteString(s, t)
+			_, err := io.WriteString(s, t)
 			if err != nil {
 				log.Printf("Error writing to piper stdin: %v", err)
 				return
 			}
-			log.Printf("Wrote %d bytes to piper stdin", size)
 		}(stdin, msg.Text)
 
 		// Send the running process to the player queue
@@ -392,8 +397,6 @@ func RadioPlayer(soxPath string) {
 		max := 1200
 		randomMillis := rand.Intn(max-min+1) + min
 		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
-
-		log.Println("playback complete")
 	}
 }
 

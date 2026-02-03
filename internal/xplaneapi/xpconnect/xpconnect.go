@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -602,6 +603,8 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft = &atc.Aircraft{
 				Registration: tailNumber,
 				Flight: atc.Flight{
+					// Squawk random number between 1200 and 6999
+					Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
 					Phase: atc.Phase{
 						Current:    fpUnknown.Index(),
 						Previous:   fpUnknown.Index(),
@@ -673,7 +676,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		// get parking
 		parking, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/parking", index)
 		if err != nil {
-			log.Println(err)
+			//TODO: reinstate once parking dataref issue is resolved
+			//log.Println(err)
+			//return
+			parking = "stand"		
 		}
 		aircraft.Flight.AssignedParking = parking.(string)
 
@@ -681,6 +687,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		runway, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/runway", index)
 		if err != nil {
 			log.Println(err)
+			return
 		}
 		aircraft.Flight.AssignedRunway = runway.(string)
 
@@ -708,10 +715,7 @@ func (xpc *XPConnect) updateAircraftData() {
 }
 
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
-// If the dataref is not found, returns nil.
 // If the dataref is not an array type, index is ignored.
-
-//TODO: needs to return an error instead of nil
 func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) (any, error) {
 
 	dr := xpc.getMemDataRefByName(datarefIndicesMap, s)

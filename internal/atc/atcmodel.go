@@ -37,6 +37,7 @@ type Flight struct {
 	Comms           Comms
 	AssignedParking string
 	AssignedRunway  string
+	Squawk       	string
 }
 
 type Position struct {
