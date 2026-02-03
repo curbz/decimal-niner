@@ -514,10 +514,14 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
-	com1FreqVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
-	com2FreqVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
-	com1FacilityVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
-	com2FacilityVal := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
+	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
+	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
+	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
+	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
+		if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
+		logErrors(errC1, errC2, errF1, errF2)
+		return
+	}
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
@@ -540,10 +544,18 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
+	lat, errLat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
+	lng, errLng := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
+	alt, errAlt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
+	if errLat != nil || errLng != nil || errAlt != nil {
+		logErrors(errLat, errLng, errAlt)
+		return
+	}
+
 	xpc.atcService.NotifyUserChange(atc.Position{
-		Lat:      xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/latitude", 0).(float64),
-		Long:     xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/longitude", 0).(float64),
-		Altitude: xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/elevation", 0).(float64) * 3.28084,
+		Lat:      lat.(float64),
+		Long:     lng.(float64),
+		Altitude: alt.(float64) * 3.28084,
 	}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
 
 }
@@ -601,26 +613,31 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
-		if flightPhase != nil {
-			updatedFlightPhase := flightPhase.(int)
-			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
-			aircraft.Flight.Phase.Current = updatedFlightPhase
+		flightPhase, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
+		if err != nil {
+			log.Println(err)
+			return
 		}
 
-		// Update position
-		lat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_lat", index)
-		lon := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_long", index)
-		alt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_elev", index)
-		hdg := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_heading", index)
+		updatedFlightPhase := flightPhase.(int)
+		aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+		aircraft.Flight.Phase.Current = updatedFlightPhase
 
-		if lat != nil && lon != nil && alt != nil && hdg != nil {
-			aircraft.Flight.Position = atc.Position{
-				Lat:      lat.(float64),
-				Long:     lon.(float64),
-				Altitude: alt.(float64) * 3.28084, // Ensure AI altitude is also in feet
-				Heading:  hdg.(float64),
-			}
+		// Update position
+		lat, errLat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_lat", index)
+		lng, errLng := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_long", index)
+		alt, errAlt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_elev", index)
+		hdg, errHdg := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_heading", index)
+		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
+			logErrors(errLat, errLng, errAlt, errHdg)
+			return
+		}		
+
+		aircraft.Flight.Position = atc.Position{
+			Lat:      lat.(float64),
+			Long:     lng.(float64),
+			Altitude: alt.(float64) * 3.28084, // Ensure AI altitude is also in feet
+			Heading:  hdg.(float64),
 		}
 
 		// get flight number
@@ -654,10 +671,18 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
 
 		// get parking
-		aircraft.Flight.AssignedParking = xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/parking", index).(string)
+		parking, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/parking", index)
+		if err != nil {
+			log.Println(err)
+		}
+		aircraft.Flight.AssignedParking = parking.(string)
 
 		// get assigned runway
-		aircraft.Flight.AssignedRunway = xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/runway", index).(string)
+		runway, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/runway", index)
+		if err != nil {
+			log.Println(err)
+		}
+		aircraft.Flight.AssignedRunway = runway.(string)
 
 	}
 
@@ -685,36 +710,47 @@ func (xpc *XPConnect) updateAircraftData() {
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
 // If the dataref is not found, returns nil.
 // If the dataref is not an array type, index is ignored.
-func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) any {
+
+//TODO: needs to return an error instead of nil
+func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) (any, error) {
 
 	dr := xpc.getMemDataRefByName(datarefIndicesMap, s)
 	if dr == nil {
-		return nil
+		return nil, fmt.Errorf("error: dataref %s not found in map", s) 
 	}
 
 	// if the decoded value type is array, get the element at index
 	switch dr.DecodedDataType {
 	case "base64_string_array", "uint32_string_array":
 		values, ok := dr.Value.([]string)
-		if !ok || index >= len(values) {
-			return nil
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []string", s) 
 		}
-		return values[index]
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+		}
+		return values[index], nil
 	case "float_array":
 		values, ok := dr.Value.([]float64)
-		if !ok || index >= len(values) {
-			return nil
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []float64", s) 
 		}
-		return values[index]
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+		}
+		return values[index], nil
 	case "int_array":
 		values, ok := dr.Value.([]int)
-		if !ok || index >= len(values) {
-			return nil
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []int", s) 
 		}
-		return values[index]
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+		}
+		return values[index], nil
 	default:
 		// return raw value
-		return dr.Value
+		return dr.Value, nil
 	}
 }
 
@@ -785,4 +821,12 @@ func getZuluDateTime(xp XPlaneTime) time.Time {
 	zuluDateTime := localFull.Add(time.Duration(-diff) * time.Second)
 
 	return zuluDateTime
+}
+
+func logErrors(errors ...error) {
+	for _, e := range errors {
+		if e != nil {
+			log.Println(e)
+		}
+	}
 }

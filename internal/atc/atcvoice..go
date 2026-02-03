@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -25,9 +26,33 @@ type VoicesConfig struct {
 	Sox               Sox    `yaml:"sox"`
 }
 
+type Exchange struct {
+    ID        string `json:"id"`
+    Initiator string `json:"initiator"` // "pilot" or "atc"
+    Pilot     string `json:"pilot"`
+    ATC       string `json:"atc"`
+}
+
+type PhraseDatabase struct {
+    PreFlight      []Exchange `json:"pre_flight_parked"`
+    Startup        []Exchange `json:"startup"`
+    TaxiOut        []Exchange `json:"taxi_out"`
+    Depart         []Exchange `json:"depart"`
+    Climb          []Exchange `json:"climb"`
+    Cruise         []Exchange `json:"cruise"`
+    Descent        []Exchange `json:"descent"`
+    Approach       []Exchange `json:"approach"`
+    Final          []Exchange `json:"final"`
+    Braking        []Exchange `json:"braking"`
+    TaxiIn         []Exchange `json:"taxi_in"`
+    PostFlight     []Exchange `json:"post_flight_parked"`
+    GoAround       []Exchange `json:"go_around"`
+    Holding        []Exchange `json:"holding"`
+}
+
 type PhraseClasses struct {
-	phrases       map[string]map[string][]string
-	phrasesUnicom map[string]map[string][]string
+	phrases       map[string][]Exchange
+	phrasesUnicom map[string][]Exchange
 }
 
 type Piper struct {
@@ -100,7 +125,7 @@ func loadPhrases(cfg *config) PhraseClasses {
 		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
 	}
 
-	var phrases map[string]map[string][]string
+	var phrases map[string][]Exchange
 	err = json.Unmarshal(phrasesBytes, &phrases)
 	if err != nil {
 		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
@@ -118,7 +143,7 @@ func loadPhrases(cfg *config) PhraseClasses {
 		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
 	}
 
-	var unicomPhrases map[string]map[string][]string
+	var unicomPhrases map[string][]Exchange
 	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
 	if err != nil {
 		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
@@ -195,7 +220,7 @@ func (s *Service) startComms() {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a response to the communication
 
-			var phraseSource map[string]map[string][]string
+			var phraseSource map[string][]Exchange
 			if ac.Flight.Comms.Controller.RoleID == 0 {
 				phraseSource = s.PhraseClasses.phrasesUnicom
 			} else {
@@ -203,50 +228,78 @@ func (s *Service) startComms() {
 			}
 
 			phraseDef := getPhraseDef(phraseSource, ac.Flight.Phase.Current)
-			if phraseDef == nil {
-				log.Printf("No ATC instructions for aircraft %s flight phase %d role id %d",
-					ac.Registration, ac.Flight.Phase.Current, ac.Flight.Comms.Controller.RoleID)
+			if phraseDef == nil || len(phraseDef.exchanges) == 0 {
+				log.Printf("error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
 				continue
 			}
 
-			for i, groupName := range phraseDef.callAndResponse {
-				// select random phrase
-				phrases := phraseDef.phaseGroup[groupName]
-				if len(phrases) == 0 {
-					log.Printf("No phrases found for phase group %s role id %d", phraseDef.phaseGroup, ac.Flight.Comms.Controller.RoleID)
-					continue
+			// select random exchange
+			exchange := phraseDef.exchanges[rand.Intn(len(phraseDef.exchanges))]
+
+			if exchange.Initiator == "pilot" {
+				PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac)
+				// if not unicom then ATC responds
+				if ac.Flight.Comms.Controller.RoleID != 0 {
+					PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac)
+					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac)
 				}
-				selectedPhrase := phrases[rand.Intn(len(phrases))]
-
-				// construct message and replace all possible variables
-				// TODO: add more as defined in phrase files
-				message := strings.ReplaceAll(selectedPhrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
-				message = strings.ReplaceAll(message, "{FACILITY}", ac.Flight.Comms.Controller.Name)
-				message = strings.ReplaceAll(message, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
-				message = strings.ReplaceAll(message, "{PARKING}", ac.Flight.AssignedParking)
-
-				message = translateNumerics(message)
-
-				var role string
-				if i == 0 {
-					role = "PILOT"
-					ac.Flight.Comms.LastTransmission = message
+			}
+			
+			if exchange.Initiator == "atc" {
+				PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac)
+				if exchange.Pilot == "" {
+					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac)
 				} else {
-					role = phraseDef.facility
-					ac.Flight.Comms.LastInstruction = message
-				}
-
-				// send message to radio queue
-				radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
-					role, message, ac.Flight.Phase.Current, ac.Flight.Comms.CountryCode,
-				}
-
-				if ac.Flight.Comms.Controller.RoleID == 0 {
-					break
+					PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac)
 				}
 			}
 		}
 	}()
+}
+
+// autoReadback will generate the readback phrase from the original
+// this entails moving {CALLSIGN} from the beginning to the end and 
+// removng any text enclosed in square brackets
+func autoReadback(phrase string) string {
+	phrase = strings.TrimPrefix(phrase, "{CALLSIGN}")
+	phrase = strings.TrimPrefix(phrase, ",")
+	phrase = strings.TrimSuffix(phrase, ".")
+	phrase = phrase + " {CALLSIGN}"
+	phrase = removeBracketedPhrases(phrase)
+	return phrase
+}
+
+func removeBracketedPhrases(input string) string {
+	re := regexp.MustCompile((`\[[^\]]*\]`))
+	result := re.ReplaceAllString(input, "")
+	return result
+}
+
+// PrepPhrase prepares the phrase and queues for speech generation
+// role is either "PILOT" or the facility name
+func PrepAndQueuePhrase(phrase, role string, ac Aircraft) {
+
+	// construct message and replace all possible variables
+	// TODO: add more as defined in phrase files
+	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
+	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
+	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
+	phrase = strings.ReplaceAll(phrase, "{PARKING}", ac.Flight.AssignedParking)
+	phrase = strings.ReplaceAll(phrase, "[", "")
+	phrase = strings.ReplaceAll(phrase, "]", "")
+
+	phrase = translateNumerics(phrase)
+
+	if role == "PILOT" {
+		ac.Flight.Comms.LastTransmission = phrase
+	} else {
+		ac.Flight.Comms.LastInstruction = phrase
+	}
+
+	// send message to radio queue
+	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
+		role, phrase, ac.Flight.Phase.Current, ac.Flight.Comms.CountryCode,
+	}
 }
 
 // PrepSpeech picks up text and starts the Piper process immediately
@@ -304,11 +357,15 @@ func RadioPlayer(soxPath string) {
 	for audio := range prepQueue {
 		args := []string{
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
-			"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix",}
+		}
 		if runtime.GOOS == "windows" {
 			args = append(args, "-d")
 		}
+		args = append(args,
+			// SoX effects chain
+			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
+			"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix",
+		)
 
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
@@ -470,85 +527,66 @@ func translateRunway(runway string) string {
 }
 
 type phraseDef struct {
-	phaseGroup      map[string][]string
+	exchanges      []Exchange
 	facility        string
-	callAndResponse []string
 }
 
-func getPhraseDef(phraseSource map[string]map[string][]string, flightPhase int) *phraseDef {
+func getPhraseDef(phraseSource map[string][]Exchange, flightPhase int) *phraseDef {
 
-	var phaseGroup map[string][]string
+	var exchanges []Exchange
 	var facility string
-
-	var callAndResponse []string
-	pilotInitiates := []string{"pilot", "atc"}
-	atcInitiates := []string{"atc", "pilot"}
 
 	switch flightPhase {
 	// --- PRE-FLIGHT & DEPARTURE ---
 	case trafficglobal.Parked.Index():
-		phaseGroup = phraseSource["pre_flight_parked"]
+		exchanges = phraseSource["pre_flight_parked"]
 		facility = "Clearance" // or Delivery
-		callAndResponse = pilotInitiates
 	case trafficglobal.Startup.Index():
-		phaseGroup = phraseSource["startup"]
+		exchanges = phraseSource["startup"]
 		facility = "Ground"
-		callAndResponse = pilotInitiates
 	case trafficglobal.TaxiOut.Index():
-		phaseGroup = phraseSource["taxi_out"]
+		exchanges = phraseSource["taxi_out"]
 		facility = "Ground"
-		callAndResponse = atcInitiates
 	case trafficglobal.Depart.Index():
-		phaseGroup = phraseSource["depart"]
+		exchanges = phraseSource["depart"]
 		facility = "Tower"
-		callAndResponse = atcInitiates
 	case trafficglobal.Climbout.Index():
-		phaseGroup = phraseSource["climb_out"]
+		exchanges = phraseSource["climb_out"]
 		facility = "Departure"
-		callAndResponse = atcInitiates
 	// --- ENROUTE & ARRIVAL ---
 	case trafficglobal.Cruise.Index():
-		phaseGroup = phraseSource["cruise"]
+		exchanges = phraseSource["cruise"]
 		facility = "Center"
-		callAndResponse = atcInitiates
 	case trafficglobal.Approach.Index():
-		phaseGroup = phraseSource["approach"]
+		exchanges = phraseSource["approach"]
 		facility = "Approach"
-		callAndResponse = atcInitiates
 	case trafficglobal.Holding.Index():
-		phaseGroup = phraseSource["holding"]
+		exchanges = phraseSource["holding"]
 		facility = "Approach"
-		callAndResponse = atcInitiates
 	case trafficglobal.Final.Index():
-		phaseGroup = phraseSource["final"]
+		exchanges = phraseSource["final"]
 		facility = "Tower"
-		callAndResponse = atcInitiates
 	case trafficglobal.GoAround.Index():
-		phaseGroup = phraseSource["go_around"]
+		exchanges = phraseSource["go_around"]
 		facility = "Tower"
-		callAndResponse = pilotInitiates
 	// --- LANDING & TAXI-IN ---
 	case trafficglobal.Braking.Index():
 		// In Traffic Global, Braking usually covers the rollout and runway exit
-		phaseGroup = phraseSource["braking"]
+		exchanges = phraseSource["braking"]
 		facility = "Tower"
-		callAndResponse = atcInitiates
 	case trafficglobal.TaxiIn.Index():
-		phaseGroup = phraseSource["taxi_in"]
+		exchanges = phraseSource["taxi_in"]
 		facility = "Ground"
-		callAndResponse = atcInitiates
 	case trafficglobal.Shutdown.Index():
 		// Usually uses the end of Taxi-In or a "On Blocks" message
-		phaseGroup = phraseSource["post_flight_parked"]
+		exchanges = phraseSource["post_flight_parked"]
 		facility = "Ground"
-		callAndResponse = pilotInitiates
 	default:
 		return nil
 	}
 
 	return &phraseDef{
-		phaseGroup:      phaseGroup,
+		exchanges:       exchanges,
 		facility:        facility,
-		callAndResponse: callAndResponse,
 	}
 }
