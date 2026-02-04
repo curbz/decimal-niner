@@ -40,6 +40,8 @@ func TestPerformSearch(t *testing.T) {
 	}
 
 }
+
+//TODO: these tests must use a config.yaml that has use_flightplan_fallback set to false. Write more tests for when true.
 func TestAddFlightPlan(t *testing.T) {
 	tests := []struct {
 		name          string

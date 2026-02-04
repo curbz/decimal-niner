@@ -45,6 +45,7 @@ type config struct {
 		AirlinesFile      string       `yaml:"airlines_file"`
 		Voices            VoicesConfig `yaml:"voices"`
 		ListenAllFreqs    bool         `yaml:"listen_all_frequencies"`
+		FlightPlanFallback bool			`yaml:"use_flightplan_fallback"`
 	} `yaml:"atc"`
 }
 
@@ -348,7 +349,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	// when no flight found, expand search by 20 minutes up to 4 hours
 	for adjArr := 0; adjArr <= 240; adjArr = adjArr + 20 {
 
-		adjDep = -adjArr  //-20
+		adjDep = -adjArr 
 
 		// get all scheds for yesterday and filter. For yesterday's departures, active
 		// flights are those where the arrival day of week is today and arrival time is greater
@@ -386,16 +387,37 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	}
 
 	if len(candidateScheds) == 0 {
-		log.Printf("no active flight plan found for registration %s flight number %d days %d and %d",
+		log.Printf("no active flight plan found for registration %s flight no. %d days %d and %d",
 			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
-		return
+		if !s.Config.ATC.FlightPlanFallback {
+			return
+		}
+		// fallback to find by tail number and flight only, on any day and time
+		log.Printf("using fallback method to find inactive flight plan for registration %s flight no. %d",
+			ac.Registration, ac.Flight.Number)
+		for i := simTodayDayOfWeek; i <= (simTodayDayOfWeek + 6); i++ {
+			day := i % 7
+			key := fmt.Sprintf("%s_%d_%d", ac.Registration, ac.Flight.Number, day)
+			scheds, found := s.FlightSchedules[key]
+			if found {
+				for _, f := range scheds {
+					candidateScheds = append(candidateScheds, f)
+				}
+			}	
+		}
+
+		if len(candidateScheds) == 0 {
+			log.Printf("no inactive flight plan found for registration %s flight no. %d",
+				ac.Registration, ac.Flight.Number)	
+			return
+		}	
 	}
 
 	// there should only be one flight in the candidates, but capturing instances where
-	// there is multiple for debugging
+	// there is multiple for diagnostics
 	if len(candidateScheds) > 1 {
-		log.Printf("multiple active flight plans found for registration %s flight number %d days %d and %d",
-			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
+		log.Printf("multiple (%d) active flight plans found for registration %s flight number %d days %d and %d",
+			len(candidateScheds), ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		for i, c := range candidateScheds {
 			log.Printf("duplicate active flight %d/%d: %v", i+1, len(candidateScheds), c)
 		}
@@ -405,7 +427,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
 
-	log.Printf("reg %s flight num %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
-	log.Printf("reg %s flight num %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+	log.Printf("reg %s flight no. %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
+	log.Printf("reg %s flight no. %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
 
 }
