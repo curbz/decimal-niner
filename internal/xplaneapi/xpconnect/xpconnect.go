@@ -84,6 +84,12 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		{Name: "sim/atc/com2_tuned_facility",
 			APIInfo: xpapimodel.DatarefInfo{}},
 
+		//weather datarefs
+		{Name: "sim/weather/barometer_current_pas",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/weather/region/sealevel_pressure_pas",
+			APIInfo: xpapimodel.DatarefInfo{}},
+
 		//traffic global datarefs
 		{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
@@ -431,6 +437,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 	}
 }
 
+// handleSubscribedDatarefUpdate updates the in-memory dataref values and triggers downstream updates
 func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	for id, value := range datarefs {
@@ -449,6 +456,10 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 		}
 
 	}
+
+	// TODO: review, do we ALWAYS need to be calling these?
+	// and within each function, do we need to do everything? some things could not be necessary and expensive
+	xpc.updateWeatherData()
 	xpc.updateUserData()
 	xpc.updateAircraftData()
 }
@@ -512,6 +523,21 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 	return nil
 }
 
+func (xpc *XPConnect) updateWeatherData() {
+
+	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/barometer_current_pas", 0)
+	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
+	if errFb != nil || errSb != nil {
+		logErrors(errFb, errSb)
+		return
+	}
+
+	w := xpc.atcService.GetWeatherState()
+	w.Baro.Flight = flightBaro.(float64)
+	w.Baro.Sealevel = sealevelBaro.(float64)
+
+}
+
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
@@ -539,7 +565,7 @@ func (xpc *XPConnect) updateUserData() {
 	lastTunedFreqs := userState.TunedFreqs
 	lastTunedFacilities := userState.TunedFacilities
 
-	// if no change to tuned frequencies, no need to update user state
+	// if no change to tuned frequencies or baro, no need to update user state
 	if com1Freq == lastTunedFreqs[1] && com2Freq == lastTunedFreqs[2] &&
 		com1Facility == lastTunedFacilities[1] && com2Facility == lastTunedFacilities[2] {
 		return

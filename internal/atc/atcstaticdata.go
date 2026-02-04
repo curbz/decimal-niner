@@ -234,3 +234,27 @@ var icaoToIsoMap = map[string]string{
 	"ZK": "KP", // North Korea
 	"ZM": "MN", // Mongolia
 }
+
+var phoneticMap = map[string]string{
+	"A": "Alpha", "B": "Bravo", "C": "Charlie", "D": "Delta", "E": "Echo",
+	"F": "Foxtrot", "G": "Golf", "H": "Hotel", "I": "India", "J": "Juliett",
+	"K": "Kilo", "L": "Lima", "M": "Mike", "N": "November", "O": "Oscar",
+	"P": "Papa", "Q": "Quebec", "R": "Romeo", "S": "Sierra", "T": "Tango",
+	"U": "Uniform", "V": "Victor", "W": "Whiskey", "X": "X-ray", "Y": "Yankee",
+	"Z": "Zulu", "0": "Zero", "1": "One", "2": "Two", "3": "Tree",
+	"4": "Fower", "5": "Fife", "6": "Six", "7": "Seven", "8": "Eight", "9": "Niner",
+}
+
+var numericMap = map[rune]string{
+	'0': "zero",
+	'1': "one",
+	'2': "two",
+	'3': "three",
+	'4': "four",
+	'5': "five",
+	'6': "six",
+	'7': "seven",
+	'8': "eight",
+	'9': "niner",
+}
+

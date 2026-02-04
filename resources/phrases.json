@@ -7,9 +7,9 @@
     { "id": "clr_request", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, IFR {DESTINATION}, ready for clearance.", "atc": "{CALLSIGN}, IFR [clearance] to {DESTINATION} on [request, monitor this] frequency." }
   ],
   "startup": [
-    { "id": "start_eng", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting engine start.", "atc": "{CALLSIGN}, start approved, QNH {ALTIMETER}, report ready for taxi." },
+    { "id": "start_eng", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting engine start.", "atc": "{CALLSIGN}, start approved, {BARO}, report ready for taxi." },
     { "id": "start_push", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting pushback and start.", "atc": "{CALLSIGN}, push and start approved, tail {TAXIWAY}, report ready for taxi." },
-    { "id": "start_ready", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for start-up.", "atc": "{CALLSIGN}, engine start is at your discretion, altimeter {ALTIMETER}." },
+    { "id": "start_ready", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for start-up.", "atc": "{CALLSIGN}, engine start is at your discretion, {BARO}." },
     { "id": "start_atis", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting engine start, Information {ATIS_CODE} current.", "atc": "{CALLSIGN}, start-up approved, expect Runway {RUNWAY} for departure." },
     { "id": "start_done", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, start-up complete, requesting taxi.", "atc": "{CALLSIGN}, Roger, report ready for taxi." }
   ],
@@ -35,7 +35,7 @@
     { "id": "clmb_5", "initiator": "atc", "pilot": "Direct {WAYPOINT}, {CALLSIGN}.", "atc": "{CALLSIGN}, resume own navigation, proceed direct {WAYPOINT}." }
   ],
   "cruise": [
-    { "id": "cru_lvl", "initiator": "atc", "pilot": "{FACILITY} Center, {CALLSIGN}, level at current altitude.", "atc": "{CALLSIGN}, {FACILITY} Center, Roger, altimeter {ALTIMETER}." },
+    { "id": "cru_lvl", "initiator": "atc", "pilot": "{FACILITY} Center, {CALLSIGN}, level at current altitude.", "atc": "{CALLSIGN}, {FACILITY} Center, Roger, {BARO}." },
     { "id": "cru_vectors", "initiator": "atc", "pilot": "Heading {HEADING}, {CALLSIGN}.", "atc": "{CALLSIGN}, {FACILITY}, fly heading {HEADING}, vectors for traffic." },
     { "id": "cru_direct", "initiator": "pilot", "pilot": "{FACILITY} Center, {CALLSIGN}, requesting direct {WAYPOINT}.", "atc": "{CALLSIGN}, cleared direct {WAYPOINT}, resume own navigation." },
     { "id": "cru_altitude", "initiator": "atc", "pilot": "Climbing to altitude instructed, {CALLSIGN}.", "atc": "{CALLSIGN}, climb and maintain altitude instructed." },
@@ -51,7 +51,7 @@
   "approach": [
     { "id": "app_1", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, requesting vectors for the approach to Runway {RUNWAY}.", "atc": "{CALLSIGN}, {FACILITY} Approach, fly heading {HEADING}, descend and maintain assigned altitude." },
     { "id": "app_2", "initiator": "atc", "pilot": "Cleared to {WAYPOINT}, {CALLSIGN}.", "atc": "{CALLSIGN}, cleared to {WAYPOINT}, join the localizer for the approach Runway {RUNWAY}." },
-    { "id": "app_3", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, descending through {ALTITUDE} with Information {ATIS_CODE}.", "atc": "{CALLSIGN}, Roger, expect vectors for the ILS Runway {RUNWAY}, altimeter {ALTIMETER}." },
+    { "id": "app_3", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, descending through {ALTITUDE} with Information {ATIS_CODE}.", "atc": "{CALLSIGN}, Roger, expect vectors for the ILS Runway {RUNWAY}, {BARO}." },
     { "id": "app_4", "initiator": "atc", "pilot": "Heading {HEADING}, descending to {ALTITUDE}, {CALLSIGN}.", "atc": "{CALLSIGN}, fly heading {HEADING}, descend and maintain {ALTITUDE}, cleared for the approach." },
     { "id": "app_5", "initiator": "atc", "pilot": "Contact Tower on {FREQUENCY}, {CALLSIGN}.", "atc": "{CALLSIGN}, you are four miles from the marker, contact Tower on {FREQUENCY}." }
   ],

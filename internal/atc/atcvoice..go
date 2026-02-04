@@ -2,6 +2,7 @@ package atc
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -237,20 +238,20 @@ func (s *Service) startComms() {
 			exchange := phraseDef.exchanges[rand.Intn(len(phraseDef.exchanges))]
 
 			if exchange.Initiator == "pilot" {
-				PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac)
+				PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
-					PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac)
-					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac)
+					PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
+					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				}
 			}
 			
 			if exchange.Initiator == "atc" {
-				PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac)
+				PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
 				if exchange.Pilot == "" {
-					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac)
+					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				} else {
-					PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac)
+					PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				}
 			}
 		}
@@ -277,20 +278,23 @@ func removeBracketedPhrases(input string) string {
 
 // PrepPhrase prepares the phrase and queues for speech generation
 // role is either "PILOT" or the facility name
-func PrepAndQueuePhrase(phrase, role string, ac Aircraft) {
+func PrepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 
 	// construct message and replace all possible variables
 	// TODO: add more as defined in phrase files
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
 	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
-	// TODO: if parking contains numbers, does not contain RAMP or STOP, prefix with GATE
+	// TODO: if parking starts with numbers, does not contain RAMP or STOP, prefix with GATE. If the suffix is a single
+	// letter, covert to phonetic
 	phrase = strings.ReplaceAll(phrase, "{PARKING}", ac.Flight.AssignedParking)
 	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
 	// TODO: lookup destination name from airport code
 	if ac.Flight.Destination != "" {
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", ac.Flight.Destination)
 	}
+	phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, 		baro.TransitionAlt, ac.Flight.Phase.Current))
+	phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
 
@@ -499,21 +503,9 @@ func noiseType(role string, flightPhase int) string {
 
 // translateNumerics converts numeric digits in a string to their word equivalents
 func translateNumerics(msg string) string {
-	numMap := map[rune]string{
-		'0': "zero",
-		'1': "one",
-		'2': "two",
-		'3': "three",
-		'4': "four",
-		'5': "five",
-		'6': "six",
-		'7': "seven",
-		'8': "eight",
-		'9': "niner",
-	}
 	var result strings.Builder
 	for _, ch := range msg {
-		if word, exists := numMap[ch]; exists {
+		if word, exists := numericMap[ch]; exists {
 			result.WriteString(word)
 			result.WriteString(" ")
 		} else {
@@ -592,4 +584,45 @@ func getPhraseDef(phraseSource map[string][]Exchange, flightPhase int) *phraseDe
 		exchanges:       exchanges,
 		facility:        facility,
 	}
+}
+
+func formatAltitude(rawAlt float64, transitionLevel int, phase int) string {
+	var roundedAlt int
+	alt := int(rawAlt)
+
+	// 1. Contextual Rounding Logic
+	switch phase {
+	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
+		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
+		roundedAlt = ((alt + 50) / 100) * 100
+	default:
+		// Standard IFR rounding to nearest 1,000ft (e.g., 33,240 -> 33,000)
+		roundedAlt = ((alt + 500) / 1000) * 1000
+	}
+
+	// 2. Flight Level Logic (At or above Transition Altitude)
+	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
+		fl := roundedAlt / 100
+		
+		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
+		if phase == trafficglobal.Cruise.Index() {
+			fl = (fl / 10) * 10
+		}
+		
+		// Returns "flight level 330"
+		return fmt.Sprintf("flight level %d", fl)
+	}
+
+	// 3. Feet Logic (Below Transition Altitude)
+	// If it's a clean thousand (e.g., 5000)
+	if roundedAlt % 1000 == 0 {
+		return fmt.Sprintf("%d thousand", roundedAlt/1000)
+	}
+	
+	// Handle split altitudes like 2400 (common in approach/missed approach)
+	thousands := roundedAlt / 1000
+	hundreds := (roundedAlt % 1000) / 100
+	
+	// Returns "2 thousand 4 hundred"
+	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }

@@ -24,6 +24,7 @@ type Service struct {
 	UserState       UserState
 	Airlines        map[string]AirlineInfo
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
+	Weather		 	*Weather
 }
 
 type ServiceInterface interface {
@@ -32,6 +33,7 @@ type ServiceInterface interface {
 	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int)
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
+	GetWeatherState() *Weather
 	AddFlightPlan(ac *Aircraft, simTime time.Time)
 }
 
@@ -108,6 +110,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 		PhraseClasses:   phraseClasses,
 		Airlines:        airlinesData,
 		FlightSchedules: fScheds,
+		Weather: 		 &Weather{Wind: Wind{}, Baro: Baro{}},
 	}
 }
 
@@ -205,6 +208,10 @@ func (s *Service) GetAirline(code string) *AirlineInfo {
 
 func (s *Service) GetUserState() UserState {
 	return s.UserState
+}
+
+func (s *Service) GetWeatherState() *Weather {
+	return s.Weather
 }
 
 func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {

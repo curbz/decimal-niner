@@ -48,6 +48,10 @@ var (
 		"sim/time/local_time_sec":  "float",
 		"sim/time/zulu_time_sec":   "float",
 
+		// weather
+		"sim/weather/barometer_current_setting":       "float",
+		"sim/weather/region/sealevel_pressure_pascal": "double",
+
 		"trafficglobal/ai/position_lat":     "float[]",
 		"trafficglobal/ai/position_long":    "float[]",
 		"trafficglobal/ai/position_heading": "float[]",
@@ -296,6 +300,14 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return 39600.0 + float64(iter) // 11:00:00 am local time
 	case "sim/time/zulu_time_sec":
 		return 39600.0 + float64(iter) // 12:00:00 Zulu
+
+	// --- Weather ---
+	case "sim/weather/barometer_current_pas":
+		// Typical altimeter setting in Pascals
+		return 101325.0 + (float64(iter) * 0.01)
+	case "sim/weather/region/sealevel_pressure_pas":
+		// Sea level pressure in Pascals (1013.25 hPa == 101325 Pa)
+		return 101325.0 + (float64(iter) * 1.0)
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
 	case "trafficglobal/ai/position_lat":

@@ -12,6 +12,25 @@ type UserState struct {
 	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
 }
 
+type Weather struct {
+	Wind   Wind
+	Baro   Baro
+	Temp   float64
+	Vis    float64
+	Humidity float64
+}
+
+type Wind struct {
+	Direction float64
+	Speed     float64
+}
+
+type Baro struct {
+	Flight float64
+	Sealevel float64
+	TransitionAlt int
+}
+
 type AirlineInfo struct {
 	AirlineName string `json:"airline_name"`
 	Callsign    string `json:"callsign"`
