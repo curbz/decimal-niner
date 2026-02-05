@@ -47,7 +47,7 @@ type config struct {
 		AirlinesFile      string       `yaml:"airlines_file"`
 		Voices            VoicesConfig `yaml:"voices"`
 		ListenAllFreqs    bool         `yaml:"listen_all_frequencies"`
-		FlightPlanFallback bool			`yaml:"use_flightplan_fallback"`
+		StrictFlightPlanMatch bool			`yaml:"strict_flightplan_matching"`
 	} `yaml:"atc"`
 }
 
@@ -396,7 +396,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	if len(candidateScheds) == 0 {
 		log.Printf("no active flight plan found for registration %s flight no. %d days %d and %d",
 			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
-		if !s.Config.ATC.FlightPlanFallback {
+		if s.Config.ATC.StrictFlightPlanMatch {
 			return
 		}
 		// fallback to find by tail number and flight only, on any day and time

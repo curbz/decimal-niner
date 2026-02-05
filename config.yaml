@@ -7,7 +7,7 @@ xplane_api:
 atc:
   message_buffer_size:    10
   listen_all_frequencies: true
-  use_flightplan_fallback: true
+  strcit_flightplan_matching: false
   airlines_file:     "resources/airlines.json"
   atc_data_file:     "/home/dmorris/decimal-niner/X-Plane/atc.dat"
   atc_regions_file:  "/home/dmorris/decimal-niner/X-Plane/atc_regions.dat"

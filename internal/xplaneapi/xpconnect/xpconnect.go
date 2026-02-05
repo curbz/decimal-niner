@@ -85,9 +85,9 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 			APIInfo: xpapimodel.DatarefInfo{}},
 
 		//weather datarefs
-		{Name: "sim/weather/barometer_current_pas",
+		{Name: "sim/weather/aircraft/barometer_current_pas",  // float <-- 97878.51
 			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/weather/region/sealevel_pressure_pas",
+		{Name: "sim/weather/region/sealevel_pressure_pas",  // float <-- 98220.164
 			APIInfo: xpapimodel.DatarefInfo{}},
 
 		//traffic global datarefs
