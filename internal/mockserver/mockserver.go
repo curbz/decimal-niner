@@ -49,7 +49,7 @@ var (
 		"sim/time/zulu_time_sec":   "float",
 
 		// weather
-		"sim/weather/barometer_current_setting":       "float",
+		"sim/weather/aircraft/barometer_current_pas":       "float",
 		"sim/weather/region/sealevel_pressure_pascal": "double",
 
 		"trafficglobal/ai/position_lat":     "float[]",
@@ -302,7 +302,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return 39600.0 + float64(iter) // 12:00:00 Zulu
 
 	// --- Weather ---
-	case "sim/weather/barometer_current_pas":
+	case "sim/weather/aircraft/barometer_current_pas":
 		// Typical altimeter setting in Pascals
 		return 101325.0 + (float64(iter) * 0.01)
 	case "sim/weather/region/sealevel_pressure_pas":

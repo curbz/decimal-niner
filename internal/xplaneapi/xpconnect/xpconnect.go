@@ -525,7 +525,7 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 
 func (xpc *XPConnect) updateWeatherData() {
 
-	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/barometer_current_pas", 0)
+	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
 	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
 	if errFb != nil || errSb != nil {
 		logErrors(errFb, errSb)
