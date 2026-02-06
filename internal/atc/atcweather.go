@@ -21,7 +21,7 @@ func getTransitionLevel(ta int, currBaroPascals float64) int {
 func formatBaro(icao string, pascals float64) string {
     // Determine the regional "Keyword"
     prefix := "QNH" 
-    if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
+    if strings.HasPrefix(icao, "E") || strings.HasPrefix(icao, "C") {
         prefix = "altimeter"
     }
 
@@ -31,7 +31,7 @@ func formatBaro(icao string, pascals float64) string {
 		inHg := pascals * 0.0002953 // Convert Pascals to inches of mercury
         digits = strings.ReplaceAll(fmt.Sprintf("%.2f", inHg), ".", "") // "2992"
     } else {
-        hpa := int(pascals / 1000) // Convert pascals to hPa
+        hpa := int(pascals / 100) // Convert pascals to hPa
         digits = fmt.Sprintf("%d", hpa) // "1013"
     }
 

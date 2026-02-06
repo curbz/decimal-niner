@@ -1,6 +1,6 @@
 {
   "pre_flight_parked": [
-    { "id": "clr_std", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION} with Information {ATIS_CODE}.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] cleared [to] {DESTINATION} as filed, maintain initial altitude, squawk {SQUAWK}." },
+    { "id": "clr_std", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] cleared [to] {DESTINATION} as filed, maintain initial altitude, squawk {SQUAWK}." },
     { "id": "clr_delivery", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, IFR to {DESTINATION}, ready to copy.", "atc": "{CALLSIGN}, [{FACILITY} Delivery,] cleared [to] {DESTINATION} as filed, fly runway heading, maintain assigned altitude, squawk {SQUAWK}." },
     { "id": "clr_filed", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, requesting IFR clearance to {DESTINATION} as filed.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] standby [for IFR release to {DESTINATION}, I have a flow time of {TIME}]." },
     { "id": "clr_gate", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, cleared [to] {DESTINATION}, [contact] Ground [on] {FREQUENCY} [when ready for push or taxi]." },
@@ -10,11 +10,11 @@
     { "id": "start_eng", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting engine start.", "atc": "{CALLSIGN}, start approved, {BARO}, report ready for taxi." },
     { "id": "start_push", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting pushback and start.", "atc": "{CALLSIGN}, push and start approved, tail {TAXIWAY}, report ready for taxi." },
     { "id": "start_ready", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for start-up.", "atc": "{CALLSIGN}, engine start is at your discretion, {BARO}." },
-    { "id": "start_atis", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting engine start, Information {ATIS_CODE} current.", "atc": "{CALLSIGN}, start-up approved, expect Runway {RUNWAY} for departure." },
+    { "id": "start_smpl", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting engine start.", "atc": "{CALLSIGN}, start-up approved, expect Runway {RUNWAY} for departure." },
     { "id": "start_done", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, start-up complete, requesting taxi.", "atc": "{CALLSIGN}, Roger, report ready for taxi." }
   ],
   "taxi_out": [
-    { "id": "tax_std", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for taxi with {ATIS_CODE}.", "atc": "{CALLSIGN}, taxi to Runway {RUNWAY} via {TAXIWAY_ROUTING}, hold short of Runway {RUNWAY}." },
+    { "id": "tax_std", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for taxi.", "atc": "{CALLSIGN}, taxi to Runway {RUNWAY} via {TAXIWAY_ROUTING}, hold short of Runway {RUNWAY}." },
     { "id": "tax_ifr", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting taxi to Runway {RUNWAY} for IFR to {DESTINATION}.", "atc": "{CALLSIGN}, taxi to Runway {RUNWAY} via {TAXIWAY_ROUTING}, hold short of {TAXIWAY}." },
     { "id": "tax_dep", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, ready to taxi for departure to {DESTINATION}.", "atc": "{CALLSIGN}, follow traffic on {TAXIWAY}, taxi to Runway {RUNWAY}." },
     { "id": "tax_gate", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting taxi.", "atc": "{CALLSIGN}, taxi to the run-up area via {TAXIWAY_ROUTING}, report when ready." },
@@ -51,7 +51,7 @@
   "approach": [
     { "id": "app_1", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, requesting vectors for the approach to Runway {RUNWAY}.", "atc": "{CALLSIGN}, {FACILITY} Approach, fly heading {HEADING}, descend and maintain assigned altitude." },
     { "id": "app_2", "initiator": "atc", "pilot": "Cleared to {WAYPOINT}, {CALLSIGN}.", "atc": "{CALLSIGN}, cleared to {WAYPOINT}, join the localizer for the approach Runway {RUNWAY}." },
-    { "id": "app_3", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, descending through {ALTITUDE} with Information {ATIS_CODE}.", "atc": "{CALLSIGN}, Roger, expect vectors for the ILS Runway {RUNWAY}, {BARO}." },
+    { "id": "app_3", "initiator": "pilot", "pilot": "{FACILITY} Approach, {CALLSIGN}, descending through {ALTITUDE}.", "atc": "{CALLSIGN}, Roger, expect vectors for the ILS Runway {RUNWAY}, {BARO}." },
     { "id": "app_4", "initiator": "atc", "pilot": "Heading {HEADING}, descending to {ALTITUDE}, {CALLSIGN}.", "atc": "{CALLSIGN}, fly heading {HEADING}, descend and maintain {ALTITUDE}, cleared for the approach." },
     { "id": "app_5", "initiator": "atc", "pilot": "Contact Tower on {FREQUENCY}, {CALLSIGN}.", "atc": "{CALLSIGN}, you are four miles from the marker, contact Tower on {FREQUENCY}." }
   ],
