@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -285,15 +286,13 @@ func PrepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
 	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
-	// TODO: if parking starts with numbers, does not contain RAMP or STOP, prefix with GATE. If the suffix is a single
-	// letter, covert to phonetic
-	phrase = strings.ReplaceAll(phrase, "{PARKING}", ac.Flight.AssignedParking)
+	phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
 	// TODO: lookup destination name from airport code
 	if ac.Flight.Destination != "" {
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", ac.Flight.Destination)
 	}
-	phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, 		baro.TransitionAlt, ac.Flight.Phase.Current))
+	phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
 	phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
@@ -625,4 +624,72 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase int) string {
 	
 	// Returns "2 thousand 4 hundred"
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
+}
+
+
+// formatParking applies logic to convert parking designations into more natural speech phrases
+func formatParking(parking string, icao string) string {
+    parking = strings.ToUpper(strings.TrimSpace(parking))
+    if parking == "" {
+        return "parking"
+    }
+
+    // 1. Detect Area-based parking (Ramp/Apron)
+    if strings.Contains(parking, "RAMP") || strings.Contains(parking, "APRON") {
+        // If X-Plane gives "NORTH RAMP 1", we want to ensure the words stay
+        // but the digits are ready for your final translator.
+        return processMixedString(parking)
+    }
+
+    // 2. Default to Gate/Stand logic
+    prefix := "stand"
+    if len(icao) > 0 && icao[0] == 'K' {
+        prefix = "gate"
+    }
+    
+	// 1. Check if it starts with a number (e.g., "201R")
+    if unicode.IsDigit(rune(parking[0])) {
+        // Separate digits and the alpha suffix
+        digits := ""
+        suffix := ""
+        
+        for i, char := range parking {
+            if unicode.IsDigit(char) {
+                digits += string(char)
+            } else {
+                // Once we hit a non-digit, the rest is the suffix
+                suffix = parking[i:]
+                break
+            }
+        }
+
+        // 2. Handle the Suffix (Single Alpha)
+        if len(suffix) == 1 {
+            phonetic := phoneticMap[suffix]
+            return fmt.Sprintf("%s %s %s", prefix, digits, phonetic)
+        }
+
+        return fmt.Sprintf("%s %s", prefix, digits)
+    }
+
+    // 3. Handle Alpha-First (e.g., "B12" -> "Gate Bravo 12")
+    // Most common in US/Europe terminals
+    firstChar := string(parking[0])
+    if phonetic, exists := phoneticMap[firstChar]; exists {
+        remaining := parking[1:]
+        return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
+    }
+
+    return parking
+}
+
+func processMixedString(input string) string {
+    words := strings.Fields(input)
+    for i, word := range words {
+        // Check if the word is a single letter to phoneticize it (e.g., "Ramp A")
+        if len(word) == 1 && unicode.IsLetter(rune(word[0])) {
+            words[i] = phoneticMap[word]
+        }
+    }
+    return strings.ToLower(strings.Join(words, " "))
 }
