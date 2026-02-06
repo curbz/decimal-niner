@@ -23,6 +23,7 @@ type Service struct {
 	PhraseClasses   PhraseClasses
 	UserState       UserState
 	Airlines        map[string]AirlineInfo
+	AirportNames    map[string]string
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
 	Weather		 	*Weather
 }
@@ -65,8 +66,21 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
 	start := time.Now()
-	db := append(parseGeneric(cfg.ATC.AtcDataFile, false), parseApt(cfg.ATC.AirportsDataFile)...)
-	db = append(db, parseGeneric(cfg.ATC.AtcRegionsFile, true)...)
+	arptControllers, airportNames, err := parseApt(cfg.ATC.AirportsDataFile)
+	if err != nil {
+		log.Fatalf("Error parsing airports data file: %v", err)
+	}
+	atcControllers, err := parseGeneric(cfg.ATC.AtcDataFile, false)
+	if err != nil {
+		log.Fatalf("Erro parsing ATC data file: %v", err)
+	}
+	db := append(atcControllers, arptControllers...)
+	regionControllers, err := parseGeneric(cfg.ATC.AtcRegionsFile, true)
+	if err != nil {
+		log.Fatalf("Error parsing ATC regions file: %v", err)
+	}
+	db = append(db, regionControllers...)
+
 	log.Printf("ATC controller database generated: %v (Count: %d)\n\n", time.Since(start), len(db))
 
 	// load airlines from JSON file
@@ -109,6 +123,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 		Database:        db,
 		PhraseClasses:   phraseClasses,
 		Airlines:        airlinesData,
+		AirportNames:    airportNames,
 		FlightSchedules: fScheds,
 		Weather: 		 &Weather{Wind: Wind{}, Baro: Baro{}},
 	}

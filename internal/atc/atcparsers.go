@@ -10,10 +10,13 @@ import (
 	"math"
 )
 
-func parseApt(path string) []Controller {
+func parseApt(path string) ([]Controller, map[string]string, error) {
+
+	airportNames := make(map[string]string)
+	
 	file, err := os.Open(path)
 	if err != nil {
-		return nil
+		return nil, airportNames, fmt.Errorf("failed to open airports data file: %w", err)
 	}
 	defer file.Close()
 
@@ -44,6 +47,7 @@ func parseApt(path string) []Controller {
 			if len(p) >= 5 {
 				curICAO = p[4]
 				curName = strings.Join(p[5:], " ")
+				airportNames[curICAO] = curName
 			}
 			continue
 		}
@@ -85,13 +89,14 @@ func parseApt(path string) []Controller {
 			})
 		}
 	}
-	return list
+	return list, airportNames, nil
 }
 
-func parseGeneric(path string, isRegion bool) []Controller {
+func parseGeneric(path string, isRegion bool) ([]Controller, error) {
+	
 	file, err := os.Open(path)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to open generic data file: %w", err)
 	}
 	defer file.Close()
 
@@ -159,7 +164,7 @@ func parseGeneric(path string, isRegion bool) []Controller {
 			cur = nil
 		}
 	}
-	return list
+	return list, nil
 }
 
 // convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or

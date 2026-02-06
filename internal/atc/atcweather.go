@@ -21,7 +21,7 @@ func getTransitionLevel(ta int, currBaroPascals float64) int {
 func formatBaro(icao string, pascals float64) string {
     // Determine the regional "Keyword"
     prefix := "QNH" 
-    if strings.HasPrefix(icao, "E") || strings.HasPrefix(icao, "C") {
+    if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
         prefix = "altimeter"
     }
 

@@ -365,7 +365,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return []int{281, 343, 700}
 
 	case "trafficglobal/ai/parking":
-		s := "22\x00215L\x00RAMP 9\x00"
+		s := "22\x00RAMP 19\x00215L\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	}
 

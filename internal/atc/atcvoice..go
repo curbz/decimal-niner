@@ -239,20 +239,20 @@ func (s *Service) startComms() {
 			exchange := phraseDef.exchanges[rand.Intn(len(phraseDef.exchanges))]
 
 			if exchange.Initiator == "pilot" {
-				PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+				s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
-					PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
-					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				}
 			}
 			
 			if exchange.Initiator == "atc" {
-				PrepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
+				s.prepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
 				if exchange.Pilot == "" {
-					PrepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				} else {
-					PrepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				}
 			}
 		}
@@ -279,7 +279,7 @@ func removeBracketedPhrases(input string) string {
 
 // PrepPhrase prepares the phrase and queues for speech generation
 // role is either "PILOT" or the facility name
-func PrepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
+func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 
 	// construct message and replace all possible variables
 	// TODO: add more as defined in phrase files
@@ -288,9 +288,8 @@ func PrepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
 	phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
-	// TODO: lookup destination name from airport code
 	if ac.Flight.Destination != "" {
-		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", ac.Flight.Destination)
+		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportNames))
 	}
 	phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
 	phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
@@ -638,7 +637,7 @@ func formatParking(parking string, icao string) string {
     if strings.Contains(parking, "RAMP") || strings.Contains(parking, "APRON") {
         // If X-Plane gives "NORTH RAMP 1", we want to ensure the words stay
         // but the digits are ready for your final translator.
-        return processMixedString(parking)
+        return phoneticiseSingleAlphas(parking)
     }
 
     // 2. Default to Gate/Stand logic
@@ -683,13 +682,44 @@ func formatParking(parking string, icao string) string {
     return parking
 }
 
-func processMixedString(input string) string {
+// phoneticiseSingleAlphas will replace single alphas in a phrase to their phonetic equivalents
+func phoneticiseSingleAlphas(input string) string {
     words := strings.Fields(input)
     for i, word := range words {
-        // Check if the word is a single letter to phoneticize it (e.g., "Ramp A")
+        // Check if the word is a single letter to phoneticise it (e.g., "Ramp A")
         if len(word) == 1 && unicode.IsLetter(rune(word[0])) {
             words[i] = phoneticMap[word]
         }
     }
     return strings.ToLower(strings.Join(words, " "))
+}
+
+func formatAirportName(icao string, airportNameLookup map[string]string) string {
+
+    name, exists := airportNameLookup[icao]
+    if !exists {
+        name = toPhonetics(icao)
+		return name
+    } 
+
+	replacer := strings.NewReplacer(
+		" Intl", "",
+		" Arpt", "",
+		" Airport", "",
+		" Regional", "",
+		" Municipal", "",
+	)
+	return strings.TrimSpace(replacer.Replace(name))
+
+}
+
+func toPhonetics(s string) string {
+	var result strings.Builder
+	for _, ch := range s {
+		if unicode.IsLetter(ch) {
+			result.WriteString(phoneticMap[string(ch)])
+			result.WriteString(" ")
+		}
+	}
+	return strings.TrimSpace(result.String())
 }
