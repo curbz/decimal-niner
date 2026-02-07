@@ -783,6 +783,6 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 	
 	// generate the Handoff Phrase
 	// TODO: add valediction - need local hour to determine good day, good evening, good night
-	return fmt.Sprintf(" contact [%s on %s]", nextController.Name, freqStr)
+	return fmt.Sprintf(" [contact] %s on %s", nextController.Name, freqStr)
 
 }

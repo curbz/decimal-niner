@@ -9,7 +9,7 @@
   "startup": [
     { "id": "start_eng", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting engine start.", "atc": "{CALLSIGN}, start approved, {BARO}, report ready for taxi." },
     { "id": "start_push", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting pushback and start.", "atc": "{CALLSIGN}, push and start approved, tail {TAXIWAY}, report ready for taxi." },
-    { "id": "start_ready", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for start-up.", "atc": "{CALLSIGN}, engine start [is] at [your] discretion, {BARO}." },
+    { "id": "start_ready", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, ready for start-up.", "atc": "{CALLSIGN}, engine start [is] at [y]our discretion, {BARO}." },
     { "id": "start_smpl", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, requesting engine start.", "atc": "{CALLSIGN}, start-up approved, expect Runway {RUNWAY} for departure." },
     { "id": "start_done", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, start-up complete, requesting taxi.", "atc": "{CALLSIGN}, Roger, report ready for taxi." }
   ],
@@ -70,11 +70,11 @@
     { "id": "ga_notclear", "initiator": "pilot", "pilot": "Going around, {CALLSIGN}, runway not clear.", "atc": "{CALLSIGN}, Roger, fly heading {HEADING}, climb and maintain {MISS_ALT}." }
   ],
   "braking": [
-    { "id": "brk_1", "initiator": "pilot", "atc": "{CALLSIGN}, clear Runway {RUNWAY} [when able], {HANDOFF}." },
+    { "id": "brk_1", "initiator": "atc", "atc": "{CALLSIGN}, clear Runway {RUNWAY} [when able], {HANDOFF}." },
     { "id": "brk_2", "initiator": "atc", "atc": "{CALLSIGN}, exit at the next high-speed taxiway, {HANDOFF}." },
-    { "id": "brk_3", "initiator": "atc", "atc": "{CALLSIGN}, clear of the active, {HANDOFF}." },
-    { "id": "brk_4", "initiator": "pilot", "atc": "{CALLSIGN}, {HANDOFF}." },
-    { "id": "brk_5", "initiator": "atc", "atc": "{CALLSIGN}, exit next exit, {HANDOFF}." }
+    { "id": "brk_3", "initiator": "atc", "atc": "{CALLSIGN}, clear [of the active], {HANDOFF}." },
+    { "id": "brk_4", "initiator": "atc", "atc": "{CALLSIGN}, {HANDOFF}." },
+    { "id": "brk_5", "initiator": "atc", "atc": "{CALLSIGN}, exit next taxiway, {HANDOFF}." }
   ],
   "taxi_in": [
     { "id": "txi_1", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}, taxi to {PARKING}.", "atc": "{CALLSIGN}, taxi to {PARKING} via {TAXIWAY_ROUTING}." },
