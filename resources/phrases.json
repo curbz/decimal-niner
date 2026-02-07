@@ -1,10 +1,10 @@
 {
   "pre_flight_parked": [
-    { "id": "clr_std", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] cleared [to] {DESTINATION} as filed, maintain initial altitude, squawk {SQUAWK}." },
-    { "id": "clr_delivery", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, IFR to {DESTINATION}, ready to copy.", "atc": "{CALLSIGN}, [{FACILITY} Delivery,] cleared [to] {DESTINATION} as filed, fly runway heading, maintain assigned altitude, squawk {SQUAWK}." },
+    { "id": "clr_std", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] cleared [to] {DESTINATION} as filed, maintain initial altitude, squawk {SQUAWK}. {HANDOFF}." },
+    { "id": "clr_delivery", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, IFR to {DESTINATION}, ready to copy.", "atc": "{CALLSIGN}, [{FACILITY} Delivery,] cleared [to] {DESTINATION} as filed, fly runway heading, maintain assigned altitude, squawk {SQUAWK}. {HANDOFF}." },
     { "id": "clr_filed", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, requesting IFR clearance to {DESTINATION} as filed.", "atc": "{CALLSIGN}, [{FACILITY} Clearance,] standby [for IFR release to {DESTINATION}, I have a flow time of {TIME}]." },
-    { "id": "clr_gate", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, cleared [to] {DESTINATION}, [contact] Ground [on] {FREQUENCY} [when ready for push or taxi]." },
-    { "id": "clr_request", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, IFR {DESTINATION}, ready for clearance.", "atc": "{CALLSIGN}, IFR [clearance] to {DESTINATION} on [request, monitor this] frequency." }
+    { "id": "clr_gate", "initiator": "pilot", "pilot": "{FACILITY} Delivery, {CALLSIGN}, at {PARKING}, requesting IFR to {DESTINATION}.", "atc": "{CALLSIGN}, cleared [to] {DESTINATION}, {HANDOFF}." },
+    { "id": "clr_request", "initiator": "pilot", "pilot": "{FACILITY} Clearance, {CALLSIGN}, IFR {DESTINATION}, ready for clearance.", "atc": "{CALLSIGN}, IFR [clearance] to {DESTINATION}. {HANDOFF}." }
   ],
   "startup": [
     { "id": "start_eng", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, at {PARKING}, requesting engine start.", "atc": "{CALLSIGN}, start approved, {BARO}, report ready for taxi." },
@@ -70,11 +70,11 @@
     { "id": "ga_notclear", "initiator": "pilot", "pilot": "Going around, {CALLSIGN}, runway not clear.", "atc": "{CALLSIGN}, Roger, fly heading {HEADING}, climb and maintain {MISS_ALT}." }
   ],
   "braking": [
-    { "id": "brk_1", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, vacating Runway {RUNWAY} at {TAXIWAY}.", "atc": "{CALLSIGN}, clear of Runway {RUNWAY} when able, contact Ground on {FREQUENCY}." },
-    { "id": "brk_2", "initiator": "atc", "pilot": "Vacating at the next high-speed, {CALLSIGN}.", "atc": "{CALLSIGN}, exit at the next high-speed taxiway, then contact Ground." },
-    { "id": "brk_3", "initiator": "atc", "pilot": "Contact Ground, 121.9, {CALLSIGN}.", "atc": "{CALLSIGN}, clear of the active, contact Ground on {FREQUENCY}." },
-    { "id": "brk_4", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN} is clear, requesting taxi to the ramp.", "atc": "{CALLSIGN}, Roger, hold short of Runway {RUNWAY}, contact Ground." },
-    { "id": "brk_5", "initiator": "atc", "pilot": "Roger, crossing {RUNWAY}, {CALLSIGN}.", "atc": "{CALLSIGN}, cross Runway {RUNWAY} at {TAXIWAY}, then contact Ground." }
+    { "id": "brk_1", "initiator": "pilot", "atc": "{CALLSIGN}, clear Runway {RUNWAY} [when able], {HANDOFF}." },
+    { "id": "brk_2", "initiator": "atc", "atc": "{CALLSIGN}, exit at the next high-speed taxiway, {HANDOFF}." },
+    { "id": "brk_3", "initiator": "atc", "atc": "{CALLSIGN}, clear of the active, {HANDOFF}." },
+    { "id": "brk_4", "initiator": "pilot", "atc": "{CALLSIGN}, {HANDOFF}." },
+    { "id": "brk_5", "initiator": "atc", "atc": "{CALLSIGN}, exit next exit, {HANDOFF}." }
   ],
   "taxi_in": [
     { "id": "txi_1", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}, taxi to {PARKING}.", "atc": "{CALLSIGN}, taxi to {PARKING} via {TAXIWAY_ROUTING}." },

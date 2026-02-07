@@ -87,6 +87,16 @@ var regionVoicePools map[string][]string
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
+var handoffMap = map[trafficglobal.FlightPhase]int{
+    trafficglobal.Parked: 	2, // Delivery -> Ground
+    trafficglobal.TaxiOut:  3, // Ground -> Tower
+    trafficglobal.Depart:   4, // Tower -> Departure
+    trafficglobal.Climbout: 6, // Departure -> Center
+    trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
+    trafficglobal.Approach: 3, // Approach -> Tower
+    trafficglobal.Braking:  2, // Tower -> Ground
+}
+
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
 	Audio struct {
@@ -283,16 +293,30 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 
 	// construct message and replace all possible variables
 	// TODO: add more as defined in phrase files
+
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
-	phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
-	phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
-	if ac.Flight.Destination != "" {
+
+	if strings.Contains(phrase, "{RUNWAY}") {
+		phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
+	}
+	if strings.Contains(phrase, "{PARKING}") {
+		phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
+	}
+	if ac.Flight.Destination != "" && strings.Contains(phrase, "{DESTINATION}") {
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportNames))
 	}
-	phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
-	phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
+	if strings.Contains(phrase, "{ALTITUDE}") {
+		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
+	}
+	if strings.Contains(phrase, "{BARO}") {
+		phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
+	}
+	if strings.Contains(phrase, "{HANDOFF}") {
+		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
+	}
+
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
 
@@ -722,4 +746,43 @@ func toPhonetics(s string) string {
 		}
 	}
 	return strings.TrimSpace(result.String())
+}
+
+func (s *Service) generateHandoffPhrase(ac Aircraft) string {
+    // Identify the 'Next Role' based on the new phase
+    nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Previous)]
+    if !exists { 
+		return "" 
+	}
+
+    // Determine context ICAO (Origin for departure, Destination for arrival)
+    targetICAO := ac.Flight.Origin
+    if ac.Flight.Phase.Current == trafficglobal.Approach.Index() || 
+			ac.Flight.Phase.Current == trafficglobal.Braking.Index() ||
+			ac.Flight.Phase.Current == trafficglobal.TaxiIn.Index() ||
+			ac.Flight.Phase.Current == trafficglobal.Shutdown.Index() ||
+			ac.Flight.Phase.Current == trafficglobal.Holding.Index() ||
+			ac.Flight.Phase.Current == trafficglobal.GoAround.Index() ||
+			ac.Flight.Phase.Current == trafficglobal.Final.Index() { 
+        targetICAO = ac.Flight.Destination
+    }
+    if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() { 
+		targetICAO = "" // Force distance/polygon search when in cruise
+	} 
+
+    // Locate the "Next" controller
+	pos := ac.Flight.Position
+    nextController := s.LocateController("HANDOFF", 0, nextRole, pos.Lat, pos.Long, pos.Altitude, targetICAO)
+    
+    if nextController == nil {
+		log.Printf("No controller found for handoff: role=%d, targetICAO=%s", nextRole, targetICAO)
+		return ""
+	}
+
+	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000000.0)
+	
+	// generate the Handoff Phrase
+	// TODO: add valediction - need local hour to determine good day, good evening, good night
+	return fmt.Sprintf(" contact [%s on %s]", nextController.Name, freqStr)
+
 }

@@ -26,6 +26,8 @@ type Service struct {
 	AirportNames    map[string]string
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
 	Weather		 	*Weather
+	SimInitTime        time.Time
+	SessionInitTime    time.Time
 }
 
 type ServiceInterface interface {
@@ -36,6 +38,8 @@ type ServiceInterface interface {
 	GetUserState() UserState
 	GetWeatherState() *Weather
 	AddFlightPlan(ac *Aircraft, simTime time.Time)
+	SetSimTime(init time.Time, session time.Time)
+	GetCurrentZuluTime() time.Time
 }
 
 // --- configuration structures ---
@@ -131,6 +135,15 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 
 func (s *Service) Run() {
 	s.startComms()
+}
+
+func (s *Service) GetCurrentZuluTime() time.Time {
+	return s.SimInitTime.Add(time.Since(s.SessionInitTime))
+}
+
+func (s *Service) SetSimTime(init time.Time, session time.Time) {
+	s.SimInitTime = init
+	s.SessionInitTime = session
 }
 
 func (s *Service) NotifyAircraftChange(ac Aircraft) {
@@ -453,3 +466,4 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	log.Printf("reg %s flight no. %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
 
 }
+

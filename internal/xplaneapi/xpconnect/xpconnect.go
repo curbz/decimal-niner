@@ -32,8 +32,8 @@ type XPConnect struct {
 	aircraftMap        map[string]*atc.Aircraft
 	atcService         atc.ServiceInterface
 	initialised        bool
-	simInitTime        time.Time
-	sessionInitTime    time.Time
+//	simInitTime        time.Time
+//	sessionInitTime    time.Time
 }
 
 type XPConnectInterface interface {
@@ -140,11 +140,12 @@ func (xpc *XPConnect) Start() {
 	log.Println("get sim time from x-plane web api")
 
 	var err error
-	xpc.simInitTime, err = xpc.getSimTime()
+	simInitTime, err := xpc.getSimTime()
 	if err != nil {
 		log.Fatalf("FATAL: Could not get sim time: %v", err)
 	}
-	xpc.sessionInitTime = time.Now()
+	sessionInitTime := time.Now()
+	xpc.atcService.SetSimTime(simInitTime, sessionInitTime)
 
 	log.Println("get traffic global dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
@@ -679,9 +680,7 @@ func (xpc *XPConnect) updateAircraftData() {
 
 		// Add flight plan - only need to do this when adding as a new aircraft or  if flight number has changed
 		if newAircraft || (!newAircraft && previousFlightNum != flightNum) {
-			// use sim init time + time since session started
-			simTime := xpc.simInitTime.Add(time.Since(xpc.sessionInitTime))
-			xpc.atcService.AddFlightPlan(aircraft, simTime)
+			xpc.atcService.AddFlightPlan(aircraft, xpc.atcService.GetCurrentZuluTime())
 		}
 
 		// update airline code

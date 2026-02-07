@@ -340,7 +340,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/airline_code":
-		s := "BAW\x00EZY\x00BAW\x00" // British Airways and EasyJet
+		s := "BAW\x00EZY\x00VIR\x00" // British Airways, EasyJet, Virgin Atlantic
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/flight_phase":
@@ -355,14 +355,14 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	case "trafficglobal/ai/tail_number":
 		// G-AOWK,281,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
-		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
 		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
+		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
 
-		s := "G-AOWK\x00G-ARBD\x00G-BCOL\x00"
+		s := "G-AOWK\x00G-BCOL\x00G-ARBD\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/flight_num":
-		return []int{281, 343, 700}
+		return []int{281, 700, 343}
 
 	case "trafficglobal/ai/parking":
 		s := "22\x00RAMP 19\x00215L\x00"
