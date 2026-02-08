@@ -179,7 +179,8 @@ func (s *Service) NotifyAircraftChange(ac Aircraft) {
 		}
 
 		// Identify AI's intended facility
-		aiRole := s.getAITargetRole(ac.Flight.Phase.Current)
+		facilityPhase := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+		aiRole := facilityPhase.roleId
 		aiFac := s.LocateController(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
@@ -348,27 +349,6 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	return bestMatch
 }
 
-func (s *Service) getAITargetRole(phase int) int {
-	p := trafficglobal.FlightPhase(phase)
-	switch p {
-	case trafficglobal.Parked:
-		return 1 // Delivery
-	case trafficglobal.Startup, trafficglobal.TaxiOut, trafficglobal.TaxiIn, trafficglobal.Shutdown:
-		return 2 // Ground
-	case trafficglobal.Depart, trafficglobal.Braking, trafficglobal.Final:
-		return 3 // Tower
-	case trafficglobal.Climbout, trafficglobal.GoAround:
-		return 4 // Departure
-	case trafficglobal.Approach, trafficglobal.Holding:
-		return 5 // Approach
-	case trafficglobal.Cruise:
-		return 6 // Center
-	default:
-		// If we don't know, Ground is the safest place for a radio to be tuned
-		return 2
-	}
-}
-
 func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 	simTodayDayOfWeek := util.GetISOWeekday(simTime)
@@ -466,4 +446,3 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	log.Printf("reg %s flight no. %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
 
 }
-

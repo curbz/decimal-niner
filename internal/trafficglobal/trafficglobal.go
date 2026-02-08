@@ -57,25 +57,6 @@ type ScheduledFlight struct {
 	CruiseAlt            int
 }
 
-func (fp FlightPhase) String() string {
-	return [...]string{
-		"Unknown",
-		"Cruise",
-		"Approach",
-		"Final",
-		"Taxi In",
-		"Shutdown",
-		"Parked",
-		"Startup",
-		"Taxi Out",
-		"Depart",
-		"Go Around",
-		"Climbout",
-		"Braking",
-		"Holding",
-	}[fp+1]
-}
-
 func (fp FlightPhase) Index() int {
 	return int(fp)
 }

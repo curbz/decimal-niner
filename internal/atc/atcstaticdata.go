@@ -1,5 +1,7 @@
 package atc
 
+import "github.com/curbz/decimal-niner/internal/trafficglobal"
+
 // icaoToIsoMap contains the comprehensive list of ICAO nationality
 // prefixes mapped to ISO 3166-1 alpha-2 country codes.
 var icaoToIsoMap = map[string]string{
@@ -256,5 +258,87 @@ var numericMap = map[rune]string{
 	'7': "seven",
 	'8': "eight",
 	'9': "niner",
+}
+
+var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility {
+	// PRE-FLIGHT & DEPARTURE
+	trafficglobal.Parked: {
+		atcPhase: "pre_flight_parked",
+		roleId: 1,
+	},
+	trafficglobal.Startup: {
+		atcPhase: "startup",
+		roleId: 2,
+	},
+	trafficglobal.TaxiOut: {
+		atcPhase: "taxi_out",
+		roleId: 2,
+	},
+	trafficglobal.Depart: {
+		atcPhase: "depart",
+		roleId: 3,
+	},
+	trafficglobal.Climbout: {
+		atcPhase: "climb_out",
+		roleId: 4,
+	},
+	// --- ENROUTE & ARRIVAL ---
+	trafficglobal.Cruise: {
+		atcPhase: "cruise",
+		roleId: 6,
+	},
+	trafficglobal.Approach: {
+		atcPhase: "approach",
+		roleId: 5,
+	},
+	trafficglobal.Holding: {
+		atcPhase: "holding",
+		roleId: 5,
+	},
+	trafficglobal.Final: {
+		atcPhase: "final",
+		roleId: 3,
+	},
+	trafficglobal.GoAround: {
+		atcPhase: "go_around",
+		roleId: 3,
+	},
+	// --- LANDING & TAXI-IN ---
+	trafficglobal.Braking: {
+		// In Traffic Global, Braking usually covers the rollout and runway exit
+		atcPhase: "braking",
+		roleId: 3,
+	},
+	trafficglobal.TaxiIn: {
+		atcPhase: "taxi_in",
+		roleId: 2,
+	},
+	trafficglobal.Shutdown: {
+		atcPhase: "post_flight_parked",
+		roleId: 2,
+	},
+}
+
+var roleNameMap = map[int]string {
+	0: "None",
+	1: "Delivery",
+	2: "Ground",
+	3: "Tower",
+	4: "Departure",
+	5: "Approach",
+	6: "Center",
+	7: "Flight Service",
+	8: "AWOS/ASOS/ATIS",
+	9: "Unicom",
+}
+
+var handoffMap = map[trafficglobal.FlightPhase]int{
+    trafficglobal.Parked: 	2, // Delivery -> Ground
+    trafficglobal.TaxiOut:  3, // Ground -> Tower
+    trafficglobal.Depart:   4, // Tower -> Departure
+    trafficglobal.Climbout: 6, // Departure -> Center
+    trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
+    trafficglobal.Approach: 3, // Approach -> Tower
+    trafficglobal.Braking:  2, // Tower -> Ground
 }
 

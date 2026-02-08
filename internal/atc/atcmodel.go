@@ -104,3 +104,8 @@ type Controller struct {
 	IsRegion   bool
 	Airspaces  []Airspace
 }
+
+type PhaseFacility struct {
+	atcPhase string
+	roleId int
+}

@@ -35,23 +35,6 @@ type Exchange struct {
     ATC       string `json:"atc"`
 }
 
-type PhraseDatabase struct {
-    PreFlight      []Exchange `json:"pre_flight_parked"`
-    Startup        []Exchange `json:"startup"`
-    TaxiOut        []Exchange `json:"taxi_out"`
-    Depart         []Exchange `json:"depart"`
-    Climb          []Exchange `json:"climb"`
-    Cruise         []Exchange `json:"cruise"`
-    Descent        []Exchange `json:"descent"`
-    Approach       []Exchange `json:"approach"`
-    Final          []Exchange `json:"final"`
-    Braking        []Exchange `json:"braking"`
-    TaxiIn         []Exchange `json:"taxi_in"`
-    PostFlight     []Exchange `json:"post_flight_parked"`
-    GoAround       []Exchange `json:"go_around"`
-    Holding        []Exchange `json:"holding"`
-}
-
 type PhraseClasses struct {
 	phrases       map[string][]Exchange
 	phrasesUnicom map[string][]Exchange
@@ -86,16 +69,6 @@ var countryVoicePools map[string][]string
 var regionVoicePools map[string][]string
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-var handoffMap = map[trafficglobal.FlightPhase]int{
-    trafficglobal.Parked: 	2, // Delivery -> Ground
-    trafficglobal.TaxiOut:  3, // Ground -> Tower
-    trafficglobal.Depart:   4, // Tower -> Departure
-    trafficglobal.Climbout: 6, // Departure -> Center
-    trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
-    trafficglobal.Approach: 3, // Approach -> Tower
-    trafficglobal.Braking:  2, // Tower -> Ground
-}
 
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
@@ -239,26 +212,27 @@ func (s *Service) startComms() {
 				phraseSource = s.PhraseClasses.phrases
 			}
 
-			phraseDef := getPhraseDef(phraseSource, ac.Flight.Phase.Current)
-			if phraseDef == nil || len(phraseDef.exchanges) == 0 {
+			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+			exchanges, exists := phraseSource[phaseFacility.atcPhase]
+			if !exists || len(exchanges) == 0 {
 				log.Printf("error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
 				continue
 			}
 
 			// select random exchange
-			exchange := phraseDef.exchanges[rand.Intn(len(phraseDef.exchanges))]
+			exchange := exchanges[rand.Intn(len(exchanges))]
 
 			if exchange.Initiator == "pilot" {
 				s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
-					s.prepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				}
 			}
 			
 			if exchange.Initiator == "atc" {
-				s.prepAndQueuePhrase(exchange.ATC, phraseDef.facility, ac, s.Weather.Baro)
+				s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				if exchange.Pilot == "" {
 					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				} else {
@@ -288,7 +262,7 @@ func removeBracketedPhrases(input string) string {
 }
 
 // PrepPhrase prepares the phrase and queues for speech generation
-// role is either "PILOT" or the facility name
+// role is either "PILOT" or the facility type e.g "Tower"
 func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 
 	// construct message and replace all possible variables
@@ -782,9 +756,14 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
 	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
 	
+	// if next role is approach or cruise, include the facility name
+	facilityName := ""
+	if nextRole == trafficglobal.Approach.Index() || nextRole == trafficglobal.Cruise.Index() {
+		facilityName = nextController.Name
+	}
+
 	// generate the Handoff Phrase
 	// TODO: add valediction - need local hour to determine good day, good evening, good night
-	// TODO: add role type e.g. "ground", "tower" into phrase
-	return fmt.Sprintf(" [contact] %s on %s", nextController.Name, freqStr)
+	return fmt.Sprintf(" [contact] %s %s on %s", facilityName, roleNameMap[nextRole], freqStr)
 
 }
