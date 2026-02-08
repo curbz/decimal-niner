@@ -750,7 +750,7 @@ func toPhonetics(s string) string {
 
 func (s *Service) generateHandoffPhrase(ac Aircraft) string {
     // Identify the 'Next Role' based on the new phase
-    nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Previous)]
+    nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
     if !exists { 
 		return "" 
 	}
@@ -779,10 +779,12 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 		return ""
 	}
 
-	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000000.0)
+	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
+	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
 	
 	// generate the Handoff Phrase
 	// TODO: add valediction - need local hour to determine good day, good evening, good night
+	// TODO: add role type e.g. "ground", "tower" into phrase
 	return fmt.Sprintf(" [contact] %s on %s", nextController.Name, freqStr)
 
 }

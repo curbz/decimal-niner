@@ -49,7 +49,7 @@ var (
 		"sim/time/zulu_time_sec":   "float",
 
 		// weather
-		"sim/weather/aircraft/barometer_current_pas":       "float",
+		"sim/weather/aircraft/barometer_current_pas":  "float",
 		"sim/weather/region/sealevel_pressure_pascal": "double",
 
 		"trafficglobal/ai/position_lat":     "float[]",
@@ -344,10 +344,18 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/flight_phase":
-		return []int{
-			10 + iter,
-			1 + iter,
-			4 + iter,
+		// Provide deterministic transitions per-iteration for the three sample aircraft:
+		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 6, 7)
+		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (7, 8, 10)
+		// G-ARBD (index 2): Approach -> Final -> Braking (1, 2, 11)
+		mod := iter % 3
+		switch mod {
+		case 0:
+			return []int{5, 7, 1}
+		case 1:
+			return []int{6, 8, 2}
+		default:
+			return []int{7, 10, 11}
 		}
 
 	case "trafficglobal/ai/runway":
