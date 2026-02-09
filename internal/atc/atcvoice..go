@@ -288,6 +288,9 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 	if strings.Contains(phrase, "{BARO}") {
 		phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
 	}
+	if strings.Contains(phrase, "{WIND}") {
+		phrase = strings.ReplaceAll(phrase, "{WIND}", s.FormatWind())
+	}
 	if strings.Contains(phrase, "{HANDOFF}") {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
 	}
@@ -787,4 +790,67 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 
 	return fmt.Sprintf(" [contact] %s %s on %s %s", facilityName, roleNameMap[nextRole], freqStr, valediction)
 
+}
+
+func (s *Service) FormatWind() string {
+	
+	const mpsToKnots = 1.94384
+    speedKt := s.Weather.Wind.Speed * mpsToKnots
+
+	// 2. Convert to Magnetic and Round to nearest 10
+	magDir := s.Weather.Wind.Direction - float64(s.Weather.MagVar)
+	if magDir <= 0 { magDir += 360 }
+	if magDir > 360 { magDir -= 360 }
+	
+	roundedDir := int((magDir + 5) / 10) * 10
+	if roundedDir == 0 { roundedDir = 360 }
+
+	// 3. Base Wind Phrasing
+	var windPhrase string
+	if speedKt < 3 {
+		windPhrase = "calm"
+	} else {
+		windPhrase = fmt.Sprintf("%03d at %d", roundedDir, int(speedKt))
+		gustKt := 0.0
+		if s.Weather.Turbulence > 0.2 {
+			// Simple heuristic: Turbulence adds a gust factor
+			// A turb of 0.5 adds roughly 10-15 knots of gust
+			gustKt = speedKt + (s.Weather.Turbulence * 25.0) 
+		}
+		if gustKt > speedKt + 9 {
+            windPhrase += fmt.Sprintf(" gusting %d", int(gustKt))
+        }
+	}
+
+	// 4. Append Hazards (Turbulence & Wind Shear)
+	hazards := s.getHazards()
+	if hazards != "" {
+		return fmt.Sprintf("%s. %s", windPhrase, hazards)
+	}
+
+	return windPhrase
+}
+
+func (s *Service) getHazards() string {
+	
+	var reports []string
+    const mpsToKnots = 1.94384
+
+    // Turbulence Magnitude
+    if s.Weather.Turbulence >= 0.7 {
+        reports = append(reports, "severe turbulence [reported]")
+    } else if s.Weather.Turbulence >= 0.4 {
+        reports = append(reports, "moderate turbulence [reported]")
+    }
+
+    // Wind Shear (Converted from m/s to knots)
+    shearKt := s.Weather.Wind.Shear * mpsToKnots
+    
+    if shearKt >= 15 {
+        // Round to nearest 5
+        shearVal := int((shearKt + 2) / 5) * 5
+        reports = append(reports, fmt.Sprintf("[caution] wind shear [alert loss or gain of] %d knots", shearVal))
+    }
+
+	return strings.Join(reports, ". ")
 }

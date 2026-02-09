@@ -49,8 +49,13 @@ var (
 		"sim/time/zulu_time_sec":   "float",
 
 		// weather
+		"sim/flightmodel/position/magnetic_variation": "float",
+		"sim/weather/region/turbulence":            "float",
+		"sim/weather/region/shear_speed_msc":            "float",
+		"sim/weather/region/wind_speed_msc":            "float",
+		"sim/weather/region/wind_direction_degt":      "float",
 		"sim/weather/aircraft/barometer_current_pas":  "float",
-		"sim/weather/region/sealevel_pressure_pascal": "double",
+		"sim/weather/region/sealevel_pressure_pas":    "double",
 
 		"trafficglobal/ai/position_lat":     "float[]",
 		"trafficglobal/ai/position_long":    "float[]",
@@ -308,6 +313,16 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	case "sim/weather/region/sealevel_pressure_pas":
 		// Sea level pressure in Pascals (1013.25 hPa == 101325 Pa)
 		return 101325.0 + (float64(iter) * 1.0)
+	case "sim/weather/region/turbulence":      
+		return 1.0 + iter
+	case "sim/weather/region/shear_speed_msc":
+		return 1.0 + iter
+	case "sim/weather/region/wind_speed_msc":
+		return 9.0 + iter
+	case "sim/flightmodel/position/magnetic_variation":
+		return 0.2
+	case "sim/weather/region/wind_direction_degt":
+		return 90 + (iter * 4)
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
 	case "trafficglobal/ai/position_lat":

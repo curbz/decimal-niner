@@ -461,7 +461,13 @@ func (xpc *XPConnect) updateWeatherData() {
 
 	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
 	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
-	if errFb != nil || errSb != nil {
+	magVar, errMv := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/magnetic_variation", 0)
+	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/turbulence_magnitude", 0)
+	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/wind_shear_magnitude", 0)
+	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_kt", 0)
+	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
+	
+	if errFb != nil || errSb != nil || errMv != nil || errTm != nil || errWs != nil || errSp != nil || errDr != nil {
 		logErrors(errFb, errSb)
 		return
 	}
@@ -469,6 +475,11 @@ func (xpc *XPConnect) updateWeatherData() {
 	w := xpc.atcService.GetWeatherState()
 	w.Baro.Flight = flightBaro.(float64)
 	w.Baro.Sealevel = sealevelBaro.(float64)
+	w.MagVar = magVar.(float64)
+	w.Turbulence = turbMag.(float64)
+	w.Wind.Shear = wsMag.(float64)
+	w.Wind.Speed = speed.(float64)
+	w.Wind.Direction = dir.(float64)
 
 }
 
@@ -479,7 +490,8 @@ func (xpc *XPConnect) updateUserData() {
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
 	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
 	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
-		if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
+	
+	if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
 		logErrors(errC1, errC2, errF1, errF2)
 		return
 	}
@@ -508,6 +520,7 @@ func (xpc *XPConnect) updateUserData() {
 	lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
 	lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
 	alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
+	
 	if errLat != nil || errLng != nil || errAlt != nil {
 		logErrors(errLat, errLng, errAlt)
 		return
@@ -667,7 +680,6 @@ func (xpc *XPConnect) updateAircraftData() {
 	}
 
 	//log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
-
 	//xpc.printAircraftData()
 
 }
@@ -792,3 +804,4 @@ func logErrors(errors ...error) {
 		}
 	}
 }
+

@@ -15,6 +15,18 @@ type XPlaneTime struct {
 
 var SubscribeDatarefs = []xpapimodel.Dataref{
 
+		//weather
+		{Name: "sim/flightmodel/position/magnetic_variation",
+			APIInfo: xpapimodel.DatarefInfo{}},	
+		{Name: "sim/weather/region/turbulence",
+			APIInfo: xpapimodel.DatarefInfo{}},	
+		{Name: "sim/weather/region/shear_speed_msc",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/weather/region/wind_speed_msc",
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/weather/region/wind_direction_degt",
+			APIInfo: xpapimodel.DatarefInfo{}},
+
 		//user position datarefs
 		{Name: "sim/flightmodel/position/latitude",
 			APIInfo: xpapimodel.DatarefInfo{}},
