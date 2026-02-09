@@ -26,6 +26,7 @@ type VoicesConfig struct {
 	UnicomPhrasesFile string `yaml:"unicom_phrases_file"`
 	Piper             Piper  `yaml:"piper"`
 	Sox               Sox    `yaml:"sox"`
+	ValedictionFactor int	 `yaml:"valediction_factor"`
 }
 
 type Exchange struct {
@@ -764,6 +765,26 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 
 	// generate the Handoff Phrase
 	// TODO: add valediction - need local hour to determine good day, good evening, good night
-	return fmt.Sprintf(" [contact] %s %s on %s", facilityName, roleNameMap[nextRole], freqStr)
+	valediction := ""
+	if rand.Intn(s.Config.ATC.Voices.ValedictionFactor) == 0 {
+		currTime, err := s.DataProvider.GetSimTime()
+		if err != nil {
+			log.Printf("error: could not get local time: %s", err.Error())
+		} else {
+			localTime := currTime.LocalTimeSecs
+			currHour := localTime / 3600
+			if currHour < 18 {
+				valediction = "good day"
+			} else {
+				if currHour < 23 {
+					valediction = "good evenning"
+				} else {
+					valediction = "good night"
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf(" [contact] %s %s on %s %s", facilityName, roleNameMap[nextRole], freqStr, valediction)
 
 }

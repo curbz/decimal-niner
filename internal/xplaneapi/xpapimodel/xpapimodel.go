@@ -22,7 +22,6 @@ type Dataref struct {
 	DecodedDataType string
 }
 
-// Placeholder for WebSocket request structure (only used for confirmation)
 type DatarefSubscriptionRequest struct {
 	RequestID int64         `json:"req_id"`
 	Type      string        `json:"type"`

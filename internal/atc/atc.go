@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 
+	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -26,6 +27,7 @@ type Service struct {
 	AirportNames    map[string]string
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
 	Weather		 	*Weather
+	DataProvider 	simdata.SimDataProvider 
 	SimInitTime        time.Time
 	SessionInitTime    time.Time
 }
@@ -40,6 +42,7 @@ type ServiceInterface interface {
 	AddFlightPlan(ac *Aircraft, simTime time.Time)
 	SetSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
+	SetDataProvider(simdata.SimDataProvider)
 }
 
 // --- configuration structures ---
@@ -55,6 +58,7 @@ type config struct {
 		StrictFlightPlanMatch bool			`yaml:"strict_flightplan_matching"`
 	} `yaml:"atc"`
 }
+
 
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Service {
 
@@ -135,6 +139,10 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 
 func (s *Service) Run() {
 	s.startComms()
+}
+
+func (s *Service) SetDataProvider(dp simdata.SimDataProvider) {
+	s.DataProvider = dp
 }
 
 func (s *Service) GetCurrentZuluTime() time.Time {

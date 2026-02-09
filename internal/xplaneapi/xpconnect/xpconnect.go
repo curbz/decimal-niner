@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
@@ -27,25 +29,17 @@ type XPConnect struct {
 	config config
 	conn   *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
-	memDataRefIndexMap map[int]*xpapimodel.Dataref
-	memDataRefs        []xpapimodel.Dataref
+	memSubscribeDataRefIndexMap map[int]*xpapimodel.Dataref
+	memDataRefIndexMap map[int]*xpapimodel.Dataref // non-subscribed datarefs
 	aircraftMap        map[string]*atc.Aircraft
 	atcService         atc.ServiceInterface
 	initialised        bool
-//	simInitTime        time.Time
-//	sessionInitTime    time.Time
 }
 
 type XPConnectInterface interface {
 	Start()
 	Stop()
-}
-
-// XPlaneTime represents the raw values pulled from X-Plane Datarefs
-type XPlaneTime struct {
-	LocalDateDays int     // sim/time/local_date_days (0-indexed)
-	LocalTimeSecs float64 // sim/time/local_time_sec
-	ZuluTimeSecs  float64 // sim/time/zulu_time_sec
+	simdata.SimDataProvider
 }
 
 type config struct {
@@ -62,73 +56,11 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
-	datarefs := []xpapimodel.Dataref{
-
-		//user position datarefs
-		{Name: "sim/flightmodel/position/latitude",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/flightmodel/position/longitude",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/flightmodel/position/elevation",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/flightmodel/position/psi",
-			APIInfo: xpapimodel.DatarefInfo{}},
-
-		//user tuned atc facilities and frequencies
-		{Name: "sim/cockpit/radios/com1_freq_hz",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/cockpit/radios/com2_freq_hz",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/atc/com1_tuned_facility",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/atc/com2_tuned_facility",
-			APIInfo: xpapimodel.DatarefInfo{}},
-
-		//weather datarefs
-		{Name: "sim/weather/aircraft/barometer_current_pas",  // float <-- 97878.51
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/weather/region/sealevel_pressure_pas",  // float <-- 98220.164
-			APIInfo: xpapimodel.DatarefInfo{}},
-
-		//traffic global datarefs
-		{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-		{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-		{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-		{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-		{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-		{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-		{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-		//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-		//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-		//{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
-		//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-		{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-		{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-		{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-
-		// The runway is the designator at the source airport if the flight phase is one of:
-		//   FP_TaxiOut, FP_Depart, FP_Climbout
-		// ... and at the destination airport if the flight phase is one of:
-		//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-		{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
-	}
-
 	return &XPConnect{
 		aircraftMap: make(map[string]*atc.Aircraft),
 		atcService:  atcService,
+		memDataRefIndexMap: make(map[int]*xpapimodel.Dataref),
 		config:      *cfg,
-		memDataRefs: datarefs,
 	}
 
 }
@@ -140,29 +72,28 @@ func (xpc *XPConnect) Start() {
 	log.Println("get sim time from x-plane web api")
 
 	var err error
-	simInitTime, err := xpc.getSimTime()
+	simInitTime, err := xpc.initSimTime()
 	if err != nil {
 		log.Fatalf("FATAL: Could not get sim time: %v", err)
 	}
-	sessionInitTime := time.Now()
-	xpc.atcService.SetSimTime(simInitTime, sessionInitTime)
+	xpc.atcService.SetSimTime(simInitTime, time.Now())
 
 	log.Println("get traffic global dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
-	xpc.memDataRefIndexMap, err = xpc.getDataRefIndices(xpc.memDataRefs)
+	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
 	}
 
 	// Log results
 	log.Println("Retrieved DataRef Indices:")
-	for id, datarefInfo := range xpc.memDataRefIndexMap {
+	for id, datarefInfo := range xpc.memSubscribeDataRefIndexMap {
 		log.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 	}
-	if len(xpc.memDataRefIndexMap) == len(xpc.memDataRefs) {
+	if len(xpc.memSubscribeDataRefIndexMap) == len(simdata.SubscribeDatarefs) {
 		log.Println("SUCCESS: All DataRef Indices received.")
-	} else if len(xpc.memDataRefIndexMap) > 0 {
-		log.Fatalf("Only %d of %d dataref indices were received", len(xpc.memDataRefIndexMap), len(xpc.memDataRefs))
+	} else if len(xpc.memSubscribeDataRefIndexMap) > 0 {
+		log.Fatalf("Only %d of %d dataref indices were received", len(xpc.memSubscribeDataRefIndexMap), len(simdata.SubscribeDatarefs))
 	} else {
 		log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
 	}
@@ -218,66 +149,68 @@ func (xpc *XPConnect) Stop() {
 	// TODO: closedown if needed
 }
 
-// getSimTime fetches the current simulator time via HTTP GET.
-func (xpc *XPConnect) getSimTime() (time.Time, error) {
+// getSimTime fetches the current simulator time via HTTP GET and initialises the in-memory datarefs
+func (xpc *XPConnect) initSimTime() (time.Time, error) {
 
-	simTimeDatarefs := []xpapimodel.Dataref{
-		//sim time
-		{Name: "sim/time/local_date_days",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/time/local_time_sec",
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/time/zulu_time_sec",
-			APIInfo: xpapimodel.DatarefInfo{}},
-	}
-
-	simTimeIndexMap, err := xpc.getDataRefIndices(simTimeDatarefs)
+	simTimeIndexMap, err := xpc.getDataRefIndices(simdata.SimTimeDatarefs)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("error retrieving sim time and date dataref indices: %w", err)
 	}
-	if len(simTimeIndexMap) != len(simTimeDatarefs) {
+	if len(simTimeIndexMap) != len(simdata.SimTimeDatarefs) {
 		return time.Time{}, fmt.Errorf("error:not all sim time dataref indices were retrieved")
 	}
+	// add map to non-subscribed in-memory dataref map
+	maps.Copy(xpc.memDataRefIndexMap, simTimeIndexMap)
 
-	// Example:
-	// simData := XPlaneTime{
-	// 	LocalDateDays: 0,       // Jan 1st
-	// 	LocalTimeSecs: 70200.0, // 19:30:00
-	// 	ZuluTimeSecs:  1800.0,  // 00:30:00
-	// }
+	xpTime, err := xpc.GetSimTime()
+	if err != nil {
+		return time.Time{}, err
+	}
 
-	simData := XPlaneTime{}
+	zuluResult := getZuluDateTime(xpTime)
+
+	fmt.Println("--- X-Plane Time Conversion ---")
+	fmt.Printf("Sim Local Date Days: %d\n", xpTime.LocalDateDays)
+	fmt.Printf("Calculated Zulu:     %s\n", zuluResult.Format("2006-01-02 15:04:05"))
+
+	return zuluResult, nil
+}
+
+// getSimTime fetches the current simulator time via HTTP GET.
+// Example:
+// XPlaneTime{
+// 	  LocalDateDays: 0,       // Jan 1st
+// 	  LocalTimeSecs: 70200.0, // 19:30:00
+// 	  ZuluTimeSecs:  1800.0,  // 00:30:00
+// }
+func (xpc *XPConnect) GetSimTime() (simdata.XPlaneTime, error) {
+
+	xplaneTime := simdata.XPlaneTime{}
 	// fetch each dataref value
-	for _, dr := range simTimeDatarefs {
-		memDref := xpc.getMemDataRefByName(simTimeIndexMap, dr.Name)
+	for _, dr := range simdata.SimTimeDatarefs {
+		memDref := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, dr.Name)
 		drefId := memDref.APIInfo.ID
 		value, err := xpc.webGetDataRefValue(drefId)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("error retrieving sim time dataref %s value: %w", dr.Name, err)
+			return xplaneTime, fmt.Errorf("error retrieving sim time dataref %s value: %w", dr.Name, err)
 		}
 		//update the value of dataref in memory
 		err = xpc.updateMemDatarefValue(memDref, value)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("error updating sim time dataref %s value: %w", dr.Name, err)
+			return xplaneTime, fmt.Errorf("error updating sim time dataref %s value: %w", dr.Name, err)
 		}
 
 		switch dr.Name {
 		case "sim/time/local_date_days":
-			simData.LocalDateDays = int(value.(float64))
+			xplaneTime.LocalDateDays = int(value.(float64))
 		case "sim/time/local_time_sec":
-			simData.LocalTimeSecs = value.(float64)
+			xplaneTime.LocalTimeSecs = value.(float64)
 		case "sim/time/zulu_time_sec":
-			simData.ZuluTimeSecs = value.(float64)
+			xplaneTime.ZuluTimeSecs = value.(float64)
 		}
 	}
 
-	zuluResult := getZuluDateTime(simData)
-
-	fmt.Println("--- X-Plane Time Conversion ---")
-	fmt.Printf("Sim Local Date Days: %d\n", simData.LocalDateDays)
-	fmt.Printf("Calculated Zulu:     %s\n", zuluResult.Format("2006-01-02 15:04:05"))
-
-	return zuluResult, nil
+	return xplaneTime, nil
 }
 
 // getDataRefIndices fetches the integer indices for the named datarefs via HTTP GET.
@@ -391,8 +324,8 @@ func (xpc *XPConnect) sendDatarefSubscription() {
 	reqID := requestCounter.Add(1)
 
 	// loop through each dataref in map and create a SubDataref for each
-	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.memDataRefIndexMap))
-	for index := range xpc.memDataRefIndexMap {
+	paramDatarefs := make([]xpapimodel.SubDataref, 0, len(xpc.memSubscribeDataRefIndexMap))
+	for index := range xpc.memSubscribeDataRefIndexMap {
 		subDataref := xpapimodel.SubDataref{
 			Id: index,
 		}
@@ -450,7 +383,7 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 			continue
 		}
 
-		err = xpc.updateMemDatarefValueInMap(xpc.memDataRefIndexMap, idInt, value)
+		err = xpc.updateMemDatarefValueInMap(xpc.memSubscribeDataRefIndexMap, idInt, value)
 		if err != nil {
 			log.Printf("Error updating dataref ID %d value: %v", idInt, err)
 			continue
@@ -526,8 +459,8 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 
 func (xpc *XPConnect) updateWeatherData() {
 
-	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
-	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
+	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
+	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
 	if errFb != nil || errSb != nil {
 		logErrors(errFb, errSb)
 		return
@@ -542,10 +475,10 @@ func (xpc *XPConnect) updateWeatherData() {
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
-	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
-	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
-	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
-	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
+	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
+	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
+	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
+	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
 		if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
 		logErrors(errC1, errC2, errF1, errF2)
 		return
@@ -572,9 +505,9 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
-	lat, errLat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
-	lng, errLng := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
-	alt, errAlt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
+	lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
+	lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
+	alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
 	if errLat != nil || errLng != nil || errAlt != nil {
 		logErrors(errLat, errLng, errAlt)
 		return
@@ -592,7 +525,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, "trafficglobal/ai/tail_number")
+	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/tail_number")
 	if tailNumbersDR == nil {
 		log.Println("Error: tail number dataref not found")
 		return
@@ -605,8 +538,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, "trafficglobal/ai/airline_code")
-	flightNumsDR := xpc.getMemDataRefByName(xpc.memDataRefIndexMap, "trafficglobal/ai/flight_num")
+	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/airline_code")
+	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_num")
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		log.Println("Error: airline code or flight number dataref not found")
 	} else {
@@ -643,7 +576,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
+		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
 		if err != nil {
 			log.Println(err)
 			return
@@ -654,10 +587,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.Phase.Current = updatedFlightPhase
 
 		// Update position
-		lat, errLat := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_lat", index)
-		lng, errLng := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_long", index)
-		alt, errAlt := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_elev", index)
-		hdg, errHdg := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/position_heading", index)
+		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
+		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_long", index)
+		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_elev", index)
+		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_heading", index)
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
@@ -699,7 +632,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
 
 		// get parking
-		parking, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/parking", index)
+		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)
 		if err != nil {
 			//TODO: reinstate once parking dataref issue is resolved
 			//log.Println(err)
@@ -709,7 +642,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		aircraft.Flight.AssignedParking = parking.(string)
 
 		// get assigned runway
-		runway, err := xpc.getMemDataRefValue(xpc.memDataRefIndexMap, "trafficglobal/ai/runway", index)
+		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/runway", index)
 		if err != nil {
 			log.Println(err)
 			return
@@ -823,7 +756,7 @@ func buildURLWithFilters(urlStr string, drefs []xpapimodel.Dataref) (string, err
 }
 
 // GetZuluDateTime converts sim datarefs into a standard Go time.Time object
-func getZuluDateTime(xp XPlaneTime) time.Time {
+func getZuluDateTime(xp simdata.XPlaneTime) time.Time {
 	// 1. Establish the Year. XP doesn't provide this, so we use current system year.
 	currentYear := time.Now().Year()
 

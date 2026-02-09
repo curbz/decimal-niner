@@ -52,6 +52,7 @@ func main() {
 
 	// Connect to X-Plane
 	xpc := xpconnect.New(cfgPath, atcService)
+	atcService.SetDataProvider(xpc)
 	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown
