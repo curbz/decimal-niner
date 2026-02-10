@@ -291,15 +291,21 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 	if strings.Contains(phrase, "{WIND}") {
 		phrase = strings.ReplaceAll(phrase, "{WIND}", s.formatWind())
 	}
-	if strings.Contains(phrase, "{HAZARDS}") {
-		phrase = strings.ReplaceAll(phrase, "{HAZARDS}", s.formatHazards())
+	if strings.Contains(phrase, "{SHEAR}") {
+		phrase = strings.ReplaceAll(phrase, "{SHEAR}", s.formatWindShear())
+	}
+	if strings.Contains(phrase, "{TURBULENCE}") {
+		phrase = strings.ReplaceAll(phrase, "{TURBULENCE}", s.formatTurbulence(role))
 	}
 	if strings.Contains(phrase, "{HANDOFF}") {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
 	}
 
+	//cleanup phrase
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
+	re := regexp.MustCompile(`\.[\s\.]*$`)
+	phrase = re.ReplaceAllString(phrase, ".")
 
 	phrase = translateNumerics(phrase)
 
@@ -827,26 +833,42 @@ func (s *Service) formatWind() string {
 	return windPhrase
 }
 
-func (s *Service) formatHazards() string {
+func (s *Service) formatWindShear() string {
 	
-	var reports []string
+	var phrase string
     const mpsToKnots = 1.94384
-
-    // Turbulence Magnitude
-    if s.Weather.Turbulence >= 0.7 {
-        reports = append(reports, "severe turbulence [reported]")
-    } else if s.Weather.Turbulence >= 0.4 {
-        reports = append(reports, "moderate turbulence [reported]")
-    }
 
     // Wind Shear (Converted from m/s to knots)
     shearKt := s.Weather.Wind.Shear * mpsToKnots
     
     if shearKt >= 15 {
         // Round to nearest 5
-        shearVal := int((shearKt + 2) / 5) * 5
-        reports = append(reports, fmt.Sprintf("[caution] wind shear [alert loss or gain of] %d knots", shearVal))
+        shearRound := int((shearKt + 2) / 5) * 5
+        phrase = fmt.Sprintf("[caution] wind shear [alert, loss or gain of] %d knots", shearRound)
     }
 
-	return strings.Join(reports, ". ")
+	return phrase
+}
+
+func (s *Service) formatTurbulence(role string) string {
+	
+	phrase := ""
+	turbClass := ""
+
+    // Turbulence Magnitude
+    if s.Weather.Turbulence >= 0.7 {
+        turbClass = "severe"
+    } else if s.Weather.Turbulence >= 0.4 {
+        turbClass = "moderate"
+    }
+
+    if turbClass != "" {
+		if role == "PILOT" {
+			phrase = fmt.Sprintf("experiencing %s turbulence", turbClass)
+		} else {
+			phrase = fmt.Sprintf("%s turbulence [reported]", turbClass)
+		}
+    }
+
+	return phrase
 }
