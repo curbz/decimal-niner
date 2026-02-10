@@ -28,6 +28,7 @@ type VoicesConfig struct {
 	Piper             Piper  `yaml:"piper"`
 	Sox               Sox    `yaml:"sox"`
 	ValedictionFactor int	 `yaml:"valediction_factor"`
+	SayAgainFactor    int    `yaml:"say_again_factor"`
 }
 
 type Exchange struct {
@@ -224,20 +225,42 @@ func (s *Service) startComms() {
 			// select random exchange
 			exchange := exchanges[rand.Intn(len(exchanges))]
 
+			// didSayAgain bool ensures 'say again' cannot be repeated for the same pilot/controller exchange 
+			didSayAgain := false
 			if exchange.Initiator == "pilot" {
+				// pilot's initial phrase
 				s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
+					// randomised 'say again'
+					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 1 && !didSayAgain {
+						// atc asks pilot to repeat request
+						s.prepAndQueuePhrase("{CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+						// pilot repeats phrase
+						s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+					}
+					// atc responds
 					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					// pilot reads back atc instructions
 					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				}
 			}
 			
 			if exchange.Initiator == "atc" {
+				// atc initiates call to pilot
 				s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+				// randomised 'say again'
+				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 1 && !didSayAgain {
+					// pilot asks atc to repeat request
+					s.prepAndQueuePhrase("{FACILITY} say again", "PILOT", ac, s.Weather.Baro)
+					// atc repeats instructions
+					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+				}
 				if exchange.Pilot == "" {
+					// if the selected exchange does not specify a pilot response, the pilot will read back atc instructions
 					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				} else {
+					// else the pilot responds with the specified exchange phrase
 					s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				}
 			}
@@ -267,12 +290,14 @@ func removeBracketedPhrases(input string) string {
 // role is either "PILOT" or the facility type e.g "Tower"
 func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
 
-	// construct message and replace all possible variables
-	// TODO: add more as defined in phrase files
+	// construct message and replace all placeholder variables
 
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
 	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
-	phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
+
+	if strings.Contains(phrase, "{SQUAWK}") {
+		phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
+	}
 
 	if strings.Contains(phrase, "{RUNWAY}") {
 		phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
@@ -532,71 +557,6 @@ func translateRunway(runway string) string {
 	runway = strings.Replace(runway, "L", "left", 1)
 	runway = strings.Replace(runway, "R", "right", 1)
 	return runway
-}
-
-type phraseDef struct {
-	exchanges      []Exchange
-	facility        string
-}
-
-func getPhraseDef(phraseSource map[string][]Exchange, flightPhase int) *phraseDef {
-
-	var exchanges []Exchange
-	var facility string
-
-	switch flightPhase {
-	// --- PRE-FLIGHT & DEPARTURE ---
-	case trafficglobal.Parked.Index():
-		exchanges = phraseSource["pre_flight_parked"]
-		facility = "Clearance" // or Delivery
-	case trafficglobal.Startup.Index():
-		exchanges = phraseSource["startup"]
-		facility = "Ground"
-	case trafficglobal.TaxiOut.Index():
-		exchanges = phraseSource["taxi_out"]
-		facility = "Ground"
-	case trafficglobal.Depart.Index():
-		exchanges = phraseSource["depart"]
-		facility = "Tower"
-	case trafficglobal.Climbout.Index():
-		exchanges = phraseSource["climb_out"]
-		facility = "Departure"
-	// --- ENROUTE & ARRIVAL ---
-	case trafficglobal.Cruise.Index():
-		exchanges = phraseSource["cruise"]
-		facility = "Center"
-	case trafficglobal.Approach.Index():
-		exchanges = phraseSource["approach"]
-		facility = "Approach"
-	case trafficglobal.Holding.Index():
-		exchanges = phraseSource["holding"]
-		facility = "Approach"
-	case trafficglobal.Final.Index():
-		exchanges = phraseSource["final"]
-		facility = "Tower"
-	case trafficglobal.GoAround.Index():
-		exchanges = phraseSource["go_around"]
-		facility = "Tower"
-	// --- LANDING & TAXI-IN ---
-	case trafficglobal.Braking.Index():
-		// In Traffic Global, Braking usually covers the rollout and runway exit
-		exchanges = phraseSource["braking"]
-		facility = "Tower"
-	case trafficglobal.TaxiIn.Index():
-		exchanges = phraseSource["taxi_in"]
-		facility = "Ground"
-	case trafficglobal.Shutdown.Index():
-		// Usually uses the end of Taxi-In or a "On Blocks" message
-		exchanges = phraseSource["post_flight_parked"]
-		facility = "Ground"
-	default:
-		return nil
-	}
-
-	return &phraseDef{
-		exchanges:       exchanges,
-		facility:        facility,
-	}
 }
 
 func formatAltitude(rawAlt float64, transitionLevel int, phase int) string {

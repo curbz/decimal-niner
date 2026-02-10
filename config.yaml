@@ -7,7 +7,7 @@ xplane_api:
 atc:
   message_buffer_size:    10
   listen_all_frequencies: true
-  strcit_flightplan_matching: false
+  strict_flightplan_matching: false
   airlines_file:     "resources/airlines.json"
   atc_data_file:     "/home/dmorris/decimal-niner/X-Plane/atc.dat"
   atc_regions_file:  "/home/dmorris/decimal-niner/X-Plane/atc_regions.dat"
@@ -22,6 +22,7 @@ atc:
       application:        "/home/dmorris/.local/bin/piper"
       voice_directory:    "/home/dmorris/piper-voices"
     valediction_factor: 5
+    say_again_factor: 20
 trafficglobal:
   bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Global_Airlines.bgl"
   #bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Sample.bgl"
