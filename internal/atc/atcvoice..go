@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -284,6 +285,9 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") {
 		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
+	}
+	if strings.Contains(phrase, "{HEADING}") {
+		phrase = strings.ReplaceAll(phrase, "{HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
 	}
 	if strings.Contains(phrase, "{BARO}") {
 		phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
