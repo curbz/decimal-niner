@@ -314,11 +314,11 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		// Sea level pressure in Pascals (1013.25 hPa == 101325 Pa)
 		return 101325.0 + (float64(iter) * 1.0)
 	case "sim/weather/region/turbulence":      
-		return 1.0 + iter
+		return 0.2 + float64(iter / 10)
 	case "sim/weather/region/shear_speed_msc":
-		return 1.0 + iter
+		return 1.0 + float64(iter / 2)
 	case "sim/weather/region/wind_speed_msc":
-		return 9.0 + iter
+		return 5.0 + iter
 	case "sim/flightmodel/position/magnetic_variation":
 		return 0.2
 	case "sim/weather/region/wind_direction_degt":

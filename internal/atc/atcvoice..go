@@ -289,7 +289,10 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 		phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
 	}
 	if strings.Contains(phrase, "{WIND}") {
-		phrase = strings.ReplaceAll(phrase, "{WIND}", s.FormatWind())
+		phrase = strings.ReplaceAll(phrase, "{WIND}", s.formatWind())
+	}
+	if strings.Contains(phrase, "{HAZARDS}") {
+		phrase = strings.ReplaceAll(phrase, "{HAZARDS}", s.formatHazards())
 	}
 	if strings.Contains(phrase, "{HANDOFF}") {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
@@ -767,7 +770,6 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 	}
 
 	// generate the Handoff Phrase
-	// TODO: add valediction - need local hour to determine good day, good evening, good night
 	valediction := ""
 	if rand.Intn(s.Config.ATC.Voices.ValedictionFactor) == 0 {
 		currTime, err := s.DataProvider.GetSimTime()
@@ -792,7 +794,7 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 
 }
 
-func (s *Service) FormatWind() string {
+func (s *Service) formatWind() string {
 	
 	const mpsToKnots = 1.94384
     speedKt := s.Weather.Wind.Speed * mpsToKnots
@@ -807,10 +809,10 @@ func (s *Service) FormatWind() string {
 
 	// 3. Base Wind Phrasing
 	var windPhrase string
-	if speedKt < 3 {
+	if speedKt < 4 {
 		windPhrase = "calm"
 	} else {
-		windPhrase = fmt.Sprintf("%03d at %d", roundedDir, int(speedKt))
+		windPhrase = fmt.Sprintf("%03d at %d knots", roundedDir, int(speedKt))
 		gustKt := 0.0
 		if s.Weather.Turbulence > 0.2 {
 			// Simple heuristic: Turbulence adds a gust factor
@@ -822,16 +824,10 @@ func (s *Service) FormatWind() string {
         }
 	}
 
-	// 4. Append Hazards (Turbulence & Wind Shear)
-	hazards := s.getHazards()
-	if hazards != "" {
-		return fmt.Sprintf("%s. %s", windPhrase, hazards)
-	}
-
 	return windPhrase
 }
 
-func (s *Service) getHazards() string {
+func (s *Service) formatHazards() string {
 	
 	var reports []string
     const mpsToKnots = 1.94384

@@ -14,8 +14,12 @@ type XPlaneTime struct {
 }
 
 var SubscribeDatarefs = []xpapimodel.Dataref{
-
+		//TODO: use constants through application for all dataref names
 		//weather
+		{Name: "sim/weather/aircraft/barometer_current_pas",  // float <-- 97878.51
+			APIInfo: xpapimodel.DatarefInfo{}},
+		{Name: "sim/weather/region/sealevel_pressure_pas",  // float <-- 98220.164
+			APIInfo: xpapimodel.DatarefInfo{}},
 		{Name: "sim/flightmodel/position/magnetic_variation",
 			APIInfo: xpapimodel.DatarefInfo{}},	
 		{Name: "sim/weather/region/turbulence",
@@ -45,12 +49,6 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		{Name: "sim/atc/com1_tuned_facility",
 			APIInfo: xpapimodel.DatarefInfo{}},
 		{Name: "sim/atc/com2_tuned_facility",
-			APIInfo: xpapimodel.DatarefInfo{}},
-
-		//weather datarefs
-		{Name: "sim/weather/aircraft/barometer_current_pas",  // float <-- 97878.51
-			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/weather/region/sealevel_pressure_pas",  // float <-- 98220.164
 			APIInfo: xpapimodel.DatarefInfo{}},
 
 		//traffic global datarefs

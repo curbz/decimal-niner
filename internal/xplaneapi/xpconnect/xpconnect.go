@@ -462,9 +462,9 @@ func (xpc *XPConnect) updateWeatherData() {
 	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
 	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
 	magVar, errMv := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/magnetic_variation", 0)
-	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/turbulence_magnitude", 0)
-	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/wind_shear_magnitude", 0)
-	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_kt", 0)
+	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/turbulence", 0)
+	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/shear_speed_msc", 0)
+	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_msc", 0)
 	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
 	
 	if errFb != nil || errSb != nil || errMv != nil || errTm != nil || errWs != nil || errSp != nil || errDr != nil {
