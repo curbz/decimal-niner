@@ -309,9 +309,11 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportNames))
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") {
+		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
 		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
 	}
 	if strings.Contains(phrase, "{ALT_CLEARANCE}") {
+		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
 		phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", generateClearance(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
 	}
 	if strings.Contains(phrase, "{HEADING}") {
@@ -347,6 +349,8 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	phrase = strings.ReplaceAll(phrase, "]", "")
 	re := regexp.MustCompile(`\.[\s\.]*$`)
 	phrase = re.ReplaceAllString(phrase, ".")
+	phrase = strings.TrimSpace(phrase)
+	phrase = strings.TrimSuffix(phrase, ",")
 
 	phrase = translateNumerics(phrase)
 
@@ -590,7 +594,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool
 
 	// Flight Level Logic (At or above Transition Altitude)
 	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
-		fl := roundedAlt / 100
+		fl := roundedAlt / 1000
 		
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
 		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
@@ -642,20 +646,23 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 	scaledAlt, scaleIsFlightLevel := scaleAltitude(rawAlt, transitionLevel, ac)
 
 	if scaleIsFlightLevel != clearedScaleIsFlightLevel {
+		// scales are different
 		if scaleIsFlightLevel {
+			// current altitude is a flight level and cleared to an altitude, so we must descend
 			instruction = "descend to"
 		}  else {
 			instruction = "climb to"
 		}
 	} else {
+		// scales are the same so we can directly compare values
 		if scaledAlt >= scaledClearedAlt {
 			if scaledAlt == scaledClearedAlt {
 				instruction = "maintain"
 			}  else {
-				instruction = "climb to"
+				instruction = "descend to"
 			}	
 		} else {
-			instruction = "descend to"
+			instruction = "climb to"
 		}	
 	}
 

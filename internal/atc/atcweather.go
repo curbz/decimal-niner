@@ -5,17 +5,17 @@ import (
 	"strings"
 )
 
-func getTransitionLevel(ta int, currBaroPascals float64) int {
+func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 	// Standard pressure in inches of mercury
 	const standardPressure = 101325.0 // Pascals
 	
 	// If pressure is standard or higher, TL is usually TA + 1000ft
 	if currBaroPascals >= standardPressure {
-		return (ta / 100) + 10 // e.g., 6000ft -> FL70
+		return (transitionAlt / 100) + 10 // e.g., 6000ft -> FL70
 	}
 	
 	// If pressure is low, we need more space, so we add an extra level
-	return (ta / 100) + 20 // e.g., 6000ft -> FL80
+	return (transitionAlt / 100) + 20 // e.g., 6000ft -> FL80
 }
 
 func formatBaro(icao string, pascals float64) string {

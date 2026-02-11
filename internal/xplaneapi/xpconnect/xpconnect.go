@@ -393,9 +393,9 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	// TODO: review, do we ALWAYS need to be calling these?
 	// and within each function, do we need to do everything? some things could not be necessary and expensive
-	xpc.updateWeatherData()
 	xpc.updateUserData()
 	xpc.updateAircraftData()
+	xpc.updateWeatherData()
 }
 
 func (xpc *XPConnect) updateMemDatarefValueInMap(datarefIndicesMap map[int]*xpapimodel.Dataref, id int, value any) error {

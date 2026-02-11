@@ -4,11 +4,6 @@ import (
 	"time"
 )
 
-const (
-	lastClearanceFeet        = "feet"
-	lastClearanceFlightLevel = "flightlevel"
-)
-
 type UserState struct {
 	NearestICAO      string
 	Position         Position
@@ -36,7 +31,7 @@ type Wind struct {
 type Baro struct {
 	Flight        float64
 	Sealevel      float64
-	TransitionAlt int
+	TransitionAlt int		// TODO: set this value, but lookup required on ICAO
 }
 
 type AirlineInfo struct {
