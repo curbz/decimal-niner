@@ -674,7 +674,7 @@ func (xpc *XPConnect) updateAircraftData() {
 				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
-				xpc.atcService.NotifyAircraftChange(*ac)
+				xpc.atcService.NotifyAircraftChange(ac)
 			}
 		}
 	}

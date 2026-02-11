@@ -19,22 +19,22 @@ import (
 
 type Service struct {
 	Config          *config
-	Channel         chan Aircraft
+	Channel         chan *Aircraft
 	Database        []Controller
 	PhraseClasses   PhraseClasses
 	UserState       UserState
 	Airlines        map[string]AirlineInfo
 	AirportNames    map[string]string
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
-	Weather		 	*Weather
-	DataProvider 	simdata.SimDataProvider 
-	SimInitTime        time.Time
-	SessionInitTime    time.Time
+	Weather         *Weather
+	DataProvider    simdata.SimDataProvider
+	SimInitTime     time.Time
+	SessionInitTime time.Time
 }
 
 type ServiceInterface interface {
 	Run()
-	NotifyAircraftChange(msg Aircraft)
+	NotifyAircraftChange(msg *Aircraft)
 	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int)
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
@@ -48,17 +48,16 @@ type ServiceInterface interface {
 // --- configuration structures ---
 type config struct {
 	ATC struct {
-		MessageBufferSize int          `yaml:"message_buffer_size"`
-		AtcDataFile       string       `yaml:"atc_data_file"`
-		AtcRegionsFile    string       `yaml:"atc_regions_file"`
-		AirportsDataFile  string       `yaml:"airports_data_file"`
-		AirlinesFile      string       `yaml:"airlines_file"`
-		Voices            VoicesConfig `yaml:"voices"`
-		ListenAllFreqs    bool         `yaml:"listen_all_frequencies"`
-		StrictFlightPlanMatch bool			`yaml:"strict_flightplan_matching"`
+		MessageBufferSize     int          `yaml:"message_buffer_size"`
+		AtcDataFile           string       `yaml:"atc_data_file"`
+		AtcRegionsFile        string       `yaml:"atc_regions_file"`
+		AirportsDataFile      string       `yaml:"airports_data_file"`
+		AirlinesFile          string       `yaml:"airlines_file"`
+		Voices                VoicesConfig `yaml:"voices"`
+		ListenAllFreqs        bool         `yaml:"listen_all_frequencies"`
+		StrictFlightPlanMatch bool         `yaml:"strict_flightplan_matching"`
 	} `yaml:"atc"`
 }
-
 
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Service {
 
@@ -127,13 +126,13 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 
 	return &Service{
 		Config:          cfg,
-		Channel:         make(chan Aircraft, cfg.ATC.MessageBufferSize),
+		Channel:         make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Database:        db,
 		PhraseClasses:   phraseClasses,
 		Airlines:        airlinesData,
 		AirportNames:    airportNames,
 		FlightSchedules: fScheds,
-		Weather: 		 &Weather{Wind: Wind{}, Baro: Baro{}},
+		Weather:         &Weather{Wind: Wind{}, Baro: Baro{}},
 	}
 }
 
@@ -154,7 +153,7 @@ func (s *Service) SetSimTime(init time.Time, session time.Time) {
 	s.SessionInitTime = session
 }
 
-func (s *Service) NotifyAircraftChange(ac Aircraft) {
+func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 
 	userActive := s.UserState.ActiveFacilities
 
@@ -372,7 +371,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	// when no flight found, expand search by 20 minutes up to 4 hours
 	for adjArr := 0; adjArr <= 240; adjArr = adjArr + 20 {
 
-		adjDep = -adjArr 
+		adjDep = -adjArr
 
 		// get all scheds for yesterday and filter. For yesterday's departures, active
 		// flights are those where the arrival day of week is today and arrival time is greater
@@ -426,14 +425,14 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 				for _, f := range scheds {
 					candidateScheds = append(candidateScheds, f)
 				}
-			}	
+			}
 		}
 
 		if len(candidateScheds) == 0 {
 			log.Printf("no inactive flight plan found for registration %s flight no. %d",
-				ac.Registration, ac.Flight.Number)	
+				ac.Registration, ac.Flight.Number)
 			return
-		}	
+		}
 	}
 
 	// there should only be one flight in the candidates, but capturing instances where
@@ -446,11 +445,12 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 		}
 	}
 
-	// use first candidate
+	// use first candidate i.e. [0]
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
+	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 1000
 
 	log.Printf("reg %s flight no. %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
-	log.Printf("reg %s flight no. %d destination %s", ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+	log.Printf("reg %s flight no. %d destination %s (cruise alt: %d)", ac.Registration, ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
 
 }

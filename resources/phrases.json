@@ -28,17 +28,16 @@
     { "id": "dep_pub", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, ready for departure from Runway {RUNWAY}.", "atc": "{CALLSIGN}, fly the designated departure, Runway {RUNWAY} cleared for takeoff, wind {WIND}" }
   ],
   "climb_out": [
-    { "id": "clmb_1", "initiator": "atc", "pilot": "{FACILITY} Departure, {CALLSIGN}, passing {ALTITUDE} for assigned altitude.", "atc": "{CALLSIGN}, {FACILITY} Departure, radar contact, climb and maintain assigned altitude." },
-    { "id": "clmb_2", "initiator": "atc", "pilot": "Climbing to assigned altitude, {CALLSIGN}.", "atc": "{CALLSIGN}, climb and maintain assigned altitude, fly heading {HEADING} for vectors." },
-    { "id": "clmb_3", "initiator": "atc", "pilot": "Roger, {FACILITY}, {CALLSIGN}.", "atc": "{CALLSIGN}, contact Center on {FREQUENCY}, good day." },
-    { "id": "clmb_4", "initiator": "atc", "pilot": "Identing, {CALLSIGN}.", "atc": "{CALLSIGN}, radar contact, reset transponder, squawk {SQUAWK} and ident." },
-    { "id": "clmb_5", "initiator": "atc", "pilot": "Direct {WAYPOINT}, {CALLSIGN}.", "atc": "{CALLSIGN}, resume own navigation, proceed direct {WAYPOINT}." }
+    { "id": "clmb_1", "initiator": "atc", "pilot": "{FACILITY} Departure, {CALLSIGN}, passing {ALTITUDE} for assigned altitude.", "atc": "{CALLSIGN}, {FACILITY} Departure, radar contact, {ALT_CLEARANCE}." },
+    { "id": "clmb_2", "initiator": "atc", "atc": "{CALLSIGN}, {ALT_CLEARANCE}, fly heading {HEADING}" },
+    { "id": "clmb_3", "initiator": "atc", "atc": "{CALLSIGN}, {ALT_CLEARANCE}." },
+    { "id": "clmb_4", "initiator": "atc", "pilot": "Identing, {CALLSIGN}.", "atc": "{CALLSIGN}, radar contact, reset transponder, squawk {SQUAWK} and ident." }
   ],
   "cruise": [
     { "id": "cru_lvl", "initiator": "atc", "pilot": "{FACILITY} Center, {CALLSIGN}, level at current altitude. {TURBULENCE}", "atc": "{CALLSIGN}, {FACILITY} Center, Roger, {BARO}." },
     { "id": "cru_vectors", "initiator": "atc", "pilot": "Heading {HEADING}, {CALLSIGN}.", "atc": "{CALLSIGN}, {FACILITY}, continue to fly heading {HEADING}. {TURBULENCE}." },
-    { "id": "cru_direct", "initiator": "pilot", "pilot": "{FACILITY} Center, {CALLSIGN}, .", "atc": "{CALLSIGN}, cleared direct {WAYPOINT}, resume own navigation." },
-    { "id": "cru_altitude", "initiator": "atc", "pilot": "altitude {ALTITUDE}, {CALLSIGN}.", "atc": "{CALLSIGN}, maintain altitude. {TURBULENCE}" },
+    { "id": "cru_direct", "initiator": "pilot", "pilot": "{FACILITY} Center, {CALLSIGN}, .", "atc": "{CALLSIGN}, {ALT_CLEARANCE}." },
+    { "id": "cru_altitude", "initiator": "atc", "pilot": "maintaining altitude {ALTITUDE}, {CALLSIGN}.", "atc": "{CALLSIGN}, maintain altitude. {TURBULENCE}" },
     { "id": "cru_weather", "initiator": "pilot", "pilot": "{FACILITY} Center, {CALLSIGN}, with you at {ALTITUDE}. {TURBULENCE}.", "atc": "{CALLSIGN}, affirm, radar contact. {TURBULENCE}" }
   ],
   "holding": [
@@ -72,7 +71,7 @@
   "braking": [
     { "id": "brk_1", "initiator": "atc", "atc": "{CALLSIGN}, clear Runway {RUNWAY} [when able], {HANDOFF}" },
     { "id": "brk_2", "initiator": "atc", "atc": "{CALLSIGN}, exit at the next high-speed taxiway, {HANDOFF}" },
-    { "id": "brk_3", "initiator": "atc", "atc": "{CALLSIGN}, clear [of the active], {HANDOFF" },
+    { "id": "brk_3", "initiator": "atc", "atc": "{CALLSIGN}, clear [of the active], {HANDOFF}" },
     { "id": "brk_4", "initiator": "atc", "atc": "{CALLSIGN}, {HANDOFF}." },
     { "id": "brk_5", "initiator": "atc", "atc": "{CALLSIGN}, exit next taxiway, {HANDOFF}." }
   ],
@@ -84,10 +83,10 @@
     { "id": "txi_5", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, taxiing to stand.", "atc": "{CALLSIGN}, Roger, continue to {PARKING}, monitor tower on {FREQUENCY} for crossing traffic." }
   ],
   "post_flight_parked": [
-    { "id": "pst_1", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, parked at {PARKING}, engines shutdown, thanks for the help.", "atc": "{CALLSIGN}, Roger, shutdown acknowledged." },
+    { "id": "pst_1", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, parked at {PARKING}, engines shutdown, thanks for the help.", "atc": "{CALLSIGN}, Roger, shutdown acknowledged. {VALEDICTION}" },
     { "id": "pst_2", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, on the stand, shutting down.", "atc": "{CALLSIGN}, copy." },
-    { "id": "pst_3", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, engines off, switching to uniform. Good day.", "atc": "{CALLSIGN}, roger, shutdown acknowledged, good day." },
-    { "id": "pst_4", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, safely at the gate, see you on the return.", "atc": "{CALLSIGN}, copy, thanks for the help, good day." },
-    { "id": "pst_5", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, final check complete, switching off.", "atc": "{CALLSIGN}, roger, shutdown acknowledged, have a safe rest of your day." }
+    { "id": "pst_3", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, engines off.", "atc": "{CALLSIGN}, roger, shutdown acknowledged. {VALEDICTION}" },
+    { "id": "pst_4", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, shutdown at the gate, see you on the return.", "atc": "{CALLSIGN}, copy that, have a {{VALEDICTION}}." },
+    { "id": "pst_5", "initiator": "pilot", "pilot": "{FACILITY} Ground, {CALLSIGN}, on stand, shutdown.", "atc": "{CALLSIGN}, roger, shutdown acknowledged. {VALEDICTION}" }
   ]
 }

@@ -21,8 +21,8 @@ atc:
     piper:
       application:        "/home/dmorris/.local/bin/piper"
       voice_directory:    "/home/dmorris/piper-voices"
-    valediction_factor: 5
-    say_again_factor: 20
+    handoff_valediction_factor: 5  
+    say_again_factor: 30
 trafficglobal:
   bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Global_Airlines.bgl"
   #bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Sample.bgl"

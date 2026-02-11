@@ -27,7 +27,7 @@ type VoicesConfig struct {
 	UnicomPhrasesFile string `yaml:"unicom_phrases_file"`
 	Piper             Piper  `yaml:"piper"`
 	Sox               Sox    `yaml:"sox"`
-	ValedictionFactor int	 `yaml:"valediction_factor"`
+	HandoffValedictionFactor int	 `yaml:"handoff_valediction_factor"`
 	SayAgainFactor    int    `yaml:"say_again_factor"`
 }
 
@@ -233,7 +233,7 @@ func (s *Service) startComms() {
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
 					// randomised 'say again'
-					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 1 && !didSayAgain {
+					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
 						s.prepAndQueuePhrase("{CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 						// pilot repeats phrase
@@ -250,7 +250,7 @@ func (s *Service) startComms() {
 				// atc initiates call to pilot
 				s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				// randomised 'say again'
-				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 1 && !didSayAgain {
+				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 					// pilot asks atc to repeat request
 					s.prepAndQueuePhrase("{FACILITY} say again", "PILOT", ac, s.Weather.Baro)
 					// atc repeats instructions
@@ -288,7 +288,7 @@ func removeBracketedPhrases(input string) string {
 
 // PrepPhrase prepares the phrase and queues for speech generation
 // role is either "PILOT" or the facility type e.g "Tower"
-func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro) {
+func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
 	// construct message and replace all placeholder variables
 
@@ -309,7 +309,10 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportNames))
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") {
-		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac.Flight.Phase.Current))
+		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
+	}
+	if strings.Contains(phrase, "{ALT_CLEARANCE}") {
+		phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", generateClearance(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
 	}
 	if strings.Contains(phrase, "{HEADING}") {
 		phrase = strings.ReplaceAll(phrase, "{HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
@@ -328,6 +331,15 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac Aircraft, baro Baro
 	}
 	if strings.Contains(phrase, "{HANDOFF}") {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
+	}
+	if strings.Contains(phrase, "{VALEDICTION}") {
+		factor := s.Config.ATC.Voices.HandoffValedictionFactor
+		replace := "{VALEDICTION}"
+		if strings.Contains(phrase, "{{VALEDICTION}}") {
+			factor = 1
+			replace = "{{VALEDICTION}}"
+		}
+		phrase = strings.ReplaceAll(phrase, replace, s.generateValediction(factor))
 	}
 
 	//cleanup phrase
@@ -559,12 +571,15 @@ func translateRunway(runway string) string {
 	return runway
 }
 
-func formatAltitude(rawAlt float64, transitionLevel int, phase int) string {
+// scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
+// is true when the scale is flight levels and false when the returned value is an altitude in feet
+func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool) {
+	
 	var roundedAlt int
 	alt := int(rawAlt)
 
-	// 1. Contextual Rounding Logic
-	switch phase {
+	// Contextual Rounding Logic
+	switch ac.Flight.Phase.Current {
 	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
 		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
 		roundedAlt = ((alt + 50) / 100) * 100
@@ -573,33 +588,81 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase int) string {
 		roundedAlt = ((alt + 500) / 1000) * 1000
 	}
 
-	// 2. Flight Level Logic (At or above Transition Altitude)
+	// Flight Level Logic (At or above Transition Altitude)
 	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
 		fl := roundedAlt / 100
 		
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
-		if phase == trafficglobal.Cruise.Index() {
+		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
 			fl = (fl / 10) * 10
 		}
 		
 		// Returns "flight level 330"
-		return fmt.Sprintf("flight level %d", fl)
+		return fl, true
 	}
 
-	// 3. Feet Logic (Below Transition Altitude)
+	return roundedAlt, false
+}
+
+func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
+
+	scaledAlt, flightLevelScale := scaleAltitude(rawAlt, transitionLevel, ac)
+		
+	if flightLevelScale {
+		// Returns "flight level 330"
+		return fmt.Sprintf("flight level %d", scaledAlt)
+	}
+
+	// Feet Logic (Below Transition Altitude)
 	// If it's a clean thousand (e.g., 5000)
-	if roundedAlt % 1000 == 0 {
-		return fmt.Sprintf("%d thousand", roundedAlt/1000)
+	if scaledAlt % 1000 == 0 {
+		return fmt.Sprintf("%d thousand", scaledAlt/1000)
 	}
 	
 	// Handle split altitudes like 2400 (common in approach/missed approach)
-	thousands := roundedAlt / 1000
-	hundreds := (roundedAlt % 1000) / 100
+	thousands := scaledAlt / 1000
+	hundreds := (scaledAlt % 1000) / 100
 	
 	// Returns "2 thousand 4 hundred"
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }
 
+// generateClearance builds a clearance phrase
+// one of "descend to", "maintain", "climb to"
+func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string {
+
+	instruction := ""
+	phrase := ""
+	
+	if ac.Flight.AltClearance == 0 {
+		return phrase
+	}
+
+	scaledClearedAlt, clearedScaleIsFlightLevel := scaleAltitude(float64(ac.Flight.AltClearance), transitionLevel, ac)
+	scaledAlt, scaleIsFlightLevel := scaleAltitude(rawAlt, transitionLevel, ac)
+
+	if scaleIsFlightLevel != clearedScaleIsFlightLevel {
+		if scaleIsFlightLevel {
+			instruction = "descend to"
+		}  else {
+			instruction = "climb to"
+		}
+	} else {
+		if scaledAlt >= scaledClearedAlt {
+			if scaledAlt == scaledClearedAlt {
+				instruction = "maintain"
+			}  else {
+				instruction = "climb to"
+			}	
+		} else {
+			instruction = "descend to"
+		}	
+	}
+
+	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(ac.Flight.AltClearance), transitionLevel, ac))
+
+	return phrase
+}
 
 // formatParking applies logic to convert parking designations into more natural speech phrases
 func formatParking(parking string, icao string) string {
@@ -699,7 +762,8 @@ func toPhonetics(s string) string {
 	return strings.TrimSpace(result.String())
 }
 
-func (s *Service) generateHandoffPhrase(ac Aircraft) string {
+// generateHandoffPhrase creates a controller handoff phrase and automatically includes valediction (based on configured factor)
+func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
     // Identify the 'Next Role' based on the new phase
     nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
     if !exists { 
@@ -739,9 +803,14 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 		facilityName = nextController.Name
 	}
 
-	// generate the Handoff Phrase
+	return fmt.Sprintf(" [contact] %s %s on %s %s", facilityName, roleNameMap[nextRole], freqStr, s.generateValediction(s.Config.ATC.Voices.HandoffValedictionFactor))
+
+}
+
+func (s *Service) generateValediction(factor int) string {
+
 	valediction := ""
-	if rand.Intn(s.Config.ATC.Voices.ValedictionFactor) == 0 {
+	if rand.Intn(factor) == 0 {
 		currTime, err := s.DataProvider.GetSimTime()
 		if err != nil {
 			log.Printf("error: could not get local time: %s", err.Error())
@@ -752,7 +821,7 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 				valediction = "good day"
 			} else {
 				if currHour < 23 {
-					valediction = "good evenning"
+					valediction = "good evening"
 				} else {
 					valediction = "good night"
 				}
@@ -760,8 +829,7 @@ func (s *Service) generateHandoffPhrase(ac Aircraft) string {
 		}
 	}
 
-	return fmt.Sprintf(" [contact] %s %s on %s %s", facilityName, roleNameMap[nextRole], freqStr, valediction)
-
+	return fmt.Sprintf("[%s]", valediction)
 }
 
 func (s *Service) formatWind() string {

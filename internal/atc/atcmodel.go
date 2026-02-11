@@ -4,6 +4,11 @@ import (
 	"time"
 )
 
+const (
+	lastClearanceFeet        = "feet"
+	lastClearanceFlightLevel = "flightlevel"
+)
+
 type UserState struct {
 	NearestICAO      string
 	Position         Position
@@ -16,21 +21,21 @@ type Weather struct {
 	Wind       Wind
 	Baro       Baro
 	Temp       float64
-	Vis    	   float64
+	Vis        float64
 	Humidity   float64
-	MagVar	   float64
+	MagVar     float64
 	Turbulence float64 // magnitude 0-10
 }
 
 type Wind struct {
-	Direction float64  // degrees
-	Speed     float64  // m/s
-	Shear     float64  // m/s
+	Direction float64 // degrees
+	Speed     float64 // m/s
+	Shear     float64 // m/s
 }
 
 type Baro struct {
-	Flight float64
-	Sealevel float64
+	Flight        float64
+	Sealevel      float64
 	TransitionAlt int
 }
 
@@ -57,9 +62,10 @@ type Flight struct {
 	Destination     string
 	Phase           Phase
 	Comms           Comms
+	AltClearance    int
 	AssignedParking string
 	AssignedRunway  string
-	Squawk       	string
+	Squawk          string
 }
 
 type Position struct {
@@ -110,5 +116,5 @@ type Controller struct {
 
 type PhaseFacility struct {
 	atcPhase string
-	roleId int
+	roleId   int
 }
