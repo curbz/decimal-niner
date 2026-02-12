@@ -635,6 +635,15 @@ func (xpc *XPConnect) updateAircraftData() {
 			airlineCode = airlineCodes[index]
 		}
 
+		// get aircraft class 
+		class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
+		sizeClass := class.(int)
+		if err != nil  || sizeClass > 5 {
+			log.Println(err)
+			sizeClass = 3 // size class 'D'
+		}
+		aircraft.SizeClass = atc.SizeClass[sizeClass]
+
 		// lookup callsign for airline code, default to airline code value if not found in map
 		callsign := airlineCode
 		airlineInfo := xpc.atcService.GetAirline(airlineCode)
@@ -642,7 +651,15 @@ func (xpc *XPConnect) updateAircraftData() {
 			callsign = airlineInfo.Callsign
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 		}
-		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d", callsign, flightNum)
+		sizeClassStr := ""
+		if sizeClass < 3 {
+			if sizeClass > 0 {
+				sizeClassStr = "Heavy"
+			} else {
+				sizeClassStr = "Super"
+			}
+		}
+		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, flightNum, sizeClassStr)
 
 		// get parking
 		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)

@@ -2,6 +2,10 @@ package atc
 
 import "github.com/curbz/decimal-niner/internal/trafficglobal"
 
+var SizeClass = []string {
+	"A", "B", "C", "D", "E", "F",
+}
+
 // icaoToIsoMap contains the comprehensive list of ICAO nationality
 // prefixes mapped to ISO 3166-1 alpha-2 country codes.
 var icaoToIsoMap = map[string]string{

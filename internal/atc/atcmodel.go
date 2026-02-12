@@ -43,7 +43,7 @@ type AirlineInfo struct {
 type Aircraft struct {
 	Flight       Flight
 	Type         string
-	Class        string
+	SizeClass    string
 	Code         string
 	Airline      string
 	Registration string
