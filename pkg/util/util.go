@@ -34,9 +34,9 @@ func DecodeNullTerminatedString(encodedData string) ([]string, error) {
 			// FIX: Only append if the string is NOT empty.
 			// This prevents adding empty elements caused by double nulls
 			// (\x00\x00) or trailing padding at the end of the buffer.
-			if len(s) > 0 {
+			//if len(s) > 0 {
 				decodedStrings = append(decodedStrings, s)
-			}
+			//}
 
 			start = i + 1
 		}
