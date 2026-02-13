@@ -31,18 +31,15 @@ func DecodeNullTerminatedString(encodedData string) ([]string, error) {
 			// Extract the string
 			s := string(rawBytes[start:i])
 
-			// FIX: Only append if the string is NOT empty.
-			// This prevents adding empty elements caused by double nulls
-			// (\x00\x00) or trailing padding at the end of the buffer.
-			//if len(s) > 0 {
+			// prevents terminating 0x00 from being added 
+			if start < len(rawBytes)-1 {
 				decodedStrings = append(decodedStrings, s)
-			//}
-
+			}
 			start = i + 1
 		}
 	}
 
-	// Handle any remaining data (if it doesn't end with \x00)
+	//Handle any remaining data (if it doesn't end with \x00)
 	if start < len(rawBytes) {
 		s := string(rawBytes[start:])
 		if len(s) > 0 {
