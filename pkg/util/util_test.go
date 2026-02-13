@@ -12,9 +12,9 @@ func TestDecodeNullTerminatedString(t *testing.T) {
 		raw  []byte
 		want []string
 	}{
-		{name: "no empty elements", raw: []byte("A\x00B\x00C\x00D"), want: []string{"A", "B", "C", "D"}},
-		{name: "middle element empty", raw: []byte("A\x00\x00C\x00D"), want: []string{"A", "", "C", "D"}},
-		{name: "trailing element empty", raw: []byte("A\x00B\x00\x00"), want: []string{"A", "B", ""}},
+		{name: "no empty elements", raw: []byte("A\x00B\x00C\x00D\x00"), want: []string{"A", "B", "C", "D"}},
+		{name: "middle element empty", raw: []byte("A\x00\x00C\x00D\x00"), want: []string{"A", "", "C", "D"}},
+		{name: "trailing element empty", raw: []byte("A\x00B\x00C\x00\x00\x00"), want: []string{"A", "B", "C", ""}},
 	}
 
 	for _, tc := range tests {
