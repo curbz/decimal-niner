@@ -23,13 +23,13 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		{Name: "sim/flightmodel/position/magnetic_variation",
 			APIInfo: xpapimodel.DatarefInfo{}},	
 		{Name: "sim/weather/region/turbulence",
-			APIInfo: xpapimodel.DatarefInfo{}},	
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 		{Name: "sim/weather/region/shear_speed_msc",
-			APIInfo: xpapimodel.DatarefInfo{}},
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 		{Name: "sim/weather/region/wind_speed_msc",
-			APIInfo: xpapimodel.DatarefInfo{}},
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 		{Name: "sim/weather/region/wind_direction_degt",
-			APIInfo: xpapimodel.DatarefInfo{}},
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
 		//user position datarefs
 		{Name: "sim/flightmodel/position/latitude",
@@ -66,8 +66,6 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 		{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-		//{Name: "trafficglobal/ai/ai_type", // Int array of traffic type (TrafficType enum) <-- [0,0,0,0,0]
-		//	APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 		{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 		{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]

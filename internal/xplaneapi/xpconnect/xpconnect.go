@@ -462,12 +462,14 @@ func (xpc *XPConnect) updateWeatherData() {
 	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
 	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
 	magVar, errMv := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/magnetic_variation", 0)
-	// turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/turbulence", 0)
-	// wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/shear_speed_msc", 0)
-	// speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_msc", 0)
-	// dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
+	// request index 0 for the following datarefs as this is surface/sea-level layer which is most applicable for flight phases
+	// where this will be utilised
+	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/turbulence", 0)
+	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/shear_speed_msc", 0)
+	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_msc", 0)
+	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
 	
-	if errFb != nil || errSb != nil || errMv != nil { //|| errTm != nil || errWs != nil || errSp != nil || errDr != nil {
+	if errFb != nil || errSb != nil || errMv != nil || errTm != nil || errWs != nil || errSp != nil || errDr != nil {
 		logErrors(errFb, errSb)
 		return
 	}
@@ -476,10 +478,10 @@ func (xpc *XPConnect) updateWeatherData() {
 	w.Baro.Flight = flightBaro.(float64)
 	w.Baro.Sealevel = sealevelBaro.(float64)
 	w.MagVar = magVar.(float64)
-	// w.Turbulence = turbMag.(float64)
-	// w.Wind.Shear = wsMag.(float64)
-	// w.Wind.Speed = speed.(float64)
-	// w.Wind.Direction = dir.(float64)
+	w.Turbulence = turbMag.(float64)
+	w.Wind.Shear = wsMag.(float64)
+	w.Wind.Speed = speed.(float64)
+	w.Wind.Direction = dir.(float64)
 
 }
 

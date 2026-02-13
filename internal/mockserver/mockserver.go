@@ -313,16 +313,16 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	case "sim/weather/region/sealevel_pressure_pas":
 		// Sea level pressure in Pascals (1013.25 hPa == 101325 Pa)
 		return 101325.0 + (float64(iter) * 1.0)
-	case "sim/weather/region/turbulence":      
-		return 0.2 + float64(iter / 10)
-	case "sim/weather/region/shear_speed_msc":
-		return 1.0 + float64(iter / 2)
-	case "sim/weather/region/wind_speed_msc":
-		return 5.0 + iter
 	case "sim/flightmodel/position/magnetic_variation":
-		return 0.2
+		return 1.1
+	case "sim/weather/region/turbulence":      
+		return []float64 {0.2 + float64(iter / 10)}
+	case "sim/weather/region/shear_speed_msc":
+		return []float64 {1.0 + float64(iter / 2)}
+	case "sim/weather/region/wind_speed_msc":
+		return []float64 {5.0 + float64(iter)}
 	case "sim/weather/region/wind_direction_degt":
-		return 90 + (iter * 4)
+		return []float64 {90.0 + float64(iter * 4)}
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
 	case "trafficglobal/ai/position_lat":
