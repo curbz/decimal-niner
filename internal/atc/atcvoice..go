@@ -515,6 +515,29 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 				break
 			}
 		}
+
+		// Avoid assigning the same voice to a controller and its pilot (when possible).
+        // If we're assigning a controller voice, check whether the pilot for the same
+        // callsign already has a voice and prefer a different one from the pool.
+        if msg.Role != "PILOT" {
+            pilotKey := ""
+            // best-effort pilot key: callsign + "_PILOT" (may be empty if callsign missing)
+            if msg.Callsign != "" {
+                pilotKey = msg.Callsign + "_PILOT"
+            }
+            if pilotKey != "" {
+                if pilotVoice, ok := sessionVoices[pilotKey]; ok && pilotVoice != "" && pilotVoice == selectedVoice {
+                    // try to pick an alternative from pool that's not the pilotVoice
+                    for _, v := range pool {
+                        if v != pilotVoice {
+                            selectedVoice = v
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
 		sessionVoices[key] = selectedVoice
 	}
 
