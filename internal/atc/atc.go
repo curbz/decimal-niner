@@ -441,14 +441,16 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 		log.Printf("multiple (%d) active flight plans found for registration %s flight number %d days %d and %d",
 			len(candidateScheds), ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		for i, c := range candidateScheds {
-			log.Printf("duplicate active flight %d/%d: %v", i+1, len(candidateScheds), c)
+			//TODO: search for orig/dest on flight change when missing
+			log.Printf("duplicate active flight %d/%d: %v - will determine orgin/dest on flight phase change", i+1, len(candidateScheds), c)
 		}
+		return
 	}
 
 	// use first candidate i.e. [0]
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
-	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 1000
+	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 100
 
 	log.Printf("reg %s flight no. %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
 	log.Printf("reg %s flight no. %d destination %s (cruise alt: %d)", ac.Registration, ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)

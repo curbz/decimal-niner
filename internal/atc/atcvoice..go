@@ -617,7 +617,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool
 
 	// Flight Level Logic (At or above Transition Altitude)
 	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
-		fl := roundedAlt / 1000
+		fl := roundedAlt / 100
 		
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
 		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
