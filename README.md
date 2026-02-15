@@ -10,6 +10,7 @@ Dependencies:
     Piper
 
 Troubleshooting:
+    You must have a radio tuned to a frequency in order to hear anything.
     Search decimal-niner output for "error"
 
 Common Issues:

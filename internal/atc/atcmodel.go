@@ -113,3 +113,9 @@ type PhaseFacility struct {
 	atcPhase string
 	roleId   int
 }
+
+type AirportCoords struct {
+    Lat  float64
+    Lon  float64
+    Name string
+}

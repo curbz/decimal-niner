@@ -24,7 +24,7 @@ type Service struct {
 	PhraseClasses   PhraseClasses
 	UserState       UserState
 	Airlines        map[string]AirlineInfo
-	AirportNames    map[string]string
+	AirportLocations map[string]AirportCoords
 	FlightSchedules map[string][]trafficglobal.ScheduledFlight
 	Weather         *Weather
 	DataProvider    simdata.SimDataProvider
@@ -73,7 +73,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
 	start := time.Now()
-	arptControllers, airportNames, err := parseApt(cfg.ATC.AirportsDataFile)
+	arptControllers, airportLocations, err := parseApt(cfg.ATC.AirportsDataFile)
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
 	}
@@ -130,7 +130,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 		Database:        db,
 		PhraseClasses:   phraseClasses,
 		Airlines:        airlinesData,
-		AirportNames:    airportNames,
+		AirportLocations: airportLocations,
 		FlightSchedules: fScheds,
 		Weather:         &Weather{Wind: Wind{}, Baro: Baro{}},
 	}
@@ -163,6 +163,20 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 	}
 
 	go func() {
+
+		// for a new aircraft in parked, we only want to continue if in a pre-flight context
+		if ac.Flight.Phase.Previous == -1 && ac.Flight.Phase.Current == 5 {
+			// If destination equals current airport icao, we are done
+			currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			if ac.Flight.Destination == currAirport {
+				log.Printf("%s flight %d is parked at destination airport %s", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+				return
+			} else {
+				log.Printf("%s flight %d is parked at origin airport %s", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+			}
+		}
 
 		var searchICAO string
 
@@ -356,6 +370,23 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	return bestMatch
 }
 
+func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
+    var closestICAO string
+    minDist := 4.0 // 4 Nautical Miles threshold
+
+    for icao, coords := range s.AirportLocations {
+        // Using your existing DistNM function here
+        dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
+        
+        if dist < minDist {
+            minDist = dist
+            closestICAO = icao
+        }
+    }
+
+    return closestICAO 
+}
+
 func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 	simTodayDayOfWeek := util.GetISOWeekday(simTime)
@@ -403,6 +434,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 		}
 
 		if len(candidateScheds) > 0 {
+			// no need to expand search further, we have candidate flights so jump out here
 			break
 		}
 

@@ -568,9 +568,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 	}
 
-	// for each tail number, get or create aircraft object
+	// for each tail number and flight number combination, get or create aircraft object
 	for index, tailNumber := range tailNumbers {
-		aircraft, exists := xpc.aircraftMap[tailNumber]
+		acKey := fmt.Sprintf("%s_%d", tailNumber, flightNums[index])
+		aircraft, exists := xpc.aircraftMap[acKey]
 		newAircraft := !exists
 		if newAircraft {
 			// set flight phase to unknown initially
@@ -578,6 +579,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft = &atc.Aircraft{
 				Registration: tailNumber,
 				Flight: atc.Flight{
+					Number: flightNums[index],
 					// Squawk random number between 1200 and 6999
 					Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
 					Phase: atc.Phase{
@@ -586,8 +588,8 @@ func (xpc *XPConnect) updateAircraftData() {
 						Transition: time.Now()},
 				},
 			}
-			xpc.aircraftMap[tailNumber] = aircraft
-			log.Printf("New aircraft detected: %s", tailNumber)
+			xpc.aircraftMap[acKey] = aircraft
+			log.Printf("New aircraft detected (tail#_flight#): %s", acKey)
 		}
 
 		// Update aircraft flight phase
@@ -618,16 +620,8 @@ func (xpc *XPConnect) updateAircraftData() {
 			Heading:  hdg.(float64),
 		}
 
-		// get flight number
-		previousFlightNum := aircraft.Flight.Number
-		flightNum := 0
-		if index < len(flightNums) {
-			flightNum = flightNums[index]
-		}
-		aircraft.Flight.Number = flightNum
-
-		// Add flight plan - only need to do this when adding as a new aircraft or  if flight number has changed
-		if newAircraft || (!newAircraft && previousFlightNum != flightNum) {
+		// Add flight plan - only need to do this when adding as a new aircraft
+		if newAircraft {
 			xpc.atcService.AddFlightPlan(aircraft, xpc.atcService.GetCurrentZuluTime())
 		}
 
@@ -661,7 +655,7 @@ func (xpc *XPConnect) updateAircraftData() {
 				sizeClassStr = "Super"
 			}
 		}
-		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, flightNum, sizeClassStr)
+		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
 
 		// get parking
 		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)

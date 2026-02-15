@@ -306,7 +306,7 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	}
 	if ac.Flight.Destination != "" && strings.Contains(phrase, "{DESTINATION}") {
-		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportNames))
+		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportLocations))
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") {
 		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
@@ -762,12 +762,11 @@ func phoneticiseSingleAlphas(input string) string {
     return strings.ToLower(strings.Join(words, " "))
 }
 
-func formatAirportName(icao string, airportNameLookup map[string]string) string {
+func formatAirportName(icao string, airportNameLookup map[string]AirportCoords) string {
 
-    name, exists := airportNameLookup[icao]
+    apc, exists := airportNameLookup[icao]
     if !exists {
-        name = toPhonetics(icao)
-		return name
+        return toPhonetics(icao)
     } 
 
 	replacer := strings.NewReplacer(
@@ -777,7 +776,7 @@ func formatAirportName(icao string, airportNameLookup map[string]string) string 
 		" Regional", "",
 		" Municipal", "",
 	)
-	return strings.TrimSpace(replacer.Replace(name))
+	return strings.TrimSpace(replacer.Replace(apc.Name))
 
 }
 

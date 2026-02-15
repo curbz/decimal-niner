@@ -10,86 +10,98 @@ import (
 	"math"
 )
 
-func parseApt(path string) ([]Controller, map[string]string, error) {
+func parseApt(path string) ([]Controller, map[string]AirportCoords, error) {
+    airportLocations := make(map[string]AirportCoords) 
+    var controllers []Controller
 
-	airportNames := make(map[string]string)
-	
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, airportNames, fmt.Errorf("failed to open airports data file: %w", err)
-	}
-	defer file.Close()
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, airportLocations, fmt.Errorf("failed to open airports data file: %w", err)
+    }
+    defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	var list []Controller
-	var curICAO, curName string
-	var curLat, curLon float64
+    scanner := bufio.NewScanner(file)
+    var curICAO, curName string
+    var curLat, curLon float64
+    var skipCurrent bool
 
-	roleMap := map[string]int{
-		"1051": 0, // Unicom / CTAF
-		"1052": 1, // Delivery
-		"1053": 2, // Ground
-		"1054": 3, // Tower
-		"1056": 4, // Departure
-		"1055": 5, // Approach
-	}
+    roleMap := map[string]int{
+        "1051": 0, "1052": 1, "1053": 2, "1054": 3, "1056": 4, "1055": 5,
+    }
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		p := strings.Fields(line)
-		if len(p) < 2 {
-			continue
-		}
-		code := p[0]
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        p := strings.Fields(line)
+        if len(p) < 2 { continue }
+        code := p[0]
 
-		if code == "1" || code == "16" || code == "17" {
-			curLat, curLon = 0, 0
-			if len(p) >= 5 {
-				curICAO = p[4]
-				curName = strings.Join(p[5:], " ")
-				airportNames[curICAO] = curName
-			}
-			continue
-		}
+        // 1. Header Record (Airport ICAO and Name)
+        if code == "1" || code == "16" || code == "17" {
+            if len(p) >= 5 {
+                curICAO = p[4]
+                // Check for exclusion prefixes
+                if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
+                    skipCurrent = true
+                    continue
+                }
+                
+                skipCurrent = false
+                curName = strings.Join(p[5:], " ")
+                curLat, curLon = 0, 0 
+            }
+            continue
+        }
 
-		// Use Runway (100) to find the airport center
-		if (code == "100" || code == "101" || code == "102") && curLat == 0 {
-			if len(p) >= 11 {
-				la, _ := strconv.ParseFloat(p[9], 64)
-				lo, _ := strconv.ParseFloat(p[10], 64)
-				if math.Abs(la) <= 90 {
-					curLat, curLon = la, lo
-				}
-			}
-		}
+        // If we are in an [H] or [X] block, ignore all subsequent lines until the next header
+        if skipCurrent { continue }
 
-		fRaw, _ := strconv.Atoi(p[1])
-		fNorm := fRaw
-		for fNorm > 0 && fNorm < 100000 {
-			fNorm *= 10
-		}
+        // 2. Runway Record (Capture Coordinates)
+        if (code == "100" || code == "101" || code == "102") {
+            if len(p) >= 11 {
+                la, _ := strconv.ParseFloat(p[9], 64)
+                lo, _ := strconv.ParseFloat(p[10], 64)
+                
+                // Only store if we have a valid coordinate (avoiding the 0.0, 0.25 phantom points)
+                if math.Abs(la) > 0.1 && curLat == 0 {
+                    curLat, curLon = la, lo
+                    airportLocations[curICAO] = AirportCoords{
+                        Lat:  curLat,
+                        Lon:  curLon,
+                        Name: curName,
+                    }
+                }
+            }
+        }
 
-		// ALIASSING LOGIC: If an airport has Unicom (1051) or Tower (1054),
-		// it likely handles Ground/Delivery duties too.
-		if code == "1051" || code == "1054" {
-			roles := []int{3} // Tower
-			if code == "1051" || code == "1054" {
-				roles = append(roles, 1, 2)
-			}
-			for _, r := range roles {
-				list = append(list, Controller{
-					Name: curName, ICAO: curICAO, RoleID: r,
-					Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
-				})
-			}
-		} else if rID, ok := roleMap[code]; ok {
-			list = append(list, Controller{
-				Name: curName, ICAO: curICAO, RoleID: rID,
-				Freqs: []int{fNorm}, Lat: curLat, Lon: curLon, IsPoint: true,
-			})
-		}
-	}
-	return list, airportNames, nil
+        // 3. Frequency Records
+        if rID, ok := roleMap[code]; ok || code == "1051" || code == "1054" {
+            fRaw, _ := strconv.Atoi(p[1])
+            fNorm := normalizeFreq(fRaw)
+            
+            // Tower/Unicom aliasing logic (as per your original code)
+            roles := []int{rID}
+            if code == "1051" || code == "1054" {
+                roles = []int{3, 1, 2} // Tower, Delivery, Ground
+            }
+
+            for _, r := range roles {
+                controllers = append(controllers, Controller{
+                    Name: curName, ICAO: curICAO, RoleID: r,
+                    Freqs: []int{fNorm}, IsPoint: true,
+                })
+            }
+        }
+    }
+
+    // --- FIXUP STEP ---
+    for i := range controllers {
+        if coords, exists := airportLocations[controllers[i].ICAO]; exists {
+            controllers[i].Lat = coords.Lat
+            controllers[i].Lon = coords.Lon
+        }
+    }
+
+    return controllers, airportLocations, nil
 }
 
 func parseGeneric(path string, isRegion bool) ([]Controller, error) {
@@ -190,4 +202,27 @@ func convertIcaoToIso(icao string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no ISO mapping found for ICAO code: %s", icao)
+}
+
+func normalizeFreq(fRaw int) int {
+	if fRaw == 0 {
+		return 0
+	}
+	
+	f := fRaw
+	// X-Plane frequencies in apt.dat are often missing the trailing zero 
+	// or decimal precision. We want to scale everything to 1xx.xxx format 
+	// represented as an integer (e.g., 118050).
+	
+	for f < 100000 {
+		f *= 10
+	}
+	
+	// If the frequency ended up like 1180000 (too large), 
+	// we trim it back down.
+	for f > 999999 {
+		f /= 10
+	}
+	
+	return f
 }
