@@ -649,12 +649,8 @@ func (xpc *XPConnect) updateAircraftData() {
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 		}
 		sizeClassStr := ""
-		if sizeClass < 3 {
-			if sizeClass > 0 {
-				sizeClassStr = "Heavy"
-			} else {
-				sizeClassStr = "Super"
-			}
+		if sizeClass > 3 {
+			sizeClassStr = "Heavy"
 		}
 		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
 

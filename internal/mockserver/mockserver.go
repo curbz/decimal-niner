@@ -350,12 +350,12 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		}
 
 	case "trafficglobal/ai/aircraft_code":
-		// A320, B738, A359
-		s := "A320\x00B788\x00A380\x00"
+		// B378, A320, A359
+		s := "B788\x00A320\x00A359\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/ai_class":
-		return []int{3,1,0}
+		return []int{5,2,4}
 
 	case "trafficglobal/ai/airline_code":
 		s := "BAW\x00EZY\x00VIR\x00" // British Airways, EasyJet, Virgin Atlantic
