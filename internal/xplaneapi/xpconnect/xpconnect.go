@@ -125,6 +125,7 @@ func (xpc *XPConnect) Start() {
 					log.Println("Connection closed.")
 					return
 				}
+				//TODO this would occur if we lose connection with XP so we would need to return to a waiting condition to recxonnect
 				log.Println("Fatal read error:", err)
 				return
 			}
