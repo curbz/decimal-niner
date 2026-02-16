@@ -382,38 +382,30 @@ func collectAllLegsSequential(data []byte) []ScheduledFlight {
             cursor += LEG_SIZE
         }
 
-        if len(blockLegs) > 0 {
+		if len(blockLegs) > 0 {
 
-            // ----------------------------
-            // FIX: rotate flight numbers forward
-            // ----------------------------
-            if len(rawFlightNums) == len(blockLegs) {
+			// Flight number in each leg applies to NEXT leg
+			if len(rawFlightNums) == len(blockLegs) {
 
-                rotated := make([]int, len(rawFlightNums))
+				for idx := range blockLegs {
+					prev := idx - 1
+					if prev < 0 {
+						prev = len(rawFlightNums) - 1
+					}
+					blockLegs[idx].Number = rawFlightNums[prev]
+				}
+			}
 
-                // forward shift
-                for x := 0; x < len(rawFlightNums)-1; x++ {
-                    rotated[x+1] = rawFlightNums[x]
-                }
+			// --- ORIGIN ASSIGNMENT ---
+			for k := 1; k < len(blockLegs); k++ {
+				blockLegs[k].IcaoOrigin = blockLegs[k-1].IcaoDest
+			}
+			blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
 
-                // wrap
-                rotated[0] = rawFlightNums[len(rawFlightNums)-1]
-
-                for x := range blockLegs {
-                    blockLegs[x].Number = rotated[x]
-                }
-            }
-
-            // origins
-            for k := 1; k < len(blockLegs); k++ {
-                blockLegs[k].IcaoOrigin = blockLegs[k-1].IcaoDest
-            }
-            blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
-
-            for _, s := range blockLegs {
-                out = append(out, s)
-            }
-        }
+			for _, s := range blockLegs {
+				out = append(out, s)
+			}
+		}
 
         i = regEnd + 1
     }
