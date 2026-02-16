@@ -4,6 +4,17 @@ import (
 	"time"
 )
 
+type PhaseClass int
+
+const (
+	Unknown				PhaseClass = iota - 1  // -1
+	PreflightParked  	// 0
+	Departing       	// 1 = all flight phases from startup to climb out
+	Cruising			// 2
+	Arriving			// 3 = all flight phases from approach to shutdown
+	PostflightParked	// 4            
+)
+
 type UserState struct {
 	NearestICAO      string
 	Position         Position
@@ -71,6 +82,7 @@ type Position struct {
 }
 
 type Phase struct {
+	Class      PhaseClass
 	Current    int
 	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition time.Time

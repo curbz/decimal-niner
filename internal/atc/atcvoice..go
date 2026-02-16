@@ -370,7 +370,7 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 func PrepSpeech(piperPath, voiceDir string) {
 	for msg := range radioQueue {
 
-		log.Printf("Processing message: %s", msg.Text)
+		//log.Printf("Processing message: %s", msg.Text)
 
 		voice, onnx, rate, noise := resolveVoice(msg, voiceDir)
 
@@ -433,7 +433,7 @@ func RadioPlayer(soxPath string) {
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
-		log.Printf("[%s] %s (%s) starting playback...", audio.Msg.Role, audio.Msg.Callsign, audio.Voice)
+		log.Printf("[%s] %s (%s)", audio.Msg.Role, audio.Msg.Text, audio.Voice)
 
 		err := playCmd.Start()
 		if err != nil {
@@ -801,13 +801,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 
     // Determine context ICAO (Origin for departure, Destination for arrival)
     targetICAO := ac.Flight.Origin
-    if ac.Flight.Phase.Current == trafficglobal.Approach.Index() || 
-			ac.Flight.Phase.Current == trafficglobal.Braking.Index() ||
-			ac.Flight.Phase.Current == trafficglobal.TaxiIn.Index() ||
-			ac.Flight.Phase.Current == trafficglobal.Shutdown.Index() ||
-			ac.Flight.Phase.Current == trafficglobal.Holding.Index() ||
-			ac.Flight.Phase.Current == trafficglobal.GoAround.Index() ||
-			ac.Flight.Phase.Current == trafficglobal.Final.Index() { 
+    if ac.Flight.Phase.Class == Arriving { 
         targetICAO = ac.Flight.Destination
     }
     if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() { 

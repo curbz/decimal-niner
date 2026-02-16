@@ -584,6 +584,7 @@ func (xpc *XPConnect) updateAircraftData() {
 					// Squawk random number between 1200 and 6999
 					Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
 					Phase: atc.Phase{
+						Class: 		atc.Unknown,
 						Current:    fpUnknown.Index(),
 						Previous:   fpUnknown.Index(),
 						Transition: time.Now()},
@@ -679,7 +680,8 @@ func (xpc *XPConnect) updateAircraftData() {
 		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
-				log.Printf("Aircraft %s changed phase from %d to %d", ac.Registration, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
+				log.Printf("Aircraft %s flight %d changed phase from %d to %d", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
 				xpc.atcService.NotifyAircraftChange(ac)

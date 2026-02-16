@@ -164,39 +164,27 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 
 	go func() {
 
-		// for a new aircraft in parked, we only want to continue if in a pre-flight context
-		if ac.Flight.Phase.Previous == -1 && ac.Flight.Phase.Current == 5 {
-			// If destination equals current airport icao, we are done
-			currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
-			if ac.Flight.Destination == currAirport {
-				log.Printf("%s flight %d is parked at destination airport %s", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
-				return
-			} else {
-				log.Printf("%s flight %d is parked at origin airport %s", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
-			}
+		// set flight phase classification
+		s.setFlightPhaseClass(ac)
+		log.Printf("%s flight %d phase classified as %d", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Class)
+
+		// for a new aircraft in a post-flight context, there is nothing to do
+		if ac.Flight.Phase.Class == PostflightParked { 
+			return
 		}
 
 		var searchICAO string
 
-		switch ac.Flight.Phase.Current {
-		// Phase 1: Departure context
-		case trafficglobal.Parked.Index(), trafficglobal.Startup.Index(), trafficglobal.TaxiOut.Index(),
-			trafficglobal.Depart.Index(), trafficglobal.Climbout.Index():
-			searchICAO = ac.Flight.Origin
-
-		// Phase 2: No specific airport context (Transition to Cruise)
-		case trafficglobal.Cruise.Index():
-			searchICAO = "" // This forces the coordinate/polygon distance search
-
-		// Phase 3: Arrival context
-		case trafficglobal.Approach.Index(), trafficglobal.Final.Index(), trafficglobal.Braking.Index(),
-			trafficglobal.TaxiIn.Index(), trafficglobal.Shutdown.Index(), trafficglobal.GoAround.Index():
-			searchICAO = ac.Flight.Destination
-
-		default:
-			searchICAO = ""
+		switch ac.Flight.Phase.Class {
+			case PreflightParked, Departing:
+				searchICAO = ac.Flight.Origin
+			case Cruising:
+				searchICAO = "" // This forces the coordinate/polygon distance search
+			case Arriving, PostflightParked:
+				searchICAO = ac.Flight.Destination
+			default:
+				searchICAO = ""
 		}
 
 		// Identify AI's intended facility
@@ -486,5 +474,57 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 	log.Printf("reg %s flight no. %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
 	log.Printf("reg %s flight no. %d destination %s (cruise alt: %d)", ac.Registration, ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
+
+}
+
+func (s *Service) setFlightPhaseClass(ac *Aircraft) {
+
+	ph := &ac.Flight.Phase
+
+	switch ph.Current {
+	case trafficglobal.Parked.Index():
+		if ph.Previous == trafficglobal.Unknown.Index() {
+			// new aircraft flight - determine if preflight or postflight
+			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
+				log.Printf("WARN: no origin/destination for parked aircraft %s flight %d - unable to determine flight phase classification", 
+					ac.Registration, ac.Flight.Number)
+				ph.Class = Unknown
+			}
+			currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			if ac.Flight.Destination == currAirport {
+				log.Printf("%s flight %d is parked at destination airport %s", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+				ph.Class = PostflightParked
+				return
+			} else {
+				log.Printf("%s flight %d is parked at origin airport %s", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Origin)
+				ph.Class = PreflightParked
+				return
+			}
+		} else {
+			ph.Class = PostflightParked
+			return
+		}
+	case trafficglobal.Startup.Index(),
+			trafficglobal.TaxiOut.Index(),
+			trafficglobal.Depart.Index(),
+			trafficglobal.Climbout.Index():
+		ph.Class = Departing
+		return
+	case trafficglobal.Approach.Index(),
+			trafficglobal.Holding.Index(),
+			trafficglobal.Final.Index(),
+			trafficglobal.GoAround.Index(),
+			trafficglobal.Braking.Index(),
+			trafficglobal.TaxiIn.Index(),
+			trafficglobal.Shutdown.Index():
+		ph.Class = Arriving
+		return
+	case trafficglobal.Cruise.Index():
+		ph.Class = Cruising
+	default:
+		ph.Class = Unknown
+	}
 
 }
