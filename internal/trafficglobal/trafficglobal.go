@@ -265,148 +265,158 @@ func looksLikeRegistrationAt(data []byte, pos int) bool {
 	return true
 }
 
-// collectAllLegsSequential scans the file sequentially. When it finds a registration
-// it attempts to align to the first leg within ALIGN_SEARCH_MAX bytes and then
-// parses contiguous 16-byte legs until INVALID_LEG_TOLERANCE consecutive invalid legs
-// or until another registration is encountered.
 func collectAllLegsSequential(data []byte) []ScheduledFlight {
-	const firstICAOOffset = 18
-	n := len(data)
-	var out []ScheduledFlight
+    const firstICAOOffset = 18
+    n := len(data)
+    var out []ScheduledFlight
 
-	i := 0
-	for i < n {
-		// look for registration start: must be reg char and preceded by 0x00
-		if !isRegCharUpper(data[i]) || i == 0 || data[i-1] != 0x00 {
-			i++
-			continue
-		}
-		// parse registration
-		j := i
-		for j < n && isRegCharUpper(data[j]) {
-			j++
-		}
-		// must be reasonable length
-		if j == i || j-i > 8 || j-i < 2 {
-			i = j
-			continue
-		}
-		// terminator must be NUL or space
-		if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
-			i = j
-			continue
-		}
-		regStr := string(data[i:j])
-		// validate that an ICAO exists at expected offset (quick sanity)
-		icao1Pos := i + firstICAOOffset
-		if icao1Pos+ICAO_LEN >= n || !isICAO(data[icao1Pos:icao1Pos+ICAO_LEN]) {
-			// not a registration block we understand; skip ahead
-			i = j
-			continue
-		}
+    i := 0
+    for i < n {
 
-		// attempt to find alignment for first leg starting at regEnd + shift
-		regEnd := j
-		foundAlign := -1
-		for shift := 0; shift <= ALIGN_SEARCH_MAX && regEnd+shift+LEG_SIZE <= n; shift++ {
-			block := data[regEnd+shift : regEnd+shift+LEG_SIZE]
-			if validateLeg(block) {
-				foundAlign = regEnd + shift
-				break
-			}
-		}
-		if foundAlign == -1 {
-			// no leg block found nearby; continue scanning after registration
-			i = j
-			continue
-		}
+        if !isRegCharUpper(data[i]) || i == 0 || data[i-1] != 0x00 {
+            i++
+            continue
+        }
 
-		// parse contiguous legs
-		cursor := foundAlign
-		invalidCount := 0
-		var blockLegs []ScheduledFlight
-		for cursor+LEG_SIZE <= n {
-			// if a new registration starts here, stop parsing legs so outer loop can handle it
-			if looksLikeRegistrationAt(data, cursor) {
-				break
-			}
+        j := i
+        for j < n && isRegCharUpper(data[j]) {
+            j++
+        }
+        if j == i || j-i > 8 || j-i < 2 {
+            i = j
+            continue
+        }
+        if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
+            i = j
+            continue
+        }
 
-			block := data[cursor : cursor+LEG_SIZE]
-			if !validateLeg(block) {
-				invalidCount++
-				if invalidCount >= INVALID_LEG_TOLERANCE {
-					break
-				}
-				cursor += LEG_SIZE
-				continue
-			}
-			invalidCount = 0
+        regStr := string(data[i:j])
 
-			// extract fields
-			icaoDest := string(block[ICAO_OFFSET : ICAO_OFFSET+ICAO_LEN])
-			fn, _, _ := tryFlightNum(block)
-			// departure bytes 1..3
-			dd, dt := decodeBGLTime24(block[1], block[2], block[3])
-			// arrival bytes 5..7
-			ad, at := decodeBGLTime24(block[5], block[6], block[7])
+        icao1Pos := i + firstICAOOffset
+        if icao1Pos+ICAO_LEN >= n || !isICAO(data[icao1Pos:icao1Pos+ICAO_LEN]) {
+            i = j
+            continue
+        }
 
-			// parse hours/mins from dt and at ("HH:MM:00")
-			depHour, depMin := 0, 0
-			arrHour, arrMin := 0, 0
-			if len(dt) >= 5 {
-				parts := strings.Split(dt, ":")
-				if len(parts) >= 2 {
-					depHour, _ = strconv.Atoi(parts[0])
-					depMin, _ = strconv.Atoi(parts[1])
-				}
-			}
-			if len(at) >= 5 {
-				parts := strings.Split(at, ":")
-				if len(parts) >= 2 {
-					arrHour, _ = strconv.Atoi(parts[0])
-					arrMin, _ = strconv.Atoi(parts[1])
-				}
-			}
+        regEnd := j
+        foundAlign := -1
+        for shift := 0; shift <= ALIGN_SEARCH_MAX && regEnd+shift+LEG_SIZE <= n; shift++ {
+            block := data[regEnd+shift : regEnd+shift+LEG_SIZE]
+            if validateLeg(block) {
+                foundAlign = regEnd + shift
+                break
+            }
+        }
+        if foundAlign == -1 {
+            i = j
+            continue
+        }
 
-			cruise := decodeFlightLevel(block)
+        cursor := foundAlign
+        invalidCount := 0
 
-			sf := ScheduledFlight{
-				AircraftRegistration: regStr,
-				Number:               fn,
-				IcaoOrigin:           "", // will set later (previous leg's dest)
-				IcaoDest:             icaoDest,
-				DepartureDayOfWeek:   dd,
-				DepatureHour:         depHour,
-				DepartureMin:         depMin,
-				ArrivalDayOfWeek:     ad,
-				ArrivalHour:          arrHour,
-				ArrivalMin:           arrMin,
-				CruiseAlt:            cruise,
-			}
-			blockLegs = append(blockLegs, sf)
-			cursor += LEG_SIZE
-		}
+        var blockLegs []ScheduledFlight
+        var rawFlightNums []int
 
-		// if we collected legs, set IcaoOrigin for each leg as previous leg's dest,
-		// and for the first leg set origin to last leg's dest (wrap-around) as requested.
-		if len(blockLegs) > 0 {
-			// set previous dest as origin
-			for k := 1; k < len(blockLegs); k++ {
-				blockLegs[k].IcaoOrigin = blockLegs[k-1].IcaoDest
-			}
-			// first leg origin = last leg dest
-			blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
+        for cursor+LEG_SIZE <= n {
 
-			// append to global out
-			for _, s := range blockLegs {
-				out = append(out, s)
-			}
-		}
+            if looksLikeRegistrationAt(data, cursor) {
+                break
+            }
 
-		// advance i to just after the registration string (regEnd+1) so we don't skip
-		// any registrations that may start inside or immediately after the parsed block.
-		i = regEnd + 1
-	}
+            block := data[cursor : cursor+LEG_SIZE]
+            if !validateLeg(block) {
+                invalidCount++
+                if invalidCount >= INVALID_LEG_TOLERANCE {
+                    break
+                }
+                cursor += LEG_SIZE
+                continue
+            }
+            invalidCount = 0
 
-	return out
+            icaoDest := string(block[ICAO_OFFSET : ICAO_OFFSET+ICAO_LEN])
+            fn, _, _ := tryFlightNum(block)
+
+            rawFlightNums = append(rawFlightNums, fn)
+
+            dd, dt := decodeBGLTime24(block[1], block[2], block[3])
+            ad, at := decodeBGLTime24(block[5], block[6], block[7])
+
+            depHour, depMin := 0, 0
+            arrHour, arrMin := 0, 0
+
+            if len(dt) >= 5 {
+                parts := strings.Split(dt, ":")
+                if len(parts) >= 2 {
+                    depHour, _ = strconv.Atoi(parts[0])
+                    depMin, _ = strconv.Atoi(parts[1])
+                }
+            }
+            if len(at) >= 5 {
+                parts := strings.Split(at, ":")
+                if len(parts) >= 2 {
+                    arrHour, _ = strconv.Atoi(parts[0])
+                    arrMin, _ = strconv.Atoi(parts[1])
+                }
+            }
+
+            cruise := decodeFlightLevel(block)
+
+            sf := ScheduledFlight{
+                AircraftRegistration: regStr,
+                Number:               0, // assign later
+                IcaoOrigin:           "",
+                IcaoDest:             icaoDest,
+                DepartureDayOfWeek:   dd,
+                DepatureHour:         depHour,
+                DepartureMin:         depMin,
+                ArrivalDayOfWeek:     ad,
+                ArrivalHour:          arrHour,
+                ArrivalMin:           arrMin,
+                CruiseAlt:            cruise,
+            }
+
+            blockLegs = append(blockLegs, sf)
+            cursor += LEG_SIZE
+        }
+
+        if len(blockLegs) > 0 {
+
+            // ----------------------------
+            // FIX: rotate flight numbers forward
+            // ----------------------------
+            if len(rawFlightNums) == len(blockLegs) {
+
+                rotated := make([]int, len(rawFlightNums))
+
+                // forward shift
+                for x := 0; x < len(rawFlightNums)-1; x++ {
+                    rotated[x+1] = rawFlightNums[x]
+                }
+
+                // wrap
+                rotated[0] = rawFlightNums[len(rawFlightNums)-1]
+
+                for x := range blockLegs {
+                    blockLegs[x].Number = rotated[x]
+                }
+            }
+
+            // origins
+            for k := 1; k < len(blockLegs); k++ {
+                blockLegs[k].IcaoOrigin = blockLegs[k-1].IcaoDest
+            }
+            blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
+
+            for _, s := range blockLegs {
+                out = append(out, s)
+            }
+        }
+
+        i = regEnd + 1
+    }
+
+    return out
 }
