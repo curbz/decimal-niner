@@ -20,7 +20,6 @@ func DistNM(lat1, lon1, lat2, lon2 float64) float64 {
 	for dLon < -math.Pi {
 		dLon += 2 * math.Pi
 	}
-	// --------------------------------
 
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
 		math.Cos(r1)*math.Cos(r2)*math.Sin(dLon/2)*math.Sin(dLon/2)
@@ -32,10 +31,18 @@ func IsPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
 	if len(polygon) < 3 {
 		return false
 	}
+
 	inside, j := false, len(polygon)-1
 	for i := 0; i < len(polygon); i++ {
-		if ((polygon[i][1] > lon) != (polygon[j][1] > lon)) &&
-			(lat < (polygon[j][0]-polygon[i][0])*(lon-polygon[i][1])/(polygon[j][1]-polygon[i][1])+polygon[i][0]) {
+		// --- handle dateline crossing ---
+		dLon := polygon[j][1] - polygon[i][1]
+		if dLon > 180 {
+			dLon -= 360
+		} else if dLon < -180 {
+			dLon += 360
+		}
+		if ((polygon[i][1] > dLon) != (polygon[j][1] > dLon)) &&
+			(lat < (polygon[j][0]-polygon[i][0])*(dLon-polygon[i][1])/(polygon[j][1]-polygon[i][1])+polygon[i][0]) {
 			inside = !inside
 		}
 		j = i

@@ -17,7 +17,8 @@ func init() {
 
 func TestPerformSearch(t *testing.T) {
 
-	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight))
+	requiredAirports := map[string]bool{"EGLL":true, "EGKA":true}
+	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
 
 	tests := []struct {
 		label      string
@@ -199,7 +200,7 @@ func TestAddFlightPlan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			atcService := New("config.yaml", tt.schedules)
+			atcService := New("config.yaml", tt.schedules, make(map[string]bool))
 
 			ac := &Aircraft{
 				Registration: tt.registration,

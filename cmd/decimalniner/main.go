@@ -44,10 +44,10 @@ func main() {
 
 	// Get flight schedules from traffic global
 	tgConfig := trafficglobal.LoadConfig(cfgPath)
-	fScheds := trafficglobal.BGLReader(tgConfig.TG.BGLFile)
+	fScheds, airports := trafficglobal.BGLReader(tgConfig.TG.BGLFile)
 
 	// Create ATC service
-	atcService := atc.New(cfgPath, fScheds)
+	atcService := atc.New(cfgPath, fScheds, airports)
 	atcService.Run()
 
 	// Connect to X-Plane

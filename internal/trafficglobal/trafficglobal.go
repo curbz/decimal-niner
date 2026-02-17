@@ -79,7 +79,7 @@ func LoadConfig(cfgPath string) *config {
 	return cfg
 }
 
-func BGLReader(filePath string) map[string][]ScheduledFlight {
+func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) {
 
 	log.Printf("Loading Traffic Global BGL file: %s\n", filePath)
 
@@ -88,11 +88,11 @@ func BGLReader(filePath string) map[string][]ScheduledFlight {
 		log.Fatalf("error reading bgl file: %v\n", err)
 	}
 
-	legs := collectAllLegsSequential(data)
+	legs, airportICAOlist := collectAllLegsSequential(data)
 	if len(legs) == 0 {
 		log.Fatalf("no legs extracted from bgl file %s", filePath)
 	}
-	log.Printf("total legs extracted from bgl file: %d\n", len(legs))
+	log.Printf("%d legs, %d airports extracted from bgl file\n", len(legs), len(airportICAOlist))
 
 	schedules := make(map[string][]ScheduledFlight)
 	for _, l := range legs {
@@ -107,7 +107,7 @@ func BGLReader(filePath string) map[string][]ScheduledFlight {
 
 	}
 
-	return schedules
+	return schedules, airportICAOlist
 }
 
 func isRegCharUpper(b byte) bool {
@@ -265,10 +265,11 @@ func looksLikeRegistrationAt(data []byte, pos int) bool {
 	return true
 }
 
-func collectAllLegsSequential(data []byte) []ScheduledFlight {
+func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) {
     const firstICAOOffset = 18
     n := len(data)
     var out []ScheduledFlight
+	airportICAOlist := make(map[string]bool)
 
     i := 0
     for i < n {
@@ -403,6 +404,8 @@ func collectAllLegsSequential(data []byte) []ScheduledFlight {
 			blockLegs[0].IcaoOrigin = blockLegs[len(blockLegs)-1].IcaoDest
 
 			for _, s := range blockLegs {
+				airportICAOlist[s.IcaoOrigin] = true
+				airportICAOlist[s.IcaoDest] = true
 				out = append(out, s)
 			}
 		}
@@ -410,5 +413,5 @@ func collectAllLegsSequential(data []byte) []ScheduledFlight {
         i = regEnd + 1
     }
 
-    return out
+    return out, airportICAOlist
 }

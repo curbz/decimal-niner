@@ -60,7 +60,7 @@ type config struct {
 	} `yaml:"atc"`
 }
 
-func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Service {
+func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
 
 	log.Println("Starting ATC service - loading all configurations")
 
@@ -74,22 +74,22 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight) *Se
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
 	start := time.Now()
-	arptControllers, airportLocations, err := parseApt(cfg.ATC.AirportsDataFile)
+	arptControllers, airportLocations, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
 	}
-	atcControllers, err := parseGeneric(cfg.ATC.AtcDataFile, false)
+	atcControllers, err := parseGeneric(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
 		log.Fatalf("Erro parsing ATC data file: %v", err)
 	}
 	db := append(atcControllers, arptControllers...)
-	regionControllers, err := parseGeneric(cfg.ATC.AtcRegionsFile, true)
+	regionControllers, err := parseGeneric(cfg.ATC.AtcRegionsFile, true, requiredAirports)
 	if err != nil {
 		log.Fatalf("Error parsing ATC regions file: %v", err)
 	}
 	db = append(db, regionControllers...)
 
-	log.Printf("ATC controller database generated: %v (Count: %d)\n\n", time.Since(start), len(db))
+	log.Printf("ATC controller database generated: %v (Count: %d)\n", time.Since(start), len(db))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
@@ -188,7 +188,7 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		// +-----------------------------------------------------------------+
 		// | Only use acSnap to reference the aircraft within the go routine |
 		// +-----------------------------------------------------------------+
-		
+
 		// Identify AI's intended facility
 		searchICAO := airportICAObyPhaseClass(acSnap, acSnap.Flight.Phase.Class)
 		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
