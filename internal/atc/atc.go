@@ -19,6 +19,7 @@ import (
 
 type Service struct {
 	Config          *config
+	//TODO: change from pointer to a snaphot which must be a deep copy, lock with mutex during snapshot
 	Channel         chan *Aircraft
 	Database        []Controller
 	PhraseClasses   PhraseClasses
@@ -174,20 +175,13 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 			return
 		}
 
-		var searchICAO string
-
-		switch ac.Flight.Phase.Class {
-			case PreflightParked, Departing:
-				searchICAO = ac.Flight.Origin
-			case Cruising:
-				searchICAO = "" // This forces the coordinate/polygon distance search
-			case Arriving, PostflightParked:
-				searchICAO = ac.Flight.Destination
-			default:
-				searchICAO = ""
+		if ac.Flight.Origin == "" {
+			// no origin indicates this aircraft has no flight plan 
+			s.AddFlightPlan(ac, s.GetCurrentZuluTime())
 		}
 
 		// Identify AI's intended facility
+		searchICAO := airportICAObyPhaseClass(ac,ac.Flight.Phase.Class)
 		facilityPhase := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 		aiRole := facilityPhase.roleId
 		aiFac := s.LocateController(
@@ -355,6 +349,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 			}
 		}
 	}
+
 	return bestMatch
 }
 
@@ -435,7 +430,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 			return
 		}
 		// fallback to find by tail number and flight only, on any day and time
-		log.Printf("using fallback method to find inactive flight plan for registration %s flight no. %d",
+		log.Printf("find inactive flight plan for registration %s flight no. %d",
 			ac.Registration, ac.Flight.Number)
 		for i := simTodayDayOfWeek; i <= (simTodayDayOfWeek + 6); i++ {
 			day := i % 7
@@ -458,16 +453,15 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	// there should only be one flight in the candidates, but capturing instances where
 	// there is multiple for diagnostics
 	if len(candidateScheds) > 1 {
-		log.Printf("multiple (%d) active flight plans found for registration %s flight number %d days %d and %d",
+		log.Printf("multiple (%d) flight plans found for registration %s flight number %d days %d and %d",
 			len(candidateScheds), ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		for i, c := range candidateScheds {
-			//TODO: search for orig/dest on flight change when missing
-			log.Printf("duplicate active flight %d/%d: %v - will determine orgin/dest on flight phase change", i+1, len(candidateScheds), c)
+			log.Printf("duplicate flight %d of %d: %v - will try again to determine orgin/dest on flight phase changes", i+1, len(candidateScheds), c)
 		}
 		return
 	}
 
-	// use first candidate i.e. [0]
+	// use remaining candidate i.e. [0]
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
 	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 100
@@ -526,5 +520,17 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	default:
 		ph.Class = Unknown
 	}
+}
 
+func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
+	switch phaseClass {
+		case PreflightParked, Departing:
+			return ac.Flight.Origin
+		case Cruising:
+			return "" // This forces the coordinate/polygon distance search
+		case Arriving, PostflightParked:
+			return ac.Flight.Destination
+		default:
+			return ""
+	}
 }

@@ -380,16 +380,15 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return []float64{4994866, 5388082, 5388082, 5388082}
 
 	case "trafficglobal/ai/tail_number":
-		//TODO: since fix implemented for BGL parser, these will no longer work correctly...
-		// G-AOWK,281,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
-		// G-BCOL,700,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
-		// G-ARBD,343,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
+		// G-AOWK,138,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
+		// G-BCOL,599,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
+		// G-ARBD,342,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
 
 		s := "G-AOWK\x00G-BCOL\x00G-ARBD\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/flight_num":
-		return []int{281, 700, 343}
+		return []int{138, 599, 342}
 
 	case "trafficglobal/ai/parking":
 		s := "22\x00RAMP 19\x00215L\x00"

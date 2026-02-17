@@ -622,11 +622,6 @@ func (xpc *XPConnect) updateAircraftData() {
 			Heading:  hdg.(float64),
 		}
 
-		// Add flight plan - only need to do this when adding as a new aircraft
-		if newAircraft {
-			xpc.atcService.AddFlightPlan(aircraft, xpc.atcService.GetCurrentZuluTime())
-		}
-
 		// update airline code
 		airlineCode := "unknown"
 		if index < len(airlineCodes) {
@@ -675,7 +670,7 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	if !xpc.initialised {
 		xpc.initialised = true
-		log.Println("Initial aircraft data loaded.")
+		log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
 	} else {
 		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
@@ -688,10 +683,6 @@ func (xpc *XPConnect) updateAircraftData() {
 			}
 		}
 	}
-
-	//log.Printf("Total tracked aircraft: %d", len(xpc.aircraftMap))
-	//xpc.printAircraftData()
-
 }
 
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).
@@ -747,13 +738,6 @@ func (xpc *XPConnect) getMemDataRefByName(datarefIndicesMap map[int]*xpapimodel.
 		}
 	}
 	return nil
-}
-
-// printAircraftData prints the current aircraft data
-func (xpc *XPConnect) printAircraftData() {
-	for _, ac := range xpc.aircraftMap {
-		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
-	}
 }
 
 // --- Helper functions ---
@@ -815,3 +799,9 @@ func logErrors(errors ...error) {
 	}
 }
 
+// printAircraftData prints the current aircraft data
+func (xpc *XPConnect) printAircraftData() {
+	for _, ac := range xpc.aircraftMap {
+		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
+	}
+}

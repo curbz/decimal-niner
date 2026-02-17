@@ -4,17 +4,6 @@ import (
 	"time"
 )
 
-type PhaseClass int
-
-const (
-	Unknown				PhaseClass = iota - 1  // -1
-	PreflightParked  	// 0
-	Departing       	// 1 = all flight phases from startup to climb out
-	Cruising			// 2
-	Arriving			// 3 = all flight phases from approach to shutdown
-	PostflightParked	// 4            
-)
-
 type UserState struct {
 	NearestICAO      string
 	Position         Position
@@ -23,6 +12,9 @@ type UserState struct {
 	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
 }
 
+// +---------------+
+// | Weather types |
+// +---------------+
 type Weather struct {
 	Wind       Wind
 	Baro       Baro
@@ -42,7 +34,7 @@ type Wind struct {
 type Baro struct {
 	Flight        float64
 	Sealevel      float64
-	TransitionAlt int		// TODO: set this value, but lookup required on ICAO
+	TransitionAlt int		// TODO: remove from here, this is fixed value per ICAO
 }
 
 type AirlineInfo struct {
@@ -51,6 +43,9 @@ type AirlineInfo struct {
 	CountryCode string `json:"icao_country_code"`
 }
 
+// +----------------------------------------------------------------------------------------+
+// | Aircraft and nested types. Do not use unexported fields as deep copy will exclude them |
+// +----------------------------------------------------------------------------------------+
 type Aircraft struct {
 	Flight       Flight
 	Type         string
@@ -92,11 +87,22 @@ type Comms struct {
 	Callsign         string
 	Controller       *Controller
 	CountryCode      string
-	LastTransmission string
-	LastInstruction  string
 }
 
-// ATCMessage represents a single ATC communication message
+type PhaseClass int
+
+const (
+	Unknown				PhaseClass = iota - 1  // -1
+	PreflightParked  	// 0
+	Departing       	// 1 = all flight phases from startup to climb out
+	Cruising			// 2
+	Arriving			// 3 = all flight phases from approach to shutdown
+	PostflightParked	// 4            
+)
+
+// +----------------------------------------------------------+
+// | ATCMessage represents a single ATC communication message |
+// +----------------------------------------------------------+
 type ATCMessage struct {
 	ICAO        string
 	Callsign    string

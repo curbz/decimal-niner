@@ -14,7 +14,8 @@ type XPlaneTime struct {
 }
 
 var SubscribeDatarefs = []xpapimodel.Dataref{
-		//TODO: use constants through application for all dataref names
+		//TODO: use constants throughout application for all dataref names
+		
 		//weather
 		{Name: "sim/weather/aircraft/barometer_current_pas",  // float <-- 97878.51
 			APIInfo: xpapimodel.DatarefInfo{}},

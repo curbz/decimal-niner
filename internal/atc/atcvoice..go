@@ -354,12 +354,6 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 	phrase = translateNumerics(phrase)
 
-	if role == "PILOT" {
-		ac.Flight.Comms.LastTransmission = phrase
-	} else {
-		ac.Flight.Comms.LastInstruction = phrase
-	}
-
 	// send message to radio queue
 	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
 		role, phrase, ac.Flight.Phase.Current, ac.Flight.Comms.CountryCode,
@@ -799,22 +793,17 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 		return "" 
 	}
 
-    // Determine context ICAO (Origin for departure, Destination for arrival)
-    targetICAO := ac.Flight.Origin
-    if ac.Flight.Phase.Class == Arriving { 
-        targetICAO = ac.Flight.Destination
-    }
-    if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() { 
-		targetICAO = "" // Force distance/polygon search when in cruise
-	} 
-
     // Locate the "Next" controller
+	searchICAO := airportICAObyPhaseClass(ac,ac.Flight.Phase.Class)
 	pos := ac.Flight.Position
-    nextController := s.LocateController("HANDOFF", 0, nextRole, pos.Lat, pos.Long, pos.Altitude, targetICAO)
+    nextController := s.LocateController("HANDOFF", 0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
     
     if nextController == nil {
-		log.Printf("No controller found for handoff: role=%d, targetICAO=%s", nextRole, targetICAO)
+		log.Printf("No controller found for handoff: role=%d, searchICAO=%s", nextRole, searchICAO)
 		return ""
+	} else {
+		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",
+			ac.Registration, nextController.Name, nextController.ICAO, nextController.RoleID)
 	}
 
 	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
