@@ -15,11 +15,11 @@ import (
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
+	"github.com/mohae/deepcopy"
 )
 
 type Service struct {
 	Config          *config
-	//TODO: change from pointer to a snaphot which must be a deep copy, lock with mutex during snapshot
 	Channel         chan *Aircraft
 	Database        []Controller
 	PhraseClasses   PhraseClasses
@@ -163,47 +163,56 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		return
 	}
 
+	// set flight phase classification
+	s.setFlightPhaseClass(ac)
+	log.Printf("%s flight %d phase classified as %d", 
+				ac.Registration, ac.Flight.Number, ac.Flight.Phase.Class)
+
+	// for a new aircraft in a post-flight context, there is nothing to do
+	if ac.Flight.Phase.Class == PostflightParked { 
+		return
+	}
+
+	if ac.Flight.Origin == "" {
+		// no origin indicates this aircraft has no flight plan 
+		s.AddFlightPlan(ac, s.GetCurrentZuluTime())
+	}
+
+	// make a snaphot copy of aircraft data and pass this snapshot into the phrase generation process.
+	// it is safer to do it here rather than in the go routine as there would be a small chance that 
+	// the aircraft could get updated concurrently during the deep copy process if this statement was 
+	// placed within the go routine.
+	acSnap := deepcopy.Copy(ac).(*Aircraft)
+
 	go func() {
-
-		// set flight phase classification
-		s.setFlightPhaseClass(ac)
-		log.Printf("%s flight %d phase classified as %d", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Class)
-
-		// for a new aircraft in a post-flight context, there is nothing to do
-		if ac.Flight.Phase.Class == PostflightParked { 
-			return
-		}
-
-		if ac.Flight.Origin == "" {
-			// no origin indicates this aircraft has no flight plan 
-			s.AddFlightPlan(ac, s.GetCurrentZuluTime())
-		}
-
+		// +-----------------------------------------------------------------+
+		// | Only use acSnap to reference the aircraft within the go routine |
+		// +-----------------------------------------------------------------+
+		
 		// Identify AI's intended facility
-		searchICAO := airportICAObyPhaseClass(ac,ac.Flight.Phase.Class)
-		facilityPhase := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
-		aiRole := facilityPhase.roleId
+		searchICAO := airportICAObyPhaseClass(acSnap, acSnap.Flight.Phase.Class)
+		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
+		aiRole := phaseFacility.roleId
 		aiFac := s.LocateController(
 			"AI_Lookup",
 			0, aiRole, // Search by role, any freq
-			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, searchICAO)
+			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
 
 		// Fallback: If no Tower/Ground found, look for Unicom (Role 0)
 		if aiFac == nil {
 			aiFac = s.LocateController("AI_FALLBACK", 0, 0,
-				ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, "")
+				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
 		}
 
 		if aiFac == nil {
-			log.Printf("No suitable ATC facility found for AI aircraft: %v", ac)
+			log.Printf("No suitable ATC facility found for AI aircraft: %v", acSnap)
 			return
 		}
 
 		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",
-			ac.Registration, aiFac.Name, aiFac.ICAO, aiFac.RoleID)
+			acSnap.Registration, aiFac.Name, aiFac.ICAO, aiFac.RoleID)
 
-		ac.Flight.Comms.Controller = aiFac
+		acSnap.Flight.Comms.Controller = aiFac
 
 		// Check match against COM1 and COM2
 		for _, userFac := range userActive {
@@ -220,11 +229,13 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 			}
 
 			if match || s.Config.ATC.ListenAllFreqs {
-				log.Printf("User on same frequency as aircraft %s - sending for phrase generation (listen all frequencies is %v)", ac.Registration, s.Config.ATC.ListenAllFreqs)
-				s.Channel <- ac
+				log.Printf("User on same frequency as aircraft %s - sending for phrase generation (listen all frequencies is %v)",
+					 acSnap.Registration, s.Config.ATC.ListenAllFreqs)
+				s.Channel <- acSnap
 				return
 			} else {
-				log.Printf("User not on same frequency as aircraft %s - audio will not be generated", ac.Registration)
+				log.Printf("User not on same frequency as aircraft %s - audio will not be generated", 
+					acSnap.Registration)
 			}
 		}
 	}()

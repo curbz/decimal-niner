@@ -55,7 +55,7 @@
     { "id": "app_5", "initiator": "atc", "pilot": "Contact Tower on {FREQUENCY}, {CALLSIGN}.", "atc": "{CALLSIGN}, you are four miles from the marker, contact Tower on {FREQUENCY}." }
   ],
   "final": [
-    { "id": "fin_loc", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, established on the final Runway {RUNWAY}.", "atc": "{CALLSIGN}, Runway {RUNWAY}, cleared to land, wind {WIND}." },
+    { "id": "fin_loc", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, established on final, Runway {RUNWAY}.", "atc": "{CALLSIGN}, Runway {RUNWAY}, cleared to land, wind {WIND}." },
     { "id": "fin_inbound", "initiator": "atc", "pilot": "Stabilised on final approach, {CALLSIGN}.", "atc": "{CALLSIGN}, continue approach Runway {RUNWAY}. {SHEAR}." },
     { "id": "fin_number2", "initiator": "atc", "pilot": "Roger, looking for traffic on three mile final, {CALLSIGN}.", "atc": "{CALLSIGN}, cleared runway {RUNWAY}. {SHEAR}" },
     { "id": "fin_short", "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, established on short final Runway {RUNWAY}.", "atc": "{CALLSIGN}, Runway {RUNWAY} cleared to land. {SHEAR}." },
