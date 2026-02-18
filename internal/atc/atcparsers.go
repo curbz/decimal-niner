@@ -8,135 +8,158 @@ import (
 
 	"bufio"
 	"math"
+
+	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
 func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[string]AirportCoords, error) {
-	airportLocations := make(map[string]AirportCoords)
-	var controllers []Controller
+    airportLocations := make(map[string]AirportCoords)
+    var controllers []Controller
 
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, airportLocations, fmt.Errorf("failed to open airports data file: %w", err)
-	}
-	defer file.Close()
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, airportLocations, fmt.Errorf("failed to open airports data file: %w", err)
+    }
+    defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	var curICAO, curName string
-	var curLat, curLon float64
-	var isRequiredAirport bool
+    scanner := bufio.NewScanner(file)
+    var curICAO, curName string
+    var curLat, curLon float64
+    var isRequiredAirport bool
+    var batchStartIdx int // Tracks start of controllers for the current frequency
 
-	roleMap := map[string]int{
-		"1051": 0, // Unicom / CTAF
-		"1052": 1, // Delivery
-		"1053": 2, // Ground
-		"1054": 3, // Tower
-		"1056": 4, // Departure (TRACON)
-		"1055": 5, // Approach (TRACON)
-		"1050": 6, // Center (Enroute)
-	}
+    roleMap := map[string]int{
+        "1051": 0, // Unicom / CTAF
+        "1052": 1, // Delivery
+        "1053": 2, // Ground
+        "1054": 3, // Tower
+        "1056": 4, // Departure (TRACON)
+        "1055": 5, // Approach (TRACON)
+        "1050": 6, // Center (Enroute)
+    }
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		p := strings.Fields(line)
-		if len(p) < 2 {
-			continue
-		}
-		code := p[0]
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        p := strings.Fields(line)
+        if len(p) < 2 {
+            continue
+        }
+        code := p[0]
 
-		// 1. Header Record (Airport ICAO and Name)
-		if code == "1" || code == "16" || code == "17" {
-			if len(p) >= 5 {
-				curICAO = p[4]
-				
-				// FILTER: Check if this airport is in our schedules
-				_, isRequiredAirport = requiredICAOs[curICAO]
+        // 1. Header Record (Airport ICAO and Name)
+        if code == "1" || code == "16" || code == "17" {
+            if len(p) >= 5 {
+                curICAO = p[4]
+                
+                // FILTER: Check if this airport is in our schedules
+                _, isRequiredAirport = requiredICAOs[curICAO]
 
-				// Global Exclusion: Never store helipads or closed strips
-				if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
-					isRequiredAirport = false
-				}
+                // Global Exclusion: Never store helipads or closed strips
+                if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
+                    isRequiredAirport = false
+                }
 
-				curName = strings.Join(p[5:], " ")
-				curLat, curLon = 0, 0
-			}
-			continue
-		}
+                curName = strings.Join(p[5:], " ")
+                curLat, curLon = 0, 0 // Reset for new airport
+            }
+            continue
+        }
 
-		// 2. Runway Record (Capture Coordinates for Airport Center)
-		if isRequiredAirport && (code == "100" || code == "101" || code == "102") {
-			if len(p) >= 11 {
-				la, _ := strconv.ParseFloat(p[9], 64)
-				lo, _ := strconv.ParseFloat(p[10], 64)
-				// Avoid 0,0 or placeholder phantom points
-				if math.Abs(la) > 0.1 && curLat == 0 {
-					curLat, curLon = la, lo
-					airportLocations[curICAO] = AirportCoords{
-						Lat:  curLat,
-						Lon:  curLon,
-						Name: curName,
-					}
-				}
-			}
-		}
+        // 2. Runway Record (Capture Coordinates for Airport Center)
+        if isRequiredAirport && (code == "100" || code == "101" || code == "102") {
+            if len(p) >= 11 {
+                la, _ := strconv.ParseFloat(p[9], 64)
+                lo, _ := strconv.ParseFloat(p[10], 64)
+                
+                // Use first valid runway point as airport center reference
+                if math.Abs(la) > 0.1 && curLat == 0 {
+                    curLat, curLon = la, lo
+                    airportLocations[curICAO] = AirportCoords{
+                        Lat:  curLat,
+                        Lon:  curLon,
+                        Name: curName,
+                    }
+                }
+            }
+        }
 
-		// 3. Frequency Records
-		if rID, ok := roleMap[code]; ok {
-			// LOGIC: Keep if it's a scheduled airport OR a high-level Enroute facility (4, 5, 6)
-			isEnroute := rID >= 4
+        // 3. Frequency Records
+        if rID, ok := roleMap[code]; ok {
+            isEnroute := rID >= 4
 
-			if isRequiredAirport || isEnroute {
-				fRaw, _ := strconv.Atoi(p[1])
-				fNorm := normalizeFreq(fRaw)
+            if isRequiredAirport || isEnroute {
+                fRaw, _ := strconv.Atoi(p[1])
+                fNorm := normalizeFreq(fRaw)
 
-				// Aliasing for small/major airports
-				roles := []int{rID}
-				if code == "1051" || code == "1054" {
-					roles = []int{rID, 1, 2} // Include Del/Gnd
-				}
+                // Track the beginning of this specific frequency batch
+                batchStartIdx = len(controllers)
 
-				for _, r := range roles {
-					controllers = append(controllers, Controller{
-						Name:    curName,
-						ICAO:    curICAO,
-						RoleID:  r,
-						Freqs:   []int{fNorm},
-						IsPoint: true,
-						// Initial coords; airport-specific ones are updated in fixup pass
-						Lat: curLat,
-						Lon: curLon,
-					})
-				}
-			}
-		}
+                // Aliasing: Unicom (1051) and Tower (1054) imply Ground/Delivery availability
+                roles := []int{rID}
+                if code == "1051" || code == "1054" {
+                    roles = []int{rID, 1, 2} 
+                }
 
-		// 4. Specific Transmitter Location (Optional but good for Center/TRACON)
-		if code == "1100" && len(controllers) > 0 {
-			la, _ := strconv.ParseFloat(p[1], 64)
-			lo, _ := strconv.ParseFloat(p[2], 64)
-			if math.Abs(la) > 0.1 {
-				// Update the coordinates of the controller we just added
-				controllers[len(controllers)-1].Lat = la
-				controllers[len(controllers)-1].Lon = lo
-			}
-		}
-	}
+                for _, r := range roles {
+                    controllers = append(controllers, Controller{
+                        Name:    curName,
+                        ICAO:    curICAO,
+                        RoleID:  r,
+                        Freqs:   []int{fNorm},
+                        IsPoint: true,
+                        // Initial coords (will be refined by 1100 or Fixup Step)
+                        Lat: curLat,
+                        Lon: curLon,
+                    })
+                }
+            }
+        }
 
-	// --- FIXUP STEP ---
-	// Ensures airport-specific controllers get the runway center coordinates
-	for i := range controllers {
-		// Only update if coords are 0 (means they haven't been set by an 1100 record)
-		if controllers[i].Lat == 0 {
-			if loc, exists := airportLocations[controllers[i].ICAO]; exists {
-				controllers[i].Lat = loc.Lat
-				controllers[i].Lon = loc.Lon
-			}
-		}
-	}
+        // 4. Specific Transmitter Location (The 1100 Record)
+        // This applies to the controllers added immediately before it
+        if code == "1100" && len(controllers) > 0 {
+            la, _ := strconv.ParseFloat(p[1], 64)
+            lo, _ := strconv.ParseFloat(p[2], 64)
+            if math.Abs(la) > 0.1 {
+                for i := batchStartIdx; i < len(controllers); i++ {
+                    controllers[i].Lat = la
+                    controllers[i].Lon = lo
+                }
+            }
+        }
+    }
 
-	return controllers, airportLocations, nil
+    // --- FIXUP & MBB INITIALIZATION ---
+    for i := range controllers {
+        c := &controllers[i]
+        
+        // If Lat/Lon is still 0 (Freq appeared before Runway and no 1100 record found)
+        if c.Lat == 0 {
+            if loc, exists := airportLocations[c.ICAO]; exists {
+                c.Lat = loc.Lat
+                c.Lon = loc.Lon
+            }
+        }
+
+        // Initialize Point-Controller as a tiny MBB (Min == Max)
+        // This makes points compatible with the polygon search logic in LocateController
+        c.Airspaces = []Airspace{
+            {
+                Floor:   -99999,
+                Ceiling: 99999,
+                Area:    0, // Most specific possible area
+                MinLat:  c.Lat,
+                MaxLat:  c.Lat,
+                MinLon:  c.Lon,
+                MaxLon:  c.Lon,
+            },
+        }
+    }
+
+    return controllers, airportLocations, nil
 }
 
-func parseGeneric(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
+func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
     file, err := os.Open(path)
     if err != nil {
         return nil, fmt.Errorf("failed to open generic data file: %w", err)
@@ -148,7 +171,7 @@ func parseGeneric(path string, isRegion bool, requiredICAOs map[string]bool) ([]
         "gnd":    2,
         "twr":    3,
         "tracon": 4, // Approach/Departure
-        "ctr":    6, // Standardized to 6 to match your Center logic
+        "ctr":    6, // Standardized to 6 to match Center logic in parseApt function
     }
 
     scanner := bufio.NewScanner(file)
@@ -213,11 +236,25 @@ func parseGeneric(path string, isRegion bool, requiredICAOs map[string]bool) ([]
             if cur != nil && cur.Lat == 0 {
                 cur.Lat, cur.Lon = la, lo
             }
-        case "AIRSPACE_POLYGON_END":
-            if cur != nil && curPoly != nil && isRequired {
-                cur.Airspaces = append(cur.Airspaces, *curPoly)
-            }
-            curPoly = nil
+		case "AIRSPACE_POLYGON_END":
+			if cur != nil && curPoly != nil {
+				// 1. Calculate the Rough Area for priority sorting
+				curPoly.Area = geometry.CalculateRoughArea(curPoly.Points)
+				// 2. Calculate the Minimum Bounding Box (MBB) for fast filtering
+				// Initialize with extreme values
+				curPoly.MinLat, curPoly.MaxLat = 90.0, -90.0
+				curPoly.MinLon, curPoly.MaxLon = 180.0, -180.0
+				for _, p := range curPoly.Points {
+					if p[0] < curPoly.MinLat { curPoly.MinLat = p[0] }
+					if p[0] > curPoly.MaxLat { curPoly.MaxLat = p[0] }
+					if p[1] < curPoly.MinLon { curPoly.MinLon = p[1] }
+					if p[1] > curPoly.MaxLon { curPoly.MaxLon = p[1] }
+				}
+				// 3. Commit the finished polygon to the controller
+				cur.Airspaces = append(cur.Airspaces, *curPoly)
+			}
+			// 4. RESET: Ensure the pointer is cleared for the next polygon block
+			curPoly = nil
         case "CONTROLLER_END":
             if cur != nil && isRequired {
                 list = append(list, *cur)
@@ -252,27 +289,4 @@ func convertIcaoToIso(icao string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no ISO mapping found for ICAO code: %s", icao)
-}
-
-func normalizeFreq(fRaw int) int {
-	if fRaw == 0 {
-		return 0
-	}
-	
-	f := fRaw
-	// X-Plane frequencies in apt.dat are often missing the trailing zero 
-	// or decimal precision. We want to scale everything to 1xx.xxx format 
-	// represented as an integer (e.g., 118050).
-	
-	for f < 100000 {
-		f *= 10
-	}
-	
-	// If the frequency ended up like 1180000 (too large), 
-	// we trim it back down.
-	for f > 999999 {
-		f /= 10
-	}
-	
-	return f
 }

@@ -78,12 +78,12 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
 	}
-	atcControllers, err := parseGeneric(cfg.ATC.AtcDataFile, false, requiredAirports)
+	atcControllers, err := parseATCdatFiles(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
 		log.Fatalf("Erro parsing ATC data file: %v", err)
 	}
 	db := append(atcControllers, arptControllers...)
-	regionControllers, err := parseGeneric(cfg.ATC.AtcRegionsFile, true, requiredAirports)
+	regionControllers, err := parseATCdatFiles(cfg.ATC.AtcRegionsFile, true, requiredAirports)
 	if err != nil {
 		log.Fatalf("Error parsing ATC regions file: %v", err)
 	}
@@ -198,7 +198,7 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 			0, aiRole, // Search by role, any freq
 			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
 
-		// Fallback: If no Tower/Ground found, look for Unicom (Role 0)
+		// Fallback: If no controller found, look for Unicom (Role 0)
 		if aiFac == nil {
 			aiFac = s.LocateController("AI_FALLBACK", 0, 0,
 				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
@@ -268,11 +268,7 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 	s.UserState.TunedFacilities = tunedFacilities
 
 	for idx, freq := range tunedFreqs {
-		// Normalize 12170 to 121700
-		uFreq := int(freq)
-		if uFreq < 100000 {
-			uFreq *= 10
-		}
+		uFreq := normalizeFreq(int(freq))
 
 		controller := s.LocateController(
 			fmt.Sprintf("User_COM%d", idx),
@@ -304,18 +300,18 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
     for i := range s.Database {
         c := &s.Database[i]
 
-        // 1. ICAO Filter: If we know the target airport (e.g. for Takeoff/Landing phase),
-        // only look at controllers for that airport.
+        // 1. CORE FILTERS (Fastest exclusions)
+        // If we have a target airport ICAO, ignore everything else
         if targetICAO != "" && c.ICAO != targetICAO {
             continue
         }
 
-        // 2. Role Filter: Skip if it's not the role we are looking for.
+        // Filter by Role (Ground, Tower, Center, etc.)
         if tRole > 0 && c.RoleID != tRole {
             continue
         }
 
-        // 3. Frequency Filter: Handle the /10 normalization for X-Plane freq format.
+        // Filter by Frequency (normalized for X-Plane 10hz shifts)
         if tFreq > 0 {
             fMatch := false
             for _, f := range c.Freqs {
@@ -329,44 +325,67 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
             }
         }
 
-        // 4. Polygon Matching (Airspace Boundaries)
+        // 2. POLYGON MATCHING (Priority: Airspace Boundaries)
         if len(c.Airspaces) > 0 {
             for _, poly := range c.Airspaces {
-                // Vertical Check: Skip if aircraft is outside the floor/ceiling
-                // Note: isRegion usually means we skip the floor/ceiling check for generic FIRs
-                if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) {
-                    continue
+                // Vertical Check: Skip if aircraft is outside floor/ceiling
+                // Handles -99999 (SFC) and 99999 (UNL)
+                if poly.Floor != -99999 || poly.Ceiling != 99999 {
+                    if uAl < poly.Floor || uAl > poly.Ceiling {
+                        continue
+                    }
                 }
 
-                if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
-                    area := geometry.CalculateRoughArea(poly.Points)
-                    // Tie-breaker: Smaller areas (sectors) beat larger areas (FIRs)
-                    if area < smallestArea {
-                        smallestArea = area
-                        bestMatch = c
+                // Minimum Bounding Box (MBB) Filter: Extremely fast float comparison
+                // Handle dateline crossing: If MinLon > MaxLon, the box wraps around
+                isInsideMBB := false
+                if poly.MinLon <= poly.MaxLon {
+                    // Standard case
+                    isInsideMBB = uLo >= poly.MinLon && uLo <= poly.MaxLon
+                } else {
+                    // Dateline wrap-around case
+                    isInsideMBB = uLo >= poly.MinLon || uLo <= poly.MaxLon
+                }
+
+                if isInsideMBB && uLa >= poly.MinLat && uLa <= poly.MaxLat {
+                    // Only run expensive ray-casting if inside MBB
+                    if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
+                        // Tie-breaker: Smaller areas (specific sectors) beat larger areas (FIRs)
+                        if poly.Area < smallestArea {
+                            smallestArea = poly.Area
+                            bestMatch = c
+                        }
                     }
                 }
             }
         }
 
-        // 5. Point Matching (Distance Fallback)
-        // If we haven't found a polygon match yet, or if the point is extremely close (Airport Ops)
-        dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
-        maxRange := 60.0
-        if c.RoleID >= 5 {
-            maxRange = 250.0 // Center/Enroute range
-        }
+        // 3. POINT MATCHING (Fallback & Airport Proximity)
+        // Check physical distance to the controller's reference point
+        if c.IsPoint {
+            dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+            
+            // Standard VHF ranges: 60nm for local, 250nm for Enroute/Center
+            maxRange := 60.0
+            if c.RoleID >= 5 {
+                maxRange = 250.0
+            }
 
-        if dist < maxRange && dist < closestDist {
-            // We only let a point-match override a polygon-match if it's 
-            // VERY close (within 2nm), suggesting it's the specific tower 
-            // the AI is currently departing from.
-            if smallestArea == math.MaxFloat64 || dist < 2.0 {
-                closestDist = dist
-                // Only override if we don't have a specific polygon match 
-                // or if this point is physically at the airport.
-                if bestMatch == nil || dist < 2.0 {
-                    bestMatch = c
+            if dist < maxRange {
+                // TIE-BREAKER LOGIC:
+                // 1. If within 2nm, assume airport operations (Tower/Gnd). This wins everything.
+                if dist < 2.0 {
+                    if dist < closestDist {
+                        closestDist = dist
+                        smallestArea = 0 // Point beats any Polygon
+                        bestMatch = c
+                    }
+                } else if smallestArea == math.MaxFloat64 {
+                    // 2. If no polygon match was found, pick the closest point
+                    if dist < closestDist {
+                        closestDist = dist
+                        bestMatch = c
+                    }
                 }
             }
         }
@@ -555,4 +574,27 @@ func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
 		default:
 			return ""
 	}
+}
+
+func normalizeFreq(fRaw int) int {
+	if fRaw == 0 {
+		return 0
+	}
+	
+	f := fRaw
+	// X-Plane frequencies in apt.dat are often missing the trailing zero 
+	// or decimal precision. We want to scale everything to 1xx.xxx format 
+	// represented as an integer (e.g., 118050).
+	
+	for f < 100000 {
+		f *= 10
+	}
+	
+	// If the frequency ended up like 1180000 (too large), 
+	// we trim it back down.
+	for f > 999999 {
+		f /= 10
+	}
+	
+	return f
 }

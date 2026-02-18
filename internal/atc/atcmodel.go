@@ -112,11 +112,9 @@ type ATCMessage struct {
 	CountryCode string
 }
 
-type Airspace struct {
-	Floor, Ceiling float64
-	Points         [][2]float64
-}
-
+// +------------------------------+
+// | ATC Controller related types |
+// +------------------------------+
 type Controller struct {
 	Name, ICAO string
 	RoleID     int
@@ -125,6 +123,15 @@ type Controller struct {
 	IsPoint    bool
 	IsRegion   bool
 	Airspaces  []Airspace
+}
+
+type Airspace struct {
+    Floor, Ceiling float64
+    Points         [][2]float64
+    Area           float64
+    // Pre-calculated Bounding Box
+    MinLat, MaxLat float64
+    MinLon, MaxLon float64
 }
 
 type PhaseFacility struct {

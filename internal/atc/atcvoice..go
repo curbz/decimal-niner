@@ -806,6 +806,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 			ac.Registration, nextController.Name, nextController.ICAO, nextController.RoleID)
 	}
 
+	// select controller's first listed frequency
 	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
 	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
 	

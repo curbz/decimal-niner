@@ -28,44 +28,71 @@ func DistNM(lat1, lon1, lat2, lon2 float64) float64 {
 }
 
 func IsPointInPolygon(lat, lon float64, polygon [][2]float64) bool {
-	if len(polygon) < 3 {
-		return false
-	}
+    if len(polygon) < 3 {
+        return false
+    }
 
-	inside, j := false, len(polygon)-1
-	for i := 0; i < len(polygon); i++ {
-		// --- handle dateline crossing ---
-		dLon := polygon[j][1] - polygon[i][1]
-		if dLon > 180 {
-			dLon -= 360
-		} else if dLon < -180 {
-			dLon += 360
-		}
-		if ((polygon[i][1] > dLon) != (polygon[j][1] > dLon)) &&
-			(lat < (polygon[j][0]-polygon[i][0])*(dLon-polygon[i][1])/(polygon[j][1]-polygon[i][1])+polygon[i][0]) {
-			inside = !inside
-		}
-		j = i
-	}
-	return inside
+    inside := false
+    j := len(polygon) - 1
+
+    for i := 0; i < len(polygon); i++ {
+        xi, yi := polygon[i][0], polygon[i][1]
+        xj, yj := polygon[j][0], polygon[j][1]
+
+        // --- Handle Dateline Crossing ---
+        // If the segment crosses the 180/-180 line, 
+        // we shift the points so they are continuous relative to 'lon'
+        if yi-lon > 180 {
+            yi -= 360
+        } else if yi-lon < -180 {
+            yi += 360
+        }
+        
+        if yj-lon > 180 {
+            yj -= 360
+        } else if yj-lon < -180 {
+            yj += 360
+        }
+
+        // Standard Ray Casting logic using the (potentially) shifted coordinates
+        // We check if the 'lon' is between the two points' longitudes
+        if ((yi > lon) != (yj > lon)) &&
+            (lat < (xj-xi)*(lon-yi)/(yj-yi)+xi) {
+            inside = !inside
+        }
+        j = i
+    }
+
+    return inside
 }
 
-func CalculateRoughArea(pts [][2]float64) float64 {
-	minLat, maxLat := 90.0, -90.0
-	minLon, maxLon := 180.0, -180.0
-	for _, p := range pts {
-		if p[0] < minLat {
-			minLat = p[0]
-		}
-		if p[0] > maxLat {
-			maxLat = p[0]
-		}
-		if p[1] < minLon {
-			minLon = p[1]
-		}
-		if p[1] > maxLon {
-			maxLon = p[1]
-		}
+func CalculateRoughArea(polygon [][2]float64) float64 {
+	if len(polygon) < 3 {
+		return 0
 	}
-	return (maxLat - minLat) * (maxLon - minLon)
+
+	var area float64
+	j := len(polygon) - 1
+
+	for i := 0; i < len(polygon); i++ {
+		latI, lonI := polygon[i][0], polygon[i][1]
+		latJ, lonJ := polygon[j][0], polygon[j][1]
+
+		// --- Handle Dateline Crossing ---
+		// We normalize point J relative to point I.
+		// If the gap is > 180 degrees, it's a wrap-around.
+		dLon := lonJ - lonI
+		if dLon > 180 {
+			lonJ -= 360
+		} else if dLon < -180 {
+			lonJ += 360
+		}
+
+		// Shoelace formula: (x1*y2 - x2*y1)
+		// Note: Using Lat as X and Lon as Y for a "rough" area 
+		area += (latI * lonJ) - (latJ * lonI)
+		j = i
+	}
+
+	return math.Abs(area / 2.0)
 }
