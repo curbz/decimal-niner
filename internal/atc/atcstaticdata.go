@@ -333,7 +333,7 @@ var roleNameMap = map[int]string {
 	6: "Center",
 	7: "Flight Service",
 	8: "AWOS/ASOS/ATIS",
-	9: "Unicom",
+	9: "Unicom",  //TODO: shoud Unicom be 0?
 }
 
 var handoffMap = map[trafficglobal.FlightPhase]int{

@@ -294,74 +294,85 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 }
 
 func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
-	var bestMatch *Controller
-	closestDist := math.MaxFloat64
-	smallestArea := math.MaxFloat64
+    var bestMatch *Controller
+    closestDist := math.MaxFloat64
+    smallestArea := math.MaxFloat64
 
 	log.Printf("Searching for %s at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
 		label, uLa, uLo, uAl, tRole, tFreq, targetICAO)
+        
+    for i := range s.Database {
+        c := &s.Database[i]
 
-	for i := range s.Database {
-		c := &s.Database[i]
+        // 1. ICAO Filter: If we know the target airport (e.g. for Takeoff/Landing phase),
+        // only look at controllers for that airport.
+        if targetICAO != "" && c.ICAO != targetICAO {
+            continue
+        }
 
-		// If we are looking for a specific airport (Origin/Destination),
-		// we skip any controller that isn't tied to that ICAO.
-		if targetICAO != "" && c.ICAO != targetICAO {
-			continue
-		}
+        // 2. Role Filter: Skip if it's not the role we are looking for.
+        if tRole > 0 && c.RoleID != tRole {
+            continue
+        }
 
-		// Short-circuit on role
-		if tRole > 0 && c.RoleID != tRole {
-			continue
-		}
+        // 3. Frequency Filter: Handle the /10 normalization for X-Plane freq format.
+        if tFreq > 0 {
+            fMatch := false
+            for _, f := range c.Freqs {
+                if f/10 == tFreq/10 {
+                    fMatch = true
+                    break
+                }
+            }
+            if !fMatch {
+                continue
+            }
+        }
 
-		// Short-circuit on freq
-		if tFreq > 0 {
-			fMatch := false
-			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 {
-					fMatch = true
-					break
-				}
-			}
-			if !fMatch {
-				continue
-			}
-		}
+        // 4. Polygon Matching (Airspace Boundaries)
+        if len(c.Airspaces) > 0 {
+            for _, poly := range c.Airspaces {
+                // Vertical Check: Skip if aircraft is outside the floor/ceiling
+                // Note: isRegion usually means we skip the floor/ceiling check for generic FIRs
+                if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) {
+                    continue
+                }
 
-		// Expensive Math
-		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+                if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
+                    area := geometry.CalculateRoughArea(poly.Points)
+                    // Tie-breaker: Smaller areas (sectors) beat larger areas (FIRs)
+                    if area < smallestArea {
+                        smallestArea = area
+                        bestMatch = c
+                    }
+                }
+            }
+        }
 
-		if c.IsPoint {
-			maxRange := 60.0
-			if c.RoleID >= 5 {
-				maxRange = 200.0
-			} // Center range
+        // 5. Point Matching (Distance Fallback)
+        // If we haven't found a polygon match yet, or if the point is extremely close (Airport Ops)
+        dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+        maxRange := 60.0
+        if c.RoleID >= 5 {
+            maxRange = 250.0 // Center/Enroute range
+        }
 
-			if dist < maxRange && dist < closestDist {
-				closestDist = dist
-				bestMatch = c
-			}
-		} else {
-			// Polygon logic for Regions
-			for _, poly := range c.Airspaces {
-				if !c.IsRegion && (uAl < poly.Floor || uAl > poly.Ceiling) {
-					continue
-				}
-				if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
-					area := geometry.CalculateRoughArea(poly.Points)
-					if area < smallestArea {
-						smallestArea = area
-						if bestMatch == nil || !bestMatch.IsPoint || closestDist > 2.0 {
-							bestMatch = c
-						}
-					}
-				}
-			}
-		}
-	}
+        if dist < maxRange && dist < closestDist {
+            // We only let a point-match override a polygon-match if it's 
+            // VERY close (within 2nm), suggesting it's the specific tower 
+            // the AI is currently departing from.
+            if smallestArea == math.MaxFloat64 || dist < 2.0 {
+                closestDist = dist
+                // Only override if we don't have a specific polygon match 
+                // or if this point is physically at the airport.
+                if bestMatch == nil || dist < 2.0 {
+                    bestMatch = c
+                }
+            }
+        }
+    }
 
-	return bestMatch
+    return bestMatch
 }
 
 func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {

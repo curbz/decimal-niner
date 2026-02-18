@@ -42,7 +42,6 @@ func TestPerformSearch(t *testing.T) {
 
 }
 
-//TODO: these tests must use a config.yaml that has strict_flightplan_matching set to true. Write test for when set to false.
 func TestAddFlightPlan(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -50,6 +49,7 @@ func TestAddFlightPlan(t *testing.T) {
 		flightNumber  int
 		simTime       time.Time
 		schedules     map[string][]trafficglobal.ScheduledFlight
+		strictFlightPlanMatching bool
 		expectOrigin  string
 		expectDest    string
 		expectNoMatch bool
@@ -73,6 +73,7 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectOrigin:  "KJFK",
 			expectDest:    "KLAX",
 			expectNoMatch: false,
@@ -96,6 +97,7 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectOrigin:  "KJFK",
 			expectDest:    "KLAX",
 			expectNoMatch: false,
@@ -119,6 +121,7 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectOrigin:  "KJFK",
 			expectDest:    "KLAX",
 			expectNoMatch: false,
@@ -142,6 +145,7 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectOrigin:  "EGLL",
 			expectDest:    "LFPG",
 			expectNoMatch: false,
@@ -152,6 +156,7 @@ func TestAddFlightPlan(t *testing.T) {
 			flightNumber:  999,
 			simTime:       time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC),
 			schedules:     map[string][]trafficglobal.ScheduledFlight{},
+			strictFlightPlanMatching: true,
 			expectNoMatch: true,
 		},
 		{
@@ -173,6 +178,7 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectNoMatch: true,
 		},
 		{
@@ -194,7 +200,56 @@ func TestAddFlightPlan(t *testing.T) {
 					},
 				},
 			},
+			strictFlightPlanMatching: true,
 			expectNoMatch: true,
+		},
+		{
+			name:         "Flight arrival time has passed but strict matching is disabled",
+			registration: "N33333",
+			flightNumber: 333,
+			simTime:      time.Date(2024, 1, 27, 18, 0, 0, 0, time.UTC), // 6pm Tuesday is after 13:00 arrival and outside max extended search window
+			schedules: map[string][]trafficglobal.ScheduledFlight{
+				"N33333_333_1": {
+					{
+						IcaoOrigin:         "KDFW",
+						IcaoDest:           "KORD",
+						DepatureHour:       10,
+						DepartureMin:       0,
+						DepartureDayOfWeek: 1,
+						ArrivalHour:        13,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   1,
+					},
+				},
+			},
+			strictFlightPlanMatching: false,
+			expectOrigin:"KDFW",
+			expectDest: "KORD",
+			expectNoMatch: false,
+		},
+		{
+			name:         "Flight departure is on a different day but strict matching is disabled",
+			registration: "N44444",
+			flightNumber: 444,
+			simTime:      time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC), // 6am Saturday, this is before 10:00 departure and on a different departure day of week
+			schedules: map[string][]trafficglobal.ScheduledFlight{
+				"N44444_444_1": {
+					{
+						IcaoOrigin:         "KATL",
+						IcaoDest:           "KMIA",
+						DepatureHour:       10,
+						DepartureMin:       0,
+						DepartureDayOfWeek: 1,
+						ArrivalHour:        12,
+						ArrivalMin:         0,
+						ArrivalDayOfWeek:   1,
+					},
+				},
+			},
+			strictFlightPlanMatching: true,
+			expectOrigin: "KATL",
+			expectDest: "KMIA",
+			expectNoMatch: false,
 		},
 	}
 
@@ -208,7 +263,8 @@ func TestAddFlightPlan(t *testing.T) {
 					Number: tt.flightNumber,
 				},
 			}
-
+ 
+			atcService.Config.ATC.StrictFlightPlanMatch = tt.strictFlightPlanMatching
 			atcService.AddFlightPlan(ac, tt.simTime)
 
 			if tt.expectNoMatch {

@@ -363,9 +363,9 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	case "trafficglobal/ai/flight_phase":
 		// Provide deterministic transitions per-iteration for the three sample aircraft:
-		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 7, 1)
-		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (6, 8, 2)
-		// G-ARBD (index 2): Approach -> Final -> Braking (7, 10, 11)
+		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 6, 7)
+		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (7, 8, 10)
+		// G-ARBD (index 2): Approach -> Final -> Braking (1, 2, 11)
 		mod := iter % 3
 		switch mod {
 		case 0:
