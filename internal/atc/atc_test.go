@@ -65,6 +65,63 @@ func TestPerformSearch(t *testing.T) {
     }
 }
 
+func TestPerformSearchGlobal(t *testing.T) {
+    requiredAirports := map[string]bool{
+        "EGLL": true, "KJFK": true, "RJTT": true, 
+        "NZAA": true, "FACT": true,
+    }
+    
+    atcService := New("config.yaml", nil, requiredAirports)
+
+    tests := []struct {
+        label      string
+        f, r       int
+        la, lo, al float64
+        icao       string
+        expected   string
+        expRole    int
+    }{
+        // 1. Auckland (Dateline Wrap) - Expecting ZOZ per your regions.dat
+        {"Auckland Center (East of 180)", 0, 6, -37.0, 179.9, 35000.0, "", "ZOZ", 6},
+        {"Auckland Tower (Proximity)", 0, 3, -37.008, 174.79, 50.0, "", "NZAA", 3},
+
+        // 2. NYC (High Density)
+        {"JFK Ground (Proximity)", 0, 2, 40.641, -73.778, 13.0, "", "KJFK", 2},
+        {"JFK Departure (Role Match)", 0, 4, 40.70, -73.80, 2500.0, "", "KJFK", 4},
+
+        // 3. Tokyo (Freq Collision Test)
+        // With the 100nm limit, this will no longer match Cape Town (FACT)
+        {"Tokyo Tower (Freq Match)", 118100, 3, 35.54, 139.78, 100.0, "", "RJTT", 3},
+
+		// 4. Africa
+		// Cape Town (FACT) Approach is returning Role 5 (Approach).
+		{"Cape Town Approach", 0, 5, -33.97, 18.60, 5000.0, "", "FACT", 5},
+
+		// 5. Heathrow 
+		// Specificity check: Requesting Role 3 ensures we get the Tower, 
+		// even if a Ground (Role 2) or Delivery (Role 1) point is technically closer.
+		{"Below Airspace Floor (Tower Request)", 0, 3, 51.47, -0.45, 2000.0, "", "EGLL", 3},
+    }
+
+    for _, tc := range tests {
+        t.Run(tc.label, func(t *testing.T) {
+            m := atcService.LocateController(tc.label, tc.f, tc.r, tc.la, tc.lo, tc.al, tc.icao)
+            
+            if m == nil {
+                t.Fatalf("%s: Expected %s, got nil", tc.label, tc.expected)
+            }
+
+            if m.ICAO != tc.expected {
+                t.Errorf("%s: ICAO mismatch. Got %s, want %s", tc.label, m.ICAO, tc.expected)
+            }
+            
+            if tc.expRole != 0 && m.RoleID != tc.expRole {
+                 t.Errorf("%s: Role mismatch. Got %d, want %d", tc.label, m.RoleID, tc.expRole)
+            }
+        })
+    }
+}
+
 func TestAddFlightPlan(t *testing.T) {
 	tests := []struct {
 		name          string

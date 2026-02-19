@@ -287,67 +287,80 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 
 func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
 	var bestMatch *Controller
-	closestDist := math.MaxFloat64
+	var bestPointMatch *Controller
 	smallestArea := math.MaxFloat64
+	closestPointDist := 15.0 // Increased to 15nm for Approach coverage
 
 	util.LogWithLabel(label, "Searching at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
 		uLa, uLo, uAl, tRole, tFreq, targetICAO)
 
+	// --- TIER 1: SCAN POINTS (Proximity + Frequency + Role) ---
 	for i := range s.Database {
 		c := &s.Database[i]
+		if !c.IsPoint { continue }
 
-		// 1. CORE FILTERS (Fastest exclusions)
-		// If we have a target airport ICAO, ignore everything else
-		if targetICAO != "" && c.ICAO != targetICAO {
-			continue
-		}
-
-		// Filter by Role (Ground, Tower, Center, etc.)
-		if tRole > 0 && c.RoleID != tRole {
-			continue
-		}
-
-		// Filter by Frequency (normalized for X-Plane 10hz shifts)
+		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+		
+		// 1. If we have a tuned frequency, it MUST be within range (e.g., 100nm)
+		// This prevents Tokyo matching Cape Town.
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 {
-					fMatch = true
-					break
-				}
+				if f/10 == tFreq/10 { fMatch = true; break }
 			}
-			if !fMatch {
-				continue
+			if fMatch && dist < 100.0 {
+				// Perfect match: Frequency + Proximity + Role
+				if tRole == 0 || c.RoleID == tRole { return c }
+				// Good match: Frequency + Proximity (wrong role, keep as fallback)
+				bestPointMatch = c
+				closestPointDist = dist
 			}
+			continue 
 		}
 
-		// 2. POLYGON MATCHING (Priority: Airspace Boundaries)
-		if len(c.Airspaces) > 0 {
-			for _, poly := range c.Airspaces {
-				// Vertical Check: Skip if aircraft is outside floor/ceiling
-				// Handles -99999 (SFC) and 99999 (UNL)
-				if poly.Floor != -99999 || poly.Ceiling != 99999 {
-					if uAl < poly.Floor || uAl > poly.Ceiling {
-						continue
-					}
-				}
+		// 2. No frequency tuned? Use pure Proximity + Role
+		if dist < closestPointDist {
+			if tRole > 0 && c.RoleID != tRole { continue }
+			closestPointDist = dist
+			bestPointMatch = c
+		}
+	}
 
-				// Minimum Bounding Box (MBB) Filter: Extremely fast float comparison
-				// Handle dateline crossing: If MinLon > MaxLon, the box wraps around
-				isInsideMBB := false
-				if poly.MinLon <= poly.MaxLon {
-					// Standard case
-					isInsideMBB = uLo >= poly.MinLon && uLo <= poly.MaxLon
-				} else {
-					// Dateline wrap-around case
-					isInsideMBB = uLo >= poly.MinLon || uLo <= poly.MaxLon
-				}
+	// If we are low or found a solid airport match, return it
+	if (uAl < 5000 || tFreq > 0) && bestPointMatch != nil {
+		return bestPointMatch
+	}
 
-				if isInsideMBB && uLa >= poly.MinLat && uLa <= poly.MaxLat {
-					// Only run expensive ray-casting if inside MBB
-					if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
-						// Tie-breaker: Smaller areas (specific sectors) beat larger areas (FIRs)
-						if poly.Area < smallestArea {
+	// --- TIER 2: SCAN POLYGONS ---
+	for i := range s.Database {
+		c := &s.Database[i]
+		if len(c.Airspaces) == 0 { continue }
+
+		// If a frequency is tuned, only check polygons matching that frequency
+		if tFreq > 0 {
+			fMatch := false
+			for _, f := range c.Freqs {
+				if f/10 == tFreq/10 { fMatch = true; break }
+			}
+			if !fMatch { continue }
+		}
+
+		for _, poly := range c.Airspaces {
+			if uAl < poly.Floor || uAl > poly.Ceiling { continue }
+
+			// Dateline-aware MBB
+			isInside := false
+			if poly.MinLon <= poly.MaxLon {
+				isInside = uLo >= poly.MinLon && uLo <= poly.MaxLon
+			} else {
+				isInside = uLo >= poly.MinLon || uLo <= poly.MaxLon
+			}
+
+			if isInside && uLa >= poly.MinLat && uLa <= poly.MaxLat {
+				if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
+					if poly.Area < smallestArea {
+						// Final Role Check for polygons
+						if tRole == 0 || c.RoleID == tRole {
 							smallestArea = poly.Area
 							bestMatch = c
 						}
@@ -355,39 +368,10 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 				}
 			}
 		}
-
-		// 3. POINT MATCHING (Fallback & Airport Proximity)
-		// Check physical distance to the controller's reference point
-		if c.IsPoint {
-			dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
-
-			// Standard VHF ranges: 60nm for local, 250nm for Enroute/Center
-			maxRange := 60.0
-			if c.RoleID >= 5 {
-				maxRange = 250.0
-			}
-
-			if dist < maxRange {
-				// TIE-BREAKER LOGIC:
-				// 1. If within 2nm, assume airport operations (Tower/Gnd). This wins everything.
-				if dist < 2.0 {
-					if dist < closestDist {
-						closestDist = dist
-						smallestArea = 0 // Point beats any Polygon
-						bestMatch = c
-					}
-				} else if smallestArea == math.MaxFloat64 {
-					// 2. If no polygon match was found, pick the closest point
-					if dist < closestDist {
-						closestDist = dist
-						bestMatch = c
-					}
-				}
-			}
-		}
 	}
 
-	return bestMatch
+	if bestMatch != nil { return bestMatch }
+	return bestPointMatch
 }
 
 func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
