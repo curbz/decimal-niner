@@ -675,8 +675,9 @@ func (xpc *XPConnect) updateAircraftData() {
 		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
-				log.Printf("Aircraft %s flight %d changed phase from %d to %d", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
+				log.Printf("Aircraft %s flight %d changed phase from %d to %d. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f", 
+					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current, 
+						ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
 				xpc.atcService.NotifyAircraftChange(ac)
@@ -799,9 +800,3 @@ func logErrors(errors ...error) {
 	}
 }
 
-// printAircraftData prints the current aircraft data
-func (xpc *XPConnect) printAircraftData() {
-	for _, ac := range xpc.aircraftMap {
-		log.Printf("Aircraft: %s, Flight Phase: %d", ac.Registration, ac.Flight.Phase.Current)
-	}
-}

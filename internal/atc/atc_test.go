@@ -11,13 +11,13 @@ import (
 
 func init() {
 	// This runs before any tests in this package
+	// TODO: how can we make this work for custom config locations?
 	// We move up two levels to the root of the repo so that config.yaml and /resources is found
 	_ = os.Chdir("../../")
 }
 
 func TestPerformSearch(t *testing.T) {
-    // Note: Gatwick (EGKK) is NOT in requiredAirports, but 
-    // Role 6 (Center) is loaded regardless of the airport filter.
+
     requiredAirports := map[string]bool{"EGLL": true, "EGKA": true}
     atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
 
@@ -36,6 +36,7 @@ func TestPerformSearch(t *testing.T) {
         {"Shoreham Ground (Proximity)", 0, 2, 50.835, -0.297, 50.0, "", "EGKA", 2},
         {"Gatwick Arrival via Southampton (Polygon)", 0, 6, 50.95, -1.35, 15000.0, "", "EGTT", 6},
 		{"Shanwick Oceanic (Polygon Match)", 0, 6, 45.0, -25.0, 35000.0, "", "EGGX", 6},
+		{"Celtic Sea (London FIR)", 0, 6, 50.0, -8.0, 35000.0, "", "EGTT", 6},
 		{"Southern Ocean Void (No Match)", 0, 6, -80.0, 60.0, 35000.0, "", "NONE", 0},
     }
 

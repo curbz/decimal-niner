@@ -236,25 +236,55 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
             if cur != nil && cur.Lat == 0 {
                 cur.Lat, cur.Lon = la, lo
             }
-		case "AIRSPACE_POLYGON_END":
-			if cur != nil && curPoly != nil {
-				// 1. Calculate the Rough Area for priority sorting
-				curPoly.Area = geometry.CalculateRoughArea(curPoly.Points)
-				// 2. Calculate the Minimum Bounding Box (MBB) for fast filtering
-				// Initialize with extreme values
-				curPoly.MinLat, curPoly.MaxLat = 90.0, -90.0
-				curPoly.MinLon, curPoly.MaxLon = 180.0, -180.0
-				for _, p := range curPoly.Points {
-					if p[0] < curPoly.MinLat { curPoly.MinLat = p[0] }
-					if p[0] > curPoly.MaxLat { curPoly.MaxLat = p[0] }
-					if p[1] < curPoly.MinLon { curPoly.MinLon = p[1] }
-					if p[1] > curPoly.MaxLon { curPoly.MaxLon = p[1] }
-				}
-				// 3. Commit the finished polygon to the controller
-				cur.Airspaces = append(cur.Airspaces, *curPoly)
-			}
-			// 4. RESET: Ensure the pointer is cleared for the next polygon block
-			curPoly = nil
+        case "AIRSPACE_POLYGON_END":
+            if cur != nil && curPoly != nil {
+                curPoly.Area = geometry.CalculateRoughArea(curPoly.Points)
+                
+                // 1. Initialize bounds
+                minLa, maxLa := 90.0, -90.0
+                minLo, maxLo := 180.0, -180.0
+                
+                // 2. Standard Lat bounds
+                for _, p := range curPoly.Points {
+                    if p[0] < minLa { minLa = p[0] }
+                    if p[0] > maxLa { maxLa = p[0] }
+                }
+                
+                // 3. Smart Longitude bounds (detect wrap-around)
+                // Find the "gap" in longitude to determine if we cross the dateline
+                actualMinLo, actualMaxLo := 180.0, -180.0
+                hasEast := false
+                hasWest := false
+                
+                for _, p := range curPoly.Points {
+                    lon := p[1]
+                    if lon > 0 { hasEast = true }
+                    if lon < 0 { hasWest = true }
+                    if lon < actualMinLo { actualMinLo = lon }
+                    if lon > actualMaxLo { actualMaxLo = lon }
+                }
+
+                // If a polygon has points in both East and West AND spans a huge distance,
+                // it's a dateline crosser (like Anchorage)
+                if hasEast && hasWest && (actualMaxLo - actualMinLo > 180) {
+                    // Anchorage Case: Min is the smallest positive, Max is the largest negative
+                    // effectively "wrapping around" the back of the map.
+                    minLo, maxLo = 180.0, -180.0
+                    for _, p := range curPoly.Points {
+                        if p[1] > 0 && p[1] < minLo { minLo = p[1] } // Smallest East (e.g. 165)
+                        if p[1] < 0 && p[1] > maxLo { maxLo = p[1] } // Largest West (e.g. -140)
+                    }
+                } else {
+                    // Standard case
+                    minLo, maxLo = actualMinLo, actualMaxLo
+                }
+
+                curPoly.MinLat, curPoly.MaxLat = minLa, maxLa
+                curPoly.MinLon, curPoly.MaxLon = minLo, maxLo
+                
+                cur.Airspaces = append(cur.Airspaces, *curPoly)
+            }
+            curPoly = nil
         case "CONTROLLER_END":
             if cur != nil && isRequired {
                 list = append(list, *cur)
