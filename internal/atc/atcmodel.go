@@ -109,6 +109,7 @@ type ATCMessage struct {
 	Role        string
 	Text        string
 	FlightPhase int
+	Registration string
 	CountryCode string
 }
 

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -82,7 +83,8 @@ func LoadConfig(cfgPath string) *config {
 func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) {
 
 	log.Printf("Loading Traffic Global BGL file: %s\n", filePath)
-
+	
+	start := time.Now()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalf("error reading bgl file: %v\n", err)
@@ -92,7 +94,7 @@ func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) 
 	if len(legs) == 0 {
 		log.Fatalf("no legs extracted from bgl file %s", filePath)
 	}
-	log.Printf("%d legs, %d airports extracted from bgl file\n", len(legs), len(airportICAOlist))
+	log.Printf("BGL traffic parser extracted %d legs and %d airports in %v\n", len(legs), len(airportICAOlist), time.Since(start))
 
 	schedules := make(map[string][]ScheduledFlight)
 	for _, l := range legs {

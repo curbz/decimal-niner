@@ -31,7 +31,7 @@ func DecodeNullTerminatedString(encodedData string) ([]string, error) {
 			// Extract the string
 			s := string(rawBytes[start:i])
 
-			// prevents terminating 0x00 from being added 
+			// prevents terminating 0x00 from being added
 			if start < len(rawBytes)-1 {
 				decodedStrings = append(decodedStrings, s)
 			}
@@ -142,4 +142,15 @@ func ParseMinute(timeStr string) int {
 // GetISOWeekday returns an int where Monday=0...Sunday=6
 func GetISOWeekday(t time.Time) int {
 	return (int(t.Weekday()) + 6) % 7
+}
+
+// LogWithLabel prefixes the given registration (if non-empty) to the format
+// and delegates to the standard logger. Use this when an aircraft
+// registration is available in scope to make logs easier to correlate.
+func LogWithLabel(pfx string, format string, args ...interface{}) {
+	if pfx == "" {
+		pfx = "------"
+	}
+	format = fmt.Sprintf("[%s] %s", pfx, format)
+	log.Printf(format, args...)
 }

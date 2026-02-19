@@ -30,10 +30,10 @@ type XPConnect struct {
 	conn   *websocket.Conn
 	// Map to store the retrieved DataRef Index (int) using the name (string) as the key.
 	memSubscribeDataRefIndexMap map[int]*xpapimodel.Dataref
-	memDataRefIndexMap map[int]*xpapimodel.Dataref // non-subscribed datarefs
-	aircraftMap        map[string]*atc.Aircraft
-	atcService         atc.ServiceInterface
-	initialised        bool
+	memDataRefIndexMap          map[int]*xpapimodel.Dataref // non-subscribed datarefs
+	aircraftMap                 map[string]*atc.Aircraft
+	atcService                  atc.ServiceInterface
+	initialised                 bool
 }
 
 type XPConnectInterface interface {
@@ -57,10 +57,10 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 	}
 
 	return &XPConnect{
-		aircraftMap: make(map[string]*atc.Aircraft),
-		atcService:  atcService,
+		aircraftMap:        make(map[string]*atc.Aircraft),
+		atcService:         atcService,
 		memDataRefIndexMap: make(map[int]*xpapimodel.Dataref),
-		config:      *cfg,
+		config:             *cfg,
 	}
 
 }
@@ -179,11 +179,12 @@ func (xpc *XPConnect) initSimTime() (time.Time, error) {
 
 // getSimTime fetches the current simulator time via HTTP GET.
 // Example:
-// XPlaneTime{
-// 	  LocalDateDays: 0,       // Jan 1st
-// 	  LocalTimeSecs: 70200.0, // 19:30:00
-// 	  ZuluTimeSecs:  1800.0,  // 00:30:00
-// }
+//
+//	XPlaneTime{
+//		  LocalDateDays: 0,       // Jan 1st
+//		  LocalTimeSecs: 70200.0, // 19:30:00
+//		  ZuluTimeSecs:  1800.0,  // 00:30:00
+//	}
 func (xpc *XPConnect) GetSimTime() (simdata.XPlaneTime, error) {
 
 	xplaneTime := simdata.XPlaneTime{}
@@ -368,7 +369,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 		}
 	default:
 		// Catch all other messages
-		log.Printf("[UNKNOWN] Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
+		log.Printf("WARN: unrecognised response type: Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
 	}
 }
 
@@ -469,7 +470,7 @@ func (xpc *XPConnect) updateWeatherData() {
 	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/shear_speed_msc", 0)
 	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_msc", 0)
 	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
-	
+
 	if errFb != nil || errSb != nil || errMv != nil || errTm != nil || errWs != nil || errSp != nil || errDr != nil {
 		logErrors(errFb, errSb)
 		return
@@ -493,7 +494,7 @@ func (xpc *XPConnect) updateUserData() {
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
 	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
 	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
-	
+
 	if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
 		logErrors(errC1, errC2, errF1, errF2)
 		return
@@ -523,7 +524,7 @@ func (xpc *XPConnect) updateUserData() {
 	lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
 	lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
 	alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
-	
+
 	if errLat != nil || errLng != nil || errAlt != nil {
 		logErrors(errLat, errLng, errAlt)
 		return
@@ -584,14 +585,14 @@ func (xpc *XPConnect) updateAircraftData() {
 					// Squawk random number between 1200 and 6999
 					Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
 					Phase: atc.Phase{
-						Class: 		atc.Unknown,
+						Class:      atc.Unknown,
 						Current:    fpUnknown.Index(),
 						Previous:   fpUnknown.Index(),
 						Transition: time.Now()},
 				},
 			}
 			xpc.aircraftMap[acKey] = aircraft
-			log.Printf("New aircraft detected (tail#_flight#): %s", acKey)
+			util.LogWithLabel(tailNumber, "New aircraft detected - map key: %s (tail#_flight#)", acKey)
 		}
 
 		// Update aircraft flight phase
@@ -613,7 +614,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
-		}		
+		}
 
 		aircraft.Flight.Position = atc.Position{
 			Lat:      lat.(float64),
@@ -628,10 +629,10 @@ func (xpc *XPConnect) updateAircraftData() {
 			airlineCode = airlineCodes[index]
 		}
 
-		// get aircraft class 
+		// get aircraft class
 		class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
 		sizeClass := class.(int)
-		if err != nil  || sizeClass > 5 {
+		if err != nil || sizeClass > 5 {
 			log.Println(err)
 			sizeClass = 3 // size class 'D'
 		}
@@ -654,7 +655,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)
 		if err != nil {
 			log.Println(err)
-			return		
+			return
 		}
 		aircraft.Flight.AssignedParking = parking.(string)
 
@@ -675,9 +676,9 @@ func (xpc *XPConnect) updateAircraftData() {
 		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
-				log.Printf("Aircraft %s flight %d changed phase from %d to %d. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current, 
-						ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+				util.LogWithLabel(ac.Registration, "flight %d changed phase from %d to %d. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f",
+					ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current,
+					ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
 				xpc.atcService.NotifyAircraftChange(ac)
@@ -692,7 +693,7 @@ func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.D
 
 	dr := xpc.getMemDataRefByName(datarefIndicesMap, s)
 	if dr == nil {
-		return nil, fmt.Errorf("error: dataref %s not found in map", s) 
+		return nil, fmt.Errorf("error: dataref %s not found in map", s)
 	}
 
 	// if the decoded value type is array, get the element at index
@@ -700,28 +701,28 @@ func (xpc *XPConnect) getMemDataRefValue(datarefIndicesMap map[int]*xpapimodel.D
 	case "base64_string_array", "uint32_string_array":
 		values, ok := dr.Value.([]string)
 		if !ok {
-			return nil, fmt.Errorf("error: dataref %s is not of expected type []string", s) 
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []string", s)
 		}
 		if index >= len(values) {
-			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
 		}
 		return values[index], nil
 	case "float_array":
 		values, ok := dr.Value.([]float64)
 		if !ok {
-			return nil, fmt.Errorf("error: dataref %s is not of expected type []float64", s) 
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []float64", s)
 		}
 		if index >= len(values) {
-			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
 		}
 		return values[index], nil
 	case "int_array":
 		values, ok := dr.Value.([]int)
 		if !ok {
-			return nil, fmt.Errorf("error: dataref %s is not of expected type []int", s) 
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []int", s)
 		}
 		if index >= len(values) {
-			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s) 
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
 		}
 		return values[index], nil
 	default:
@@ -799,4 +800,3 @@ func logErrors(errors ...error) {
 		}
 	}
 }
-

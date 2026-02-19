@@ -23,19 +23,19 @@ import (
 )
 
 type VoicesConfig struct {
-	PhrasesFile       string `yaml:"phrases_file"`
-	UnicomPhrasesFile string `yaml:"unicom_phrases_file"`
-	Piper             Piper  `yaml:"piper"`
-	Sox               Sox    `yaml:"sox"`
-	HandoffValedictionFactor int	 `yaml:"handoff_valediction_factor"`
-	SayAgainFactor    int    `yaml:"say_again_factor"`
+	PhrasesFile              string `yaml:"phrases_file"`
+	UnicomPhrasesFile        string `yaml:"unicom_phrases_file"`
+	Piper                    Piper  `yaml:"piper"`
+	Sox                      Sox    `yaml:"sox"`
+	HandoffValedictionFactor int    `yaml:"handoff_valediction_factor"`
+	SayAgainFactor           int    `yaml:"say_again_factor"`
 }
 
 type Exchange struct {
-    ID        string `json:"id"`
-    Initiator string `json:"initiator"` // "pilot" or "atc"
-    Pilot     string `json:"pilot"`
-    ATC       string `json:"atc"`
+	ID        string `json:"id"`
+	Initiator string `json:"initiator"` // "pilot" or "atc"
+	Pilot     string `json:"pilot"`
+	ATC       string `json:"atc"`
 }
 
 type PhraseClasses struct {
@@ -59,6 +59,7 @@ type PreparedAudio struct {
 	SampleRate int
 	NoiseType  string
 	Msg        ATCMessage
+	MsgLabel   string
 	Voice      string
 }
 
@@ -218,14 +219,14 @@ func (s *Service) startComms() {
 			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 			exchanges, exists := phraseSource[phaseFacility.atcPhase]
 			if !exists || len(exchanges) == 0 {
-				log.Printf("error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
+				util.LogWithLabel(ac.Registration, "error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
 				continue
 			}
 
 			// select random exchange
 			exchange := exchanges[rand.Intn(len(exchanges))]
 
-			// didSayAgain bool ensures 'say again' cannot be repeated for the same pilot/controller exchange 
+			// didSayAgain bool ensures 'say again' cannot be repeated for the same pilot/controller exchange
 			didSayAgain := false
 			if exchange.Initiator == "pilot" {
 				// pilot's initial phrase
@@ -245,7 +246,7 @@ func (s *Service) startComms() {
 					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				}
 			}
-			
+
 			if exchange.Initiator == "atc" {
 				// atc initiates call to pilot
 				s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
@@ -269,7 +270,7 @@ func (s *Service) startComms() {
 }
 
 // autoReadback will generate the readback phrase from the original
-// this entails moving {CALLSIGN} from the beginning to the end and 
+// this entails moving {CALLSIGN} from the beginning to the end and
 // removng any text enclosed in square brackets
 func autoReadback(phrase string) string {
 	phrase = strings.TrimPrefix(phrase, "{CALLSIGN}")
@@ -356,7 +357,7 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 	// send message to radio queue
 	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
-		role, phrase, ac.Flight.Phase.Current, ac.Flight.Comms.CountryCode,
+		role, phrase, ac.Flight.Phase.Current, ac.Registration, ac.Flight.Comms.CountryCode,
 	}
 }
 
@@ -427,7 +428,7 @@ func RadioPlayer(soxPath string) {
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
-		log.Printf("[%s] %s (%s)", audio.Msg.Role, audio.Msg.Text, audio.Voice)
+		util.LogWithLabel(audio.Msg.Registration+"_"+audio.Msg.Role, "%s (%s)", audio.Msg.Text, audio.Voice)
 
 		err := playCmd.Start()
 		if err != nil {
@@ -471,7 +472,8 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 			//no country found - pick a random country
 			rKey := util.PickRandomFromMap(icaoToIsoMap).(string)
 			isoCountry = icaoToIsoMap[rKey]
-			log.Printf("icao country code '%s' not found, '%s' iso country code selected at random for voice", msg.CountryCode, isoCountry)
+			util.LogWithLabel(msg.Registration, "icao country code '%s' not found, '%s' iso country code selected at random for voice",
+				msg.CountryCode, isoCountry)
 		}
 		var found bool
 		pool, found = countryVoicePools[isoCountry]
@@ -482,15 +484,17 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 				regionCode = msg.CountryCode[:1]
 				pool, found = regionVoicePools[regionCode]
 			} else {
-				log.Printf("WARN: no country code provided in message, cannot determine region code: %v", msg)
+				util.LogWithLabel(msg.Registration, "WARN: no country code provided in message, cannot determine region code: %v", msg)
 			}
 			if !found {
 				// no pool found for region, pick random pool
 				rKey := util.PickRandomFromMap(countryVoicePools).(string)
 				pool = countryVoicePools[rKey]
-				log.Printf("no voice pool found for icao region '%s', selected iso country '%s' at random for voice", regionCode, rKey)
+				util.LogWithLabel(msg.Registration, "no voice pool found for icao region '%s', selected iso country '%s' at random for voice",
+					regionCode, rKey)
 			} else {
-				log.Printf("no voice pool found for iso country code '%s' not found, selected icoa region pool '%s' for voice", isoCountry, regionCode)
+				util.LogWithLabel(msg.Registration, "no voice pool found for iso country code '%s' not found, selected icoa region pool '%s' for voice",
+					isoCountry, regionCode)
 			}
 		}
 
@@ -511,26 +515,26 @@ func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string)
 		}
 
 		// Avoid assigning the same voice to a controller and its pilot (when possible).
-        // If we're assigning a controller voice, check whether the pilot for the same
-        // callsign already has a voice and prefer a different one from the pool.
-        if msg.Role != "PILOT" {
-            pilotKey := ""
-            // best-effort pilot key: callsign + "_PILOT" (may be empty if callsign missing)
-            if msg.Callsign != "" {
-                pilotKey = msg.Callsign + "_PILOT"
-            }
-            if pilotKey != "" {
-                if pilotVoice, ok := sessionVoices[pilotKey]; ok && pilotVoice != "" && pilotVoice == selectedVoice {
-                    // try to pick an alternative from pool that's not the pilotVoice
-                    for _, v := range pool {
-                        if v != pilotVoice {
-                            selectedVoice = v
-                            break
-                        }
-                    }
-                }
-            }
-        }
+		// If we're assigning a controller voice, check whether the pilot for the same
+		// callsign already has a voice and prefer a different one from the pool.
+		if msg.Role != "PILOT" {
+			pilotKey := ""
+			// best-effort pilot key: callsign + "_PILOT" (may be empty if callsign missing)
+			if msg.Callsign != "" {
+				pilotKey = msg.Callsign + "_PILOT"
+			}
+			if pilotKey != "" {
+				if pilotVoice, ok := sessionVoices[pilotKey]; ok && pilotVoice != "" && pilotVoice == selectedVoice {
+					// try to pick an alternative from pool that's not the pilotVoice
+					for _, v := range pool {
+						if v != pilotVoice {
+							selectedVoice = v
+							break
+						}
+					}
+				}
+			}
+		}
 
 		sessionVoices[key] = selectedVoice
 	}
@@ -595,7 +599,7 @@ func translateRunway(runway string) string {
 // scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
 // is true when the scale is flight levels and false when the returned value is an altitude in feet
 func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool) {
-	
+
 	var roundedAlt int
 	alt := int(rawAlt)
 
@@ -612,12 +616,12 @@ func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool
 	// Flight Level Logic (At or above Transition Altitude)
 	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
 		fl := roundedAlt / 100
-		
+
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
 		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
 			fl = (fl / 10) * 10
 		}
-		
+
 		// Returns "flight level 330"
 		return fl, true
 	}
@@ -628,7 +632,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool
 func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 
 	scaledAlt, flightLevelScale := scaleAltitude(rawAlt, transitionLevel, ac)
-		
+
 	if flightLevelScale {
 		// Returns "flight level 330"
 		return fmt.Sprintf("flight level %d", scaledAlt)
@@ -636,14 +640,14 @@ func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 
 	// Feet Logic (Below Transition Altitude)
 	// If it's a clean thousand (e.g., 5000)
-	if scaledAlt % 1000 == 0 {
+	if scaledAlt%1000 == 0 {
 		return fmt.Sprintf("%d thousand", scaledAlt/1000)
 	}
-	
+
 	// Handle split altitudes like 2400 (common in approach/missed approach)
 	thousands := scaledAlt / 1000
 	hundreds := (scaledAlt % 1000) / 100
-	
+
 	// Returns "2 thousand 4 hundred"
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }
@@ -654,7 +658,7 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 
 	instruction := ""
 	phrase := ""
-	
+
 	if ac.Flight.AltClearance == 0 {
 		return phrase
 	}
@@ -667,7 +671,7 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 		if scaleIsFlightLevel {
 			// current altitude is a flight level and cleared to an altitude, so we must descend
 			instruction = "descend to"
-		}  else {
+		} else {
 			instruction = "climb to"
 		}
 	} else {
@@ -675,12 +679,12 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 		if scaledAlt >= scaledClearedAlt {
 			if scaledAlt == scaledClearedAlt {
 				instruction = "maintain"
-			}  else {
+			} else {
 				instruction = "descend to"
-			}	
+			}
 		} else {
 			instruction = "climb to"
-		}	
+		}
 	}
 
 	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(ac.Flight.AltClearance), transitionLevel, ac))
@@ -690,78 +694,78 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 
 // formatParking applies logic to convert parking designations into more natural speech phrases
 func formatParking(parking string, icao string) string {
-    parking = strings.ToUpper(strings.TrimSpace(parking))
-    if parking == "" {
-        return "parking"
-    }
+	parking = strings.ToUpper(strings.TrimSpace(parking))
+	if parking == "" {
+		return "parking"
+	}
 
-    // 1. Detect Area-based parking (Ramp/Apron)
-    if strings.Contains(parking, "RAMP") || strings.Contains(parking, "APRON") {
-        // If X-Plane gives "NORTH RAMP 1", we want to ensure the words stay
-        // but the digits are ready for your final translator.
-        return phoneticiseSingleAlphas(parking)
-    }
+	// 1. Detect Area-based parking (Ramp/Apron)
+	if strings.Contains(parking, "RAMP") || strings.Contains(parking, "APRON") {
+		// If X-Plane gives "NORTH RAMP 1", we want to ensure the words stay
+		// but the digits are ready for your final translator.
+		return phoneticiseSingleAlphas(parking)
+	}
 
-    // 2. Default to Gate/Stand logic
-    prefix := "stand"
-    if len(icao) > 0 && icao[0] == 'K' {
-        prefix = "gate"
-    }
-    
+	// 2. Default to Gate/Stand logic
+	prefix := "stand"
+	if len(icao) > 0 && icao[0] == 'K' {
+		prefix = "gate"
+	}
+
 	// 1. Check if it starts with a number (e.g., "201R")
-    if unicode.IsDigit(rune(parking[0])) {
-        // Separate digits and the alpha suffix
-        digits := ""
-        suffix := ""
-        
-        for i, char := range parking {
-            if unicode.IsDigit(char) {
-                digits += string(char)
-            } else {
-                // Once we hit a non-digit, the rest is the suffix
-                suffix = parking[i:]
-                break
-            }
-        }
+	if unicode.IsDigit(rune(parking[0])) {
+		// Separate digits and the alpha suffix
+		digits := ""
+		suffix := ""
 
-        // 2. Handle the Suffix (Single Alpha)
-        if len(suffix) == 1 {
-            phonetic := phoneticMap[suffix]
-            return fmt.Sprintf("%s %s %s", prefix, digits, phonetic)
-        }
+		for i, char := range parking {
+			if unicode.IsDigit(char) {
+				digits += string(char)
+			} else {
+				// Once we hit a non-digit, the rest is the suffix
+				suffix = parking[i:]
+				break
+			}
+		}
 
-        return fmt.Sprintf("%s %s", prefix, digits)
-    }
+		// 2. Handle the Suffix (Single Alpha)
+		if len(suffix) == 1 {
+			phonetic := phoneticMap[suffix]
+			return fmt.Sprintf("%s %s %s", prefix, digits, phonetic)
+		}
 
-    // 3. Handle Alpha-First (e.g., "B12" -> "Gate Bravo 12")
-    // Most common in US/Europe terminals
-    firstChar := string(parking[0])
-    if phonetic, exists := phoneticMap[firstChar]; exists {
-        remaining := parking[1:]
-        return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
-    }
+		return fmt.Sprintf("%s %s", prefix, digits)
+	}
 
-    return parking
+	// 3. Handle Alpha-First (e.g., "B12" -> "Gate Bravo 12")
+	// Most common in US/Europe terminals
+	firstChar := string(parking[0])
+	if phonetic, exists := phoneticMap[firstChar]; exists {
+		remaining := parking[1:]
+		return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
+	}
+
+	return parking
 }
 
 // phoneticiseSingleAlphas will replace single alphas in a phrase to their phonetic equivalents
 func phoneticiseSingleAlphas(input string) string {
-    words := strings.Fields(input)
-    for i, word := range words {
-        // Check if the word is a single letter to phoneticise it (e.g., "Ramp A")
-        if len(word) == 1 && unicode.IsLetter(rune(word[0])) {
-            words[i] = phoneticMap[word]
-        }
-    }
-    return strings.ToLower(strings.Join(words, " "))
+	words := strings.Fields(input)
+	for i, word := range words {
+		// Check if the word is a single letter to phoneticise it (e.g., "Ramp A")
+		if len(word) == 1 && unicode.IsLetter(rune(word[0])) {
+			words[i] = phoneticMap[word]
+		}
+	}
+	return strings.ToLower(strings.Join(words, " "))
 }
 
 func formatAirportName(icao string, airportNameLookup map[string]AirportCoords) string {
 
-    apc, exists := airportNameLookup[icao]
-    if !exists {
-        return toPhonetics(icao)
-    } 
+	apc, exists := airportNameLookup[icao]
+	if !exists {
+		return toPhonetics(icao)
+	}
 
 	replacer := strings.NewReplacer(
 		" Intl", "",
@@ -787,29 +791,29 @@ func toPhonetics(s string) string {
 
 // generateHandoffPhrase creates a controller handoff phrase and automatically includes valediction (based on configured factor)
 func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
-    // Identify the 'Next Role' based on the new phase
-    nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
-    if !exists { 
-		return "" 
+	// Identify the 'Next Role' based on the new phase
+	nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+	if !exists {
+		return ""
 	}
 
-    // Locate the "Next" controller
-	searchICAO := airportICAObyPhaseClass(ac,ac.Flight.Phase.Class)
+	// Locate the "Next" controller
+	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
 	pos := ac.Flight.Position
-    nextController := s.LocateController("HANDOFF", 0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
-    
-    if nextController == nil {
-		log.Printf("No controller found for handoff: role=%d, searchICAO=%s", nextRole, searchICAO)
+	nextController := s.LocateController(ac.Registration+"_HANDOFF",
+		0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
+
+	if nextController == nil {
+		util.LogWithLabel(ac.Registration, "No controller found for handoff: role=%d, searchICAO=%s", nextRole, searchICAO)
 		return ""
 	} else {
-		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",
-			ac.Registration, nextController.Name, nextController.ICAO, nextController.RoleID)
+		util.LogWithLabel(ac.Registration, "Controller found: %s %s Role ID: %d", nextController.Name, nextController.ICAO, nextController.RoleID)
 	}
 
 	// select controller's first listed frequency
 	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
 	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
-	
+
 	// if next role is approach or cruise, include the facility name
 	facilityName := ""
 	if nextRole == trafficglobal.Approach.Index() || nextRole == trafficglobal.Cruise.Index() {
@@ -846,17 +850,23 @@ func (s *Service) generateValediction(factor int) string {
 }
 
 func (s *Service) formatWind() string {
-	
+
 	const mpsToKnots = 1.94384
-    speedKt := s.Weather.Wind.Speed * mpsToKnots
+	speedKt := s.Weather.Wind.Speed * mpsToKnots
 
 	// 2. Convert to Magnetic and Round to nearest 10
 	magDir := s.Weather.Wind.Direction - float64(s.Weather.MagVar)
-	if magDir <= 0 { magDir += 360 }
-	if magDir > 360 { magDir -= 360 }
-	
-	roundedDir := int((magDir + 5) / 10) * 10
-	if roundedDir == 0 { roundedDir = 360 }
+	if magDir <= 0 {
+		magDir += 360
+	}
+	if magDir > 360 {
+		magDir -= 360
+	}
+
+	roundedDir := int((magDir+5)/10) * 10
+	if roundedDir == 0 {
+		roundedDir = 360
+	}
 
 	// 3. Base Wind Phrasing
 	var windPhrase string
@@ -868,52 +878,52 @@ func (s *Service) formatWind() string {
 		if s.Weather.Turbulence > 0.2 {
 			// Simple heuristic: Turbulence adds a gust factor
 			// A turb of 0.5 adds roughly 10-15 knots of gust
-			gustKt = speedKt + (s.Weather.Turbulence * 25.0) 
+			gustKt = speedKt + (s.Weather.Turbulence * 25.0)
 		}
-		if gustKt > speedKt + 9 {
-            windPhrase += fmt.Sprintf(" gusting %d", int(gustKt))
-        }
+		if gustKt > speedKt+9 {
+			windPhrase += fmt.Sprintf(" gusting %d", int(gustKt))
+		}
 	}
 
 	return windPhrase
 }
 
 func (s *Service) formatWindShear() string {
-	
-	var phrase string
-    const mpsToKnots = 1.94384
 
-    // Wind Shear (Converted from m/s to knots)
-    shearKt := s.Weather.Wind.Shear * mpsToKnots
-    
-    if shearKt >= 15 {
-        // Round to nearest 5
-        shearRound := int((shearKt + 2) / 5) * 5
-        phrase = fmt.Sprintf("[caution] wind shear [alert, loss or gain of] %d knots", shearRound)
-    }
+	var phrase string
+	const mpsToKnots = 1.94384
+
+	// Wind Shear (Converted from m/s to knots)
+	shearKt := s.Weather.Wind.Shear * mpsToKnots
+
+	if shearKt >= 15 {
+		// Round to nearest 5
+		shearRound := int((shearKt+2)/5) * 5
+		phrase = fmt.Sprintf("[caution] wind shear [alert, loss or gain of] %d knots", shearRound)
+	}
 
 	return phrase
 }
 
 func (s *Service) formatTurbulence(role string) string {
-	
+
 	phrase := ""
 	turbClass := ""
 
-    // Turbulence Magnitude
-    if s.Weather.Turbulence >= 0.7 {
-        turbClass = "severe"
-    } else if s.Weather.Turbulence >= 0.4 {
-        turbClass = "moderate"
-    }
+	// Turbulence Magnitude
+	if s.Weather.Turbulence >= 0.7 {
+		turbClass = "severe"
+	} else if s.Weather.Turbulence >= 0.4 {
+		turbClass = "moderate"
+	}
 
-    if turbClass != "" {
+	if turbClass != "" {
 		if role == "PILOT" {
 			phrase = fmt.Sprintf("experiencing %s turbulence", turbClass)
 		} else {
 			phrase = fmt.Sprintf("%s turbulence [reported]", turbClass)
 		}
-    }
+	}
 
 	return phrase
 }

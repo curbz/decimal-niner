@@ -19,18 +19,18 @@ import (
 )
 
 type Service struct {
-	Config          *config
-	Channel         chan *Aircraft
-	Database        []Controller
-	PhraseClasses   PhraseClasses
-	UserState       UserState
-	Airlines        map[string]AirlineInfo
+	Config           *config
+	Channel          chan *Aircraft
+	Database         []Controller
+	PhraseClasses    PhraseClasses
+	UserState        UserState
+	Airlines         map[string]AirlineInfo
 	AirportLocations map[string]AirportCoords
-	FlightSchedules map[string][]trafficglobal.ScheduledFlight
-	Weather         *Weather
-	DataProvider    simdata.SimDataProvider
-	SimInitTime     time.Time
-	SessionInitTime time.Time
+	FlightSchedules  map[string][]trafficglobal.ScheduledFlight
+	Weather          *Weather
+	DataProvider     simdata.SimDataProvider
+	SimInitTime      time.Time
+	SessionInitTime  time.Time
 }
 
 type ServiceInterface interface {
@@ -80,7 +80,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	}
 	atcControllers, err := parseATCdatFiles(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
-		log.Fatalf("Erro parsing ATC data file: %v", err)
+		log.Fatalf("Error parsing ATC data file: %v", err)
 	}
 	db := append(atcControllers, arptControllers...)
 	regionControllers, err := parseATCdatFiles(cfg.ATC.AtcRegionsFile, true, requiredAirports)
@@ -89,7 +89,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	}
 	db = append(db, regionControllers...)
 
-	log.Printf("ATC controller database generated: %v (Count: %d)\n", time.Since(start), len(db))
+	log.Printf("ATC controller database generated: seeded %d controllers in %v\n", len(db), time.Since(start))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
@@ -126,14 +126,14 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                       // Converts Piper Process -> Speakers
 
 	return &Service{
-		Config:          cfg,
-		Channel:         make(chan *Aircraft, cfg.ATC.MessageBufferSize),
-		Database:        db,
-		PhraseClasses:   phraseClasses,
-		Airlines:        airlinesData,
+		Config:           cfg,
+		Channel:          make(chan *Aircraft, cfg.ATC.MessageBufferSize),
+		Database:         db,
+		PhraseClasses:    phraseClasses,
+		Airlines:         airlinesData,
 		AirportLocations: airportLocations,
-		FlightSchedules: fScheds,
-		Weather:         &Weather{Wind: Wind{}, Baro: Baro{}},
+		FlightSchedules:  fScheds,
+		Weather:          &Weather{Wind: Wind{}, Baro: Baro{}},
 	}
 }
 
@@ -159,28 +159,27 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 	userActive := s.UserState.ActiveFacilities
 
 	if len(userActive) == 0 {
-		log.Println("User has no active tuned ATC facilities")
+		util.LogWithLabel(ac.Registration, "User has no active tuned ATC facilities")
 		return
 	}
 
 	// set flight phase classification
 	s.setFlightPhaseClass(ac)
-	log.Printf("%s flight %d phase classified as %d", 
-				ac.Registration, ac.Flight.Number, ac.Flight.Phase.Class)
+	util.LogWithLabel(ac.Registration, "flight %d phase classified as %d", ac.Flight.Number, ac.Flight.Phase.Class)
 
 	// for a new aircraft in a post-flight context, there is nothing to do
-	if ac.Flight.Phase.Class == PostflightParked { 
+	if ac.Flight.Phase.Class == PostflightParked {
 		return
 	}
 
 	if ac.Flight.Origin == "" {
-		// no origin indicates this aircraft has no flight plan 
+		// no origin indicates this aircraft has no flight plan
 		s.AddFlightPlan(ac, s.GetCurrentZuluTime())
 	}
 
 	// make a snaphot copy of aircraft data and pass this snapshot into the phrase generation process.
-	// it is safer to do it here rather than in the go routine as there would be a small chance that 
-	// the aircraft could get updated concurrently during the deep copy process if this statement was 
+	// it is safer to do it here rather than in the go routine as there would be a small chance that
+	// the aircraft could get updated concurrently during the deep copy process if this statement was
 	// placed within the go routine.
 	acSnap := deepcopy.Copy(ac).(*Aircraft)
 
@@ -194,23 +193,22 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
 		aiRole := phaseFacility.roleId
 		aiFac := s.LocateController(
-			"AI_Lookup",
-			0, aiRole, // Search by role, any freq
+			acSnap.Registration, // <-- TODO append "_<role_string>"
+			0, aiRole,           // Search by role, any freq
 			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
 
 		// Fallback: If no controller found, look for Unicom (Role 0)
 		if aiFac == nil {
-			aiFac = s.LocateController("AI_FALLBACK", 0, 0,
+			aiFac = s.LocateController(acSnap.Registration+"_Unicom", 0, 0,
 				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
 		}
 
 		if aiFac == nil {
-			log.Printf("No suitable ATC facility found for AI aircraft: %v", acSnap)
+			util.LogWithLabel(acSnap.Registration, "No suitable ATC facility found for AI aircraft: %v", acSnap)
 			return
 		}
 
-		log.Printf("Controller found for aircraft %s: %s %s Role ID: %d",
-			acSnap.Registration, aiFac.Name, aiFac.ICAO, aiFac.RoleID)
+		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role ID: %d", aiFac.Name, aiFac.ICAO, aiFac.RoleID)
 
 		acSnap.Flight.Comms.Controller = aiFac
 
@@ -229,13 +227,11 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 			}
 
 			if match || s.Config.ATC.ListenAllFreqs {
-				log.Printf("User on same frequency as aircraft %s - sending for phrase generation (listen all frequencies is %v)",
-					 acSnap.Registration, s.Config.ATC.ListenAllFreqs)
+				util.LogWithLabel(acSnap.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
 				s.Channel <- acSnap
 				return
 			} else {
-				log.Printf("User not on same frequency as aircraft %s - audio will not be generated", 
-					acSnap.Registration)
+				util.LogWithLabel(acSnap.Registration, "User not on same frequency - audio will not be generated")
 			}
 		}
 	}()
@@ -281,134 +277,134 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
 			s.UserState.NearestICAO = controller.ICAO
-			log.Printf("Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq,
+			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq,
 				controller.Name, controller.ICAO, controller.RoleID)
 		} else {
-			log.Printf("No nearby controller found for user on COM%d %d", idx, uFreq)
+			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "No nearby controller found for user on COM%d %d", idx, uFreq)
 		}
 	}
 }
 
 func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
-    var bestMatch *Controller
-    closestDist := math.MaxFloat64
-    smallestArea := math.MaxFloat64
+	var bestMatch *Controller
+	closestDist := math.MaxFloat64
+	smallestArea := math.MaxFloat64
 
-	log.Printf("Searching for %s at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
-		label, uLa, uLo, uAl, tRole, tFreq, targetICAO)
-        
-    for i := range s.Database {
-        c := &s.Database[i]
+	util.LogWithLabel(label, "Searching at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
+		uLa, uLo, uAl, tRole, tFreq, targetICAO)
 
-        // 1. CORE FILTERS (Fastest exclusions)
-        // If we have a target airport ICAO, ignore everything else
-        if targetICAO != "" && c.ICAO != targetICAO {
-            continue
-        }
+	for i := range s.Database {
+		c := &s.Database[i]
 
-        // Filter by Role (Ground, Tower, Center, etc.)
-        if tRole > 0 && c.RoleID != tRole {
-            continue
-        }
+		// 1. CORE FILTERS (Fastest exclusions)
+		// If we have a target airport ICAO, ignore everything else
+		if targetICAO != "" && c.ICAO != targetICAO {
+			continue
+		}
 
-        // Filter by Frequency (normalized for X-Plane 10hz shifts)
-        if tFreq > 0 {
-            fMatch := false
-            for _, f := range c.Freqs {
-                if f/10 == tFreq/10 {
-                    fMatch = true
-                    break
-                }
-            }
-            if !fMatch {
-                continue
-            }
-        }
+		// Filter by Role (Ground, Tower, Center, etc.)
+		if tRole > 0 && c.RoleID != tRole {
+			continue
+		}
 
-        // 2. POLYGON MATCHING (Priority: Airspace Boundaries)
-        if len(c.Airspaces) > 0 {
-            for _, poly := range c.Airspaces {
-                // Vertical Check: Skip if aircraft is outside floor/ceiling
-                // Handles -99999 (SFC) and 99999 (UNL)
-                if poly.Floor != -99999 || poly.Ceiling != 99999 {
-                    if uAl < poly.Floor || uAl > poly.Ceiling {
-                        continue
-                    }
-                }
+		// Filter by Frequency (normalized for X-Plane 10hz shifts)
+		if tFreq > 0 {
+			fMatch := false
+			for _, f := range c.Freqs {
+				if f/10 == tFreq/10 {
+					fMatch = true
+					break
+				}
+			}
+			if !fMatch {
+				continue
+			}
+		}
 
-                // Minimum Bounding Box (MBB) Filter: Extremely fast float comparison
-                // Handle dateline crossing: If MinLon > MaxLon, the box wraps around
-                isInsideMBB := false
-                if poly.MinLon <= poly.MaxLon {
-                    // Standard case
-                    isInsideMBB = uLo >= poly.MinLon && uLo <= poly.MaxLon
-                } else {
-                    // Dateline wrap-around case
-                    isInsideMBB = uLo >= poly.MinLon || uLo <= poly.MaxLon
-                }
+		// 2. POLYGON MATCHING (Priority: Airspace Boundaries)
+		if len(c.Airspaces) > 0 {
+			for _, poly := range c.Airspaces {
+				// Vertical Check: Skip if aircraft is outside floor/ceiling
+				// Handles -99999 (SFC) and 99999 (UNL)
+				if poly.Floor != -99999 || poly.Ceiling != 99999 {
+					if uAl < poly.Floor || uAl > poly.Ceiling {
+						continue
+					}
+				}
 
-                if isInsideMBB && uLa >= poly.MinLat && uLa <= poly.MaxLat {
-                    // Only run expensive ray-casting if inside MBB
-                    if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
-                        // Tie-breaker: Smaller areas (specific sectors) beat larger areas (FIRs)
-                        if poly.Area < smallestArea {
-                            smallestArea = poly.Area
-                            bestMatch = c
-                        }
-                    }
-                }
-            }
-        }
+				// Minimum Bounding Box (MBB) Filter: Extremely fast float comparison
+				// Handle dateline crossing: If MinLon > MaxLon, the box wraps around
+				isInsideMBB := false
+				if poly.MinLon <= poly.MaxLon {
+					// Standard case
+					isInsideMBB = uLo >= poly.MinLon && uLo <= poly.MaxLon
+				} else {
+					// Dateline wrap-around case
+					isInsideMBB = uLo >= poly.MinLon || uLo <= poly.MaxLon
+				}
 
-        // 3. POINT MATCHING (Fallback & Airport Proximity)
-        // Check physical distance to the controller's reference point
-        if c.IsPoint {
-            dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
-            
-            // Standard VHF ranges: 60nm for local, 250nm for Enroute/Center
-            maxRange := 60.0
-            if c.RoleID >= 5 {
-                maxRange = 250.0
-            }
+				if isInsideMBB && uLa >= poly.MinLat && uLa <= poly.MaxLat {
+					// Only run expensive ray-casting if inside MBB
+					if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
+						// Tie-breaker: Smaller areas (specific sectors) beat larger areas (FIRs)
+						if poly.Area < smallestArea {
+							smallestArea = poly.Area
+							bestMatch = c
+						}
+					}
+				}
+			}
+		}
 
-            if dist < maxRange {
-                // TIE-BREAKER LOGIC:
-                // 1. If within 2nm, assume airport operations (Tower/Gnd). This wins everything.
-                if dist < 2.0 {
-                    if dist < closestDist {
-                        closestDist = dist
-                        smallestArea = 0 // Point beats any Polygon
-                        bestMatch = c
-                    }
-                } else if smallestArea == math.MaxFloat64 {
-                    // 2. If no polygon match was found, pick the closest point
-                    if dist < closestDist {
-                        closestDist = dist
-                        bestMatch = c
-                    }
-                }
-            }
-        }
-    }
+		// 3. POINT MATCHING (Fallback & Airport Proximity)
+		// Check physical distance to the controller's reference point
+		if c.IsPoint {
+			dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 
-    return bestMatch
+			// Standard VHF ranges: 60nm for local, 250nm for Enroute/Center
+			maxRange := 60.0
+			if c.RoleID >= 5 {
+				maxRange = 250.0
+			}
+
+			if dist < maxRange {
+				// TIE-BREAKER LOGIC:
+				// 1. If within 2nm, assume airport operations (Tower/Gnd). This wins everything.
+				if dist < 2.0 {
+					if dist < closestDist {
+						closestDist = dist
+						smallestArea = 0 // Point beats any Polygon
+						bestMatch = c
+					}
+				} else if smallestArea == math.MaxFloat64 {
+					// 2. If no polygon match was found, pick the closest point
+					if dist < closestDist {
+						closestDist = dist
+						bestMatch = c
+					}
+				}
+			}
+		}
+	}
+
+	return bestMatch
 }
 
 func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
-    var closestICAO string
-    minDist := 4.0 // 4 Nautical Miles threshold
+	var closestICAO string
+	minDist := 4.0 // 4 Nautical Miles threshold
 
-    for icao, coords := range s.AirportLocations {
-        // Using your existing DistNM function here
-        dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
-        
-        if dist < minDist {
-            minDist = dist
-            closestICAO = icao
-        }
-    }
+	for icao, coords := range s.AirportLocations {
+		// Using your existing DistNM function here
+		dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
 
-    return closestICAO 
+		if dist < minDist {
+			minDist = dist
+			closestICAO = icao
+		}
+	}
+
+	return closestICAO
 }
 
 func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
@@ -465,14 +461,13 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	}
 
 	if len(candidateScheds) == 0 {
-		log.Printf("no active flight plan found for registration %s flight no. %d days %d and %d",
-			ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
+		util.LogWithLabel(ac.Registration, "no active flight plan found for flight no. %d days %d and %d",
+			ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		if s.Config.ATC.StrictFlightPlanMatch {
 			return
 		}
 		// fallback to find by tail number and flight only, on any day and time
-		log.Printf("find inactive flight plan for registration %s flight no. %d",
-			ac.Registration, ac.Flight.Number)
+		util.LogWithLabel(ac.Registration, "find inactive flight plan for flight no. %d", ac.Flight.Number)
 		for i := simTodayDayOfWeek; i <= (simTodayDayOfWeek + 6); i++ {
 			day := i % 7
 			key := fmt.Sprintf("%s_%d_%d", ac.Registration, ac.Flight.Number, day)
@@ -485,8 +480,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 		}
 
 		if len(candidateScheds) == 0 {
-			log.Printf("no inactive flight plan found for registration %s flight no. %d",
-				ac.Registration, ac.Flight.Number)
+			util.LogWithLabel(ac.Registration, "no inactive flight plan found for flight no. %d", ac.Flight.Number)
 			return
 		}
 	}
@@ -494,10 +488,9 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	// there should only be one flight in the candidates, but capturing instances where
 	// there is multiple for diagnostics
 	if len(candidateScheds) > 1 {
-		log.Printf("multiple (%d) flight plans found for registration %s flight number %d days %d and %d",
-			len(candidateScheds), ac.Registration, ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
+		util.LogWithLabel(ac.Registration, "multiple (%d) flight plans found for flight number %d days %d and %d", len(candidateScheds), ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		for i, c := range candidateScheds {
-			log.Printf("duplicate flight %d of %d: %v - will try again to determine orgin/dest on flight phase changes", i+1, len(candidateScheds), c)
+			util.LogWithLabel(ac.Registration, "duplicate flight %d of %d: %v - will try again to determine origin/dest on flight phase changes", i+1, len(candidateScheds), c)
 		}
 		return
 	}
@@ -507,8 +500,8 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
 	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 100
 
-	log.Printf("reg %s flight no. %d origin %s", ac.Registration, ac.Flight.Number, ac.Flight.Origin)
-	log.Printf("reg %s flight no. %d destination %s (cruise alt: %d)", ac.Registration, ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
+	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
+	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
 
 }
 
@@ -521,19 +514,16 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 		if ph.Previous == trafficglobal.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
-				log.Printf("WARN: no origin/destination for parked aircraft %s flight %d - unable to determine flight phase classification", 
-					ac.Registration, ac.Flight.Number)
+				util.LogWithLabel(ac.Registration, "WARN: no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
 				ph.Class = Unknown
 			}
 			currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
 			if ac.Flight.Destination == currAirport {
-				log.Printf("%s flight %d is parked at destination airport %s", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Destination)
+				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
 				ph.Class = PostflightParked
 				return
 			} else {
-				log.Printf("%s flight %d is parked at origin airport %s", 
-					ac.Registration, ac.Flight.Number, ac.Flight.Origin)
+				util.LogWithLabel(ac.Registration, "flight %d is parked at origin airport %s", ac.Flight.Number, ac.Flight.Origin)
 				ph.Class = PreflightParked
 				return
 			}
@@ -542,18 +532,18 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 			return
 		}
 	case trafficglobal.Startup.Index(),
-			trafficglobal.TaxiOut.Index(),
-			trafficglobal.Depart.Index(),
-			trafficglobal.Climbout.Index():
+		trafficglobal.TaxiOut.Index(),
+		trafficglobal.Depart.Index(),
+		trafficglobal.Climbout.Index():
 		ph.Class = Departing
 		return
 	case trafficglobal.Approach.Index(),
-			trafficglobal.Holding.Index(),
-			trafficglobal.Final.Index(),
-			trafficglobal.GoAround.Index(),
-			trafficglobal.Braking.Index(),
-			trafficglobal.TaxiIn.Index(),
-			trafficglobal.Shutdown.Index():
+		trafficglobal.Holding.Index(),
+		trafficglobal.Final.Index(),
+		trafficglobal.GoAround.Index(),
+		trafficglobal.Braking.Index(),
+		trafficglobal.TaxiIn.Index(),
+		trafficglobal.Shutdown.Index():
 		ph.Class = Arriving
 		return
 	case trafficglobal.Cruise.Index():
@@ -565,14 +555,14 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
 	switch phaseClass {
-		case PreflightParked, Departing:
-			return ac.Flight.Origin
-		case Cruising:
-			return "" // This forces the coordinate/polygon distance search
-		case Arriving, PostflightParked:
-			return ac.Flight.Destination
-		default:
-			return ""
+	case PreflightParked, Departing:
+		return ac.Flight.Origin
+	case Cruising:
+		return "" // This forces the coordinate/polygon distance search
+	case Arriving, PostflightParked:
+		return ac.Flight.Destination
+	default:
+		return ""
 	}
 }
 
@@ -580,21 +570,21 @@ func normalizeFreq(fRaw int) int {
 	if fRaw == 0 {
 		return 0
 	}
-	
+
 	f := fRaw
-	// X-Plane frequencies in apt.dat are often missing the trailing zero 
-	// or decimal precision. We want to scale everything to 1xx.xxx format 
+	// X-Plane frequencies in apt.dat are often missing the trailing zero
+	// or decimal precision. We want to scale everything to 1xx.xxx format
 	// represented as an integer (e.g., 118050).
-	
+
 	for f < 100000 {
 		f *= 10
 	}
-	
-	// If the frequency ended up like 1180000 (too large), 
+
+	// If the frequency ended up like 1180000 (too large),
 	// we trim it back down.
 	for f > 999999 {
 		f /= 10
 	}
-	
+
 	return f
 }
