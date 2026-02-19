@@ -1,7 +1,7 @@
 package atc
 
 import (
-	"fmt"
+	
 	"os"
 	"testing"
 	"time"
@@ -16,32 +16,52 @@ func init() {
 }
 
 func TestPerformSearch(t *testing.T) {
+    // Note: Gatwick (EGKK) is NOT in requiredAirports, but 
+    // Role 6 (Center) is loaded regardless of the airport filter.
+    requiredAirports := map[string]bool{"EGLL": true, "EGKA": true}
+    atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
 
-	requiredAirports := map[string]bool{"EGLL":true, "EGKA":true}
-	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
+    tests := []struct {
+        label      string
+        f, r       int
+        la, lo, al float64
+        icao       string
+        expectedICAO string
+        expectedRole int
+    }{
+        {"Heathrow Ground (Proximity)", 0, 2, 51.4706, -0.4522, 1000.0, "", "EGLL", 2},
+        {"Heathrow Ground (Freq)", 121905, 2, 51.4706, -0.4522, 1000.0, "", "EGLL", 2},
+        {"Heathrow Tower (Freq)", 118505, 3, 51.4706, -0.4522, 1000.0, "", "EGLL", 3},
+        {"London Center (Polygon)", 0, 6, 51.5, -0.1, 20000.0, "", "EGTT", 6},
+        {"Shoreham Ground (Proximity)", 0, 2, 50.835, -0.297, 50.0, "", "EGKA", 2},
+        {"Gatwick Arrival via Southampton (Polygon)", 0, 6, 50.95, -1.35, 15000.0, "", "EGTT", 6},
+		{"Shanwick Oceanic (Polygon Match)", 0, 6, 45.0, -25.0, 35000.0, "", "EGGX", 6},
+		{"Southern Ocean Void (No Match)", 0, 6, -80.0, 60.0, 35000.0, "", "NONE", 0},
+    }
 
-	tests := []struct {
-		label      string
-		f, r       int
-		la, lo, al float64
-		icao       string
-	}{
-		{"Heathrow Ground (Proximity Match)", 0, 2, 51.4706, -0.4522, 1000.0, ""},
-		{"Heathrow Ground (Freq Match)", 121905, 2, 51.4706, -0.4522, 1000.0, ""},
-		{"Heathrow Tower (Freq Match)", 118505, 3, 51.4706, -0.4522, 1000.0, ""},
-		{"London Center (Polygon Match)", 0, 6, 51.5, -0.1, 20000.0, ""},
-		{"Shoreham Ground (Proximity Match)", 0, 2, 50.835, -0.297, 50.0, ""},
-	}
+    for _, tc := range tests {
+		t.Run(tc.label, func(t *testing.T) {
+			m := atcService.LocateController(tc.label, tc.f, tc.r, tc.la, tc.lo, tc.al, tc.icao)
+			
+			// Handle the "No Match Expected" case
+			if tc.expectedICAO == "NONE" {
+				if m != nil {
+					t.Errorf("%s: Expected nil (no coverage), but got %s (%s)", tc.label, m.Name, m.ICAO)
+				}
+				return // Test passed!
+			}
 
-	for _, t := range tests {
-		m := atcService.LocateController(t.label, t.f, t.r, t.la, t.lo, t.al, t.icao)
-		if m != nil {
-			fmt.Printf("FINAL RESULT: %s (%s) %d\n\n", m.Name, m.ICAO, m.Freqs[0])
-		} else {
-			fmt.Printf("FINAL RESULT: NO MATCH\n\n")
-		}
-	}
+			// Handle standard match cases
+			if m == nil {
+				t.Errorf("%s: Expected match for %s, got nil", tc.label, tc.expectedICAO)
+				return
+			}
 
+			if m.ICAO != tc.expectedICAO {
+				t.Errorf("%s: ICAO mismatch. Got %s, want %s", tc.label, m.ICAO, tc.expectedICAO)
+			}
+		})
+    }
 }
 
 func TestAddFlightPlan(t *testing.T) {
