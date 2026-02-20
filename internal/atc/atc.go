@@ -60,6 +60,8 @@ type config struct {
 	} `yaml:"atc"`
 }
 
+const RoleAny = -1
+
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
 
 	log.Println("Starting ATC service - loading all configurations")
@@ -349,7 +351,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 		// Proximity Match (within 15nm)
 		if dist < closestPointDist {
-			if tRole != -1 && c.RoleID != tRole { continue }
+			if tRole != RoleAny && c.RoleID != tRole { continue }
 			closestPointDist = dist
 			bestPointMatch = c
 		}
