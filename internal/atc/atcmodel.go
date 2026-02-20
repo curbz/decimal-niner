@@ -104,13 +104,14 @@ const (
 // | ATCMessage represents a single ATC communication message |
 // +----------------------------------------------------------+
 type ATCMessage struct {
-	ICAO        string
-	Callsign    string
-	Role        string
-	Text        string
-	FlightPhase int
-	Registration string
-	CountryCode string
+	ICAO        	string
+	Callsign    	string
+	Role        	string
+	Text        	string
+	FlightPhase 	int
+	Registration 	string
+	CountryCode 	string
+	ControllerName	string
 }
 
 // +------------------------------+

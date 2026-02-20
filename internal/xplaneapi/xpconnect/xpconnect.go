@@ -676,9 +676,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		// check for flight phase changes
 		for _, ac := range xpc.aircraftMap {
 			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
-				util.LogWithLabel(ac.Registration, "flight %d changed phase from %d to %d. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f",
+				util.LogWithLabel(ac.Registration, 
+					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d", 
 					ac.Flight.Number, ac.Flight.Phase.Previous, ac.Flight.Phase.Current,
-					ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude)
+					ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, int(ac.Flight.Position.Heading))
 				ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
 				xpc.atcService.NotifyAircraftChange(ac)

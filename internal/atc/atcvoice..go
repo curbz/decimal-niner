@@ -54,13 +54,12 @@ type Sox struct {
 
 // PreparedAudio holds a ready-to-play piper command and its metadata
 type PreparedAudio struct {
-	PiperCmd   *exec.Cmd
-	PiperOut   io.ReadCloser
-	SampleRate int
-	NoiseType  string
-	Msg        ATCMessage
-	MsgLabel   string
-	Voice      string
+	PiperCmd   		*exec.Cmd
+	PiperOut   		io.ReadCloser
+	SampleRate 		int
+	NoiseType  		string
+	Msg        		ATCMessage
+	Voice      		string
 }
 
 var radioQueue chan ATCMessage
@@ -137,9 +136,6 @@ func loadPhrases(cfg *config) PhraseClasses {
 	if err != nil {
 		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
 	}
-
-	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
-	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
 	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
 	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                       // Converts Piper Process -> Speakers
@@ -356,8 +352,8 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	phrase = translateNumerics(phrase)
 
 	// send message to radio queue
-	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign,
-		role, phrase, ac.Flight.Phase.Current, ac.Registration, ac.Flight.Comms.CountryCode,
+	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign, role,
+		phrase, ac.Flight.Phase.Current, ac.Registration, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
 	}
 }
 
@@ -428,7 +424,8 @@ func RadioPlayer(soxPath string) {
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
-		util.LogWithLabel(audio.Msg.Registration+"_"+audio.Msg.Role, "%s (%s)", audio.Msg.Text, audio.Voice)
+		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.Registration, strings.ToUpper(audio.Msg.Role), strings.ReplaceAll(audio.Msg.ControllerName, " ", "")), 
+				"%s (%s)", audio.Msg.Text, audio.Voice)
 
 		err := playCmd.Start()
 		if err != nil {
@@ -652,7 +649,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }
 
-// generateClearance builds a clearance phrase
+// generateClearance builds an altitude clearance phrase
 // one of "descend to", "maintain", "climb to"
 func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 

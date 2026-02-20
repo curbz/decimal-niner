@@ -291,7 +291,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	smallestArea := math.MaxFloat64
 	closestPointDist := 15.0 // Increased to 15nm for Approach coverage
 
-	util.LogWithLabel(label, "Searching at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
+	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
 		uLa, uLo, uAl, tRole, tFreq, targetICAO)
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency + Role) ---
