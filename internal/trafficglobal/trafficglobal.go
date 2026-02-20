@@ -31,6 +31,25 @@ const (
 	Holding              // 12 - Holding (waiting for a flow to complete changing)
 )
 
+func (fp FlightPhase) String() string {
+	return [...]string{
+		"Unknown",
+		"Cruise",
+		"Approach",
+		"Final",
+		"Taxi_In",
+		"Shutdown",
+		"Parked",
+		"Startup",
+		"Taxi_Out",
+		"Depart",
+		"Go_Around",
+		"Climbout",
+		"Braking",
+		"Holding",
+	}[fp+1]
+}
+
 const (
 	LEG_SIZE    = 16
 	ICAO_OFFSET = 9

@@ -165,7 +165,9 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 
 	// set flight phase classification
 	s.setFlightPhaseClass(ac)
-	util.LogWithLabel(ac.Registration, "flight %d phase classified as %d", ac.Flight.Number, ac.Flight.Phase.Class)
+	util.LogWithLabel(ac.Registration, "flight %d phase classified as %s", 
+						ac.Flight.Number, 
+						ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
 	if ac.Flight.Phase.Class == PostflightParked {
@@ -191,24 +193,35 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		// Identify AI's intended facility
 		searchICAO := airportICAObyPhaseClass(acSnap, acSnap.Flight.Phase.Class)
 		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
-		aiRole := phaseFacility.roleId
-		aiFac := s.LocateController(
-			acSnap.Registration, // <-- TODO append "_<role_string>"
-			0, aiRole,           // Search by role, any freq
-			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
 
-		// Fallback: If no controller found, look for Unicom (Role 0)
+		aiFac := s.LocateController(
+			acSnap.Registration, 
+			0, phaseFacility.roleId, 
+			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, 
+			searchICAO)
+
+		// If we are in Cruise but looking for Center (6) and find nothing, 
+		// try looking for Departure (4) as a fallback before going to Unicom.
+		if aiFac == nil && phaseFacility.roleId == 6 {
+			aiFac = s.LocateController(acSnap.Registration+"_CruiseFallback", 0, 4, 
+				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
+		}
+
+		// Fallback: If no controller found (e.g. at a small grass strip), 
+		// look specifically for Unicom (Role 0) at that airport first, then generally.
 		if aiFac == nil {
 			aiFac = s.LocateController(acSnap.Registration+"_Unicom", 0, 0,
+				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
+		}
+
+		// Final Global Fallback (Unicom anywhere nearby)
+		if aiFac == nil {
+			aiFac = s.LocateController(acSnap.Registration+"_GlobalUnicom", 0, 0,
 				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
 		}
 
-		if aiFac == nil {
-			util.LogWithLabel(acSnap.Registration, "No suitable ATC facility found for AI aircraft: %v", acSnap)
-			return
-		}
-
-		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role ID: %d", aiFac.Name, aiFac.ICAO, aiFac.RoleID)
+		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role: %s (%d)", 
+								aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
 
 		acSnap.Flight.Comms.Controller = aiFac
 
@@ -277,8 +290,8 @@ func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
 			s.UserState.NearestICAO = controller.ICAO
-			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "Controller found for user on COM%d %d: %s %s Role ID: %d", idx, uFreq,
-				controller.Name, controller.ICAO, controller.RoleID)
+			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "Controller found for user on COM%d %d: %s %s Role: %s (%d)", idx, uFreq,
+				controller.Name, controller.ICAO, roleNameMap[controller.RoleID], controller.RoleID)
 		} else {
 			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "No nearby controller found for user on COM%d %d", idx, uFreq)
 		}
@@ -289,54 +302,69 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	var bestMatch *Controller
 	var bestPointMatch *Controller
 	smallestArea := math.MaxFloat64
-	closestPointDist := 15.0 // Increased to 15nm for Approach coverage
+	closestPointDist := 15.0 
 
-	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %d  Tuned Freq: %d  Target ICAO: %s",
-		uLa, uLo, uAl, tRole, tFreq, targetICAO)
+	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %s (%d)  Tuned Freq: %d  Target ICAO: %s",
+		uLa, uLo, uAl, roleNameMap[tRole], tRole, tFreq, targetICAO)
 
-	// --- TIER 1: SCAN POINTS (Proximity + Frequency + Role) ---
+	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
+	// If a specific airport ICAO is requested, we only look at points for that airport.
+	if targetICAO != "" {
+		for i := range s.Database {
+			c := &s.Database[i]
+			if c.ICAO == targetICAO && c.IsPoint {
+				// If we also have a specific role (e.g., Tower), match it exactly.
+				if tRole != -1 && c.RoleID == tRole {
+					return c
+				}
+				// Otherwise, keep the first match for this airport as a fallback.
+				if bestPointMatch == nil {
+					bestPointMatch = c
+				}
+			}
+		}
+		if bestPointMatch != nil { return bestPointMatch }
+	}
+
+	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
 	for i := range s.Database {
 		c := &s.Database[i]
 		if !c.IsPoint { continue }
 
 		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 		
-		// 1. If we have a tuned frequency, it MUST be within range (e.g., 100nm)
-		// This prevents Tokyo matching Cape Town.
+		// Frequency Gate: 100nm limit to prevent global frequency bleed.
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
 				if f/10 == tFreq/10 { fMatch = true; break }
 			}
 			if fMatch && dist < 100.0 {
-				// Perfect match: Frequency + Proximity + Role
-				if tRole == 0 || c.RoleID == tRole { return c }
-				// Good match: Frequency + Proximity (wrong role, keep as fallback)
+				if tRole != -1 && c.RoleID == tRole { return c }
 				bestPointMatch = c
 				closestPointDist = dist
 			}
 			continue 
 		}
 
-		// 2. No frequency tuned? Use pure Proximity + Role
+		// Proximity Match (within 15nm)
 		if dist < closestPointDist {
-			if tRole > 0 && c.RoleID != tRole { continue }
+			if tRole != -1 && c.RoleID != tRole { continue }
 			closestPointDist = dist
 			bestPointMatch = c
 		}
 	}
 
-	// If we are low or found a solid airport match, return it
+	// High priority for airport facilities if low or frequency matched
 	if (uAl < 5000 || tFreq > 0) && bestPointMatch != nil {
 		return bestPointMatch
 	}
 
-	// --- TIER 2: SCAN POLYGONS ---
+	// --- TIER 2: SCAN POLYGONS (Center/Oceanic) ---
 	for i := range s.Database {
 		c := &s.Database[i]
 		if len(c.Airspaces) == 0 { continue }
 
-		// If a frequency is tuned, only check polygons matching that frequency
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
@@ -348,7 +376,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 		for _, poly := range c.Airspaces {
 			if uAl < poly.Floor || uAl > poly.Ceiling { continue }
 
-			// Dateline-aware MBB
+			// Dateline-aware MBB Check
 			isInside := false
 			if poly.MinLon <= poly.MaxLon {
 				isInside = uLo >= poly.MinLon && uLo <= poly.MaxLon
@@ -359,8 +387,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 			if isInside && uLa >= poly.MinLat && uLa <= poly.MaxLat {
 				if geometry.IsPointInPolygon(uLa, uLo, poly.Points) {
 					if poly.Area < smallestArea {
-						// Final Role Check for polygons
-						if tRole == 0 || c.RoleID == tRole {
+						if tRole == -1 || c.RoleID == tRole {
 							smallestArea = poly.Area
 							bestMatch = c
 						}

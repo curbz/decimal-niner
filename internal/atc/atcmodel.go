@@ -78,7 +78,7 @@ type Position struct {
 
 type Phase struct {
 	Class      PhaseClass
-	Current    int
+	Current    int // TODO: Current and Previous should really be FlightPhase type
 	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition time.Time
 }
@@ -99,6 +99,17 @@ const (
 	Arriving			// 3 = all flight phases from approach to shutdown
 	PostflightParked	// 4            
 )
+
+func (fc PhaseClass) String() string {
+	return [...]string{
+		"Unknown",
+		"PreflightParked",
+		"Departing",
+		"Cruising",
+		"Arriving",
+		"PostflightParked",
+	}[fc+1]
+}
 
 // +----------------------------------------------------------+
 // | ATCMessage represents a single ATC communication message |

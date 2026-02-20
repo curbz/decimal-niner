@@ -797,14 +797,17 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	// Locate the "Next" controller
 	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
 	pos := ac.Flight.Position
-	nextController := s.LocateController(ac.Registration+"_HANDOFF",
+	label := fmt.Sprintf("%s_HANDOFF", ac.Registration)
+	nextController := s.LocateController(label,
 		0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
 
 	if nextController == nil {
-		util.LogWithLabel(ac.Registration, "No controller found for handoff: role=%d, searchICAO=%s", nextRole, searchICAO)
+		util.LogWithLabel(label, "No controller found for handoff: role=%s (%d), searchICAO=%s", 
+				roleNameMap[nextRole], nextRole, searchICAO)
 		return ""
 	} else {
-		util.LogWithLabel(ac.Registration, "Controller found: %s %s Role ID: %d", nextController.Name, nextController.ICAO, nextController.RoleID)
+		util.LogWithLabel(label, "Controller found: %s %s Role ID: %s (%d)", 
+				nextController.Name, nextController.ICAO, roleNameMap[nextController.RoleID], nextController.RoleID)
 	}
 
 	// select controller's first listed frequency

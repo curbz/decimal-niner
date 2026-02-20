@@ -324,16 +324,15 @@ var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility {
 }
 
 var roleNameMap = map[int]string {
-	0: "None",
-	1: "Delivery",
-	2: "Ground",
-	3: "Tower",
-	4: "Departure",
-	5: "Approach",
-	6: "Center",
-	7: "Flight Service",
-	8: "AWOS/ASOS/ATIS",
-	9: "Unicom",  //TODO: shoud Unicom be 0?
+    0: "Unicom",    // Mapped from 1051
+    1: "Delivery",  // Mapped from 1052
+    2: "Ground",    // Mapped from 1053
+    3: "Tower",     // Mapped from 1054
+    4: "Departure", // Mapped from 1056
+    5: "Approach",  // Mapped from 1055
+    6: "Center",    // Mapped from 1050
+    7: "FSS",
+    8: "ATIS",
 }
 
 var handoffMap = map[trafficglobal.FlightPhase]int{
