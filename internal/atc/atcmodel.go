@@ -116,11 +116,9 @@ func (fc PhaseClass) String() string {
 // +----------------------------------------------------------+
 type ATCMessage struct {
 	ICAO        	string
-	Callsign    	string
+	AircraftSnap    *Aircraft
 	Role        	string
 	Text        	string
-	FlightPhase 	int
-	Registration 	string
 	CountryCode 	string
 	ControllerName	string
 }

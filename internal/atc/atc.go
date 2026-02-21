@@ -31,6 +31,7 @@ type Service struct {
 	DataProvider     simdata.SimDataProvider
 	SimInitTime      time.Time
 	SessionInitTime  time.Time
+	VoiceManager	 *VoiceManager
 }
 
 type ServiceInterface interface {
@@ -124,8 +125,10 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
-	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                       // Converts Piper Process -> Speakers
+	vm := NewVoiceManager(cfg.ATC.Voices.Piper.VoiceDirectory)
+
+	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) 
+	go RadioPlayer(cfg.ATC.Voices.Sox.Application)     
 
 	return &Service{
 		Config:           cfg,
@@ -136,11 +139,16 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		AirportLocations: airportLocations,
 		FlightSchedules:  fScheds,
 		Weather:          &Weather{Wind: Wind{}, Baro: Baro{}},
+		VoiceManager:     vm,
 	}
 }
 
 func (s *Service) Run() {
 	s.startComms()
+	go s.VoiceManager.startCleaner(30*time.Second, func() (float64, float64) {
+		us := s.GetUserState()
+		return us.Position.Lat, us.Position.Long
+	})
 }
 
 func (s *Service) SetDataProvider(dp simdata.SimDataProvider) {

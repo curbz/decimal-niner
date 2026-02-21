@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -66,12 +65,9 @@ var radioQueue chan ATCMessage
 var prepQueue chan PreparedAudio
 
 var sessionVoices = make(map[string]string)
-var sessionMutex sync.Mutex
 
 var countryVoicePools map[string][]string
 var regionVoicePools map[string][]string
-
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
@@ -136,9 +132,6 @@ func loadPhrases(cfg *config) PhraseClasses {
 	if err != nil {
 		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
 	}
-
-	go PrepSpeech(cfg.ATC.Voices.Piper.Application, cfg.ATC.Voices.Piper.VoiceDirectory) // Converts Text -> Piper Process
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)                                       // Converts Piper Process -> Speakers
 
 	return PhraseClasses{
 		phrases:       phrases,
@@ -267,6 +260,11 @@ func (s *Service) startComms() {
 					s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				}
 			}
+
+			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no further communications and this allows for quicker recycling of voices in busy airspaces. For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
+			if ac.Flight.Phase.Current == trafficglobal.Shutdown.Index() {
+    			s.VoiceManager.ReleaseSession(ac)
+			}
 		}
 	}()
 }
@@ -358,18 +356,18 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	phrase = translateNumerics(phrase)
 
 	// send message to radio queue
-	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac.Flight.Comms.Callsign, role,
-		phrase, ac.Flight.Phase.Current, ac.Registration, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
+	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
+		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
 	}
 }
 
 // PrepSpeech picks up text and starts the Piper process immediately
-func PrepSpeech(piperPath, voiceDir string) {
+func PrepSpeech(piperPath string, vm *VoiceManager) {
 	for msg := range radioQueue {
 
 		//log.Printf("Processing message: %s", msg.Text)
 
-		voice, onnx, rate, noise := resolveVoice(msg, voiceDir)
+		voice, onnx, rate, noise := vm.ResolveVoice(msg)
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
 		stdin, err := cmd.StdinPipe()
@@ -430,7 +428,8 @@ func RadioPlayer(soxPath string) {
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
-		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.Registration, strings.ToUpper(audio.Msg.Role), strings.ReplaceAll(audio.Msg.ControllerName, " ", "")), 
+		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role), 
+				strings.ReplaceAll(audio.Msg.ControllerName, " ", "")), 
 				"%s (%s)", audio.Msg.Text, audio.Voice)
 
 		err := playCmd.Start()
@@ -454,117 +453,6 @@ func RadioPlayer(soxPath string) {
 		randomMillis := rand.Intn(max-min+1) + min
 		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
 	}
-}
-
-func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string) {
-    sessionMutex.Lock()
-    defer sessionMutex.Unlock()
-
-    // 1. Symmetric Keying
-    key := msg.Callsign + "_PILOT"
-    partnerKey := msg.ICAO + "_" + msg.Role 
-    if msg.Role != "PILOT" {
-        key = msg.ICAO + "_" + msg.Role
-        partnerKey = msg.Callsign + "_PILOT"
-    }
-
-    selectedVoice, exists := sessionVoices[key]
-    if !exists {
-        partnerVoice := sessionVoices[partnerKey]
-        
-        // Helper to find a voice in a pool that isn't the partner
-        findNonPartner := func(pool []string) string {
-            if len(pool) == 0 { return "" }
-            
-            // Local copy to shuffle so we don't affect the global map order
-            localPool := make([]string, len(pool))
-            copy(localPool, pool)
-            rng.Shuffle(len(localPool), func(i, j int) { localPool[i], localPool[j] = localPool[j], localPool[i] })
-            
-            var bestEffort string
-            for _, v := range localPool {
-                if partnerVoice != "" && v == partnerVoice {
-                    continue // STRICT EXCLUSION
-                }
-
-                // Priority 1: Check if used by ANYONE globally
-                usedGlobally := false
-                for _, assigned := range sessionVoices {
-                    if assigned == v {
-                        usedGlobally = true
-                        break
-                    }
-                }
-
-                if !usedGlobally {
-                    return v 
-                }
-                
-                // Priority 2: Store first non-partner duplicate found
-                if bestEffort == "" {
-                    bestEffort = v
-                }
-            }
-            return bestEffort
-        }
-
-        // TIER 1: Exact Country Match
-        isoCountry, err := convertIcaoToIso(msg.CountryCode)
-        if err == nil {
-            selectedVoice = findNonPartner(countryVoicePools[isoCountry])
-        }
-
-        // TIER 2: Region Fallback (If no country pool OR only partner voice found in T1)
-        if selectedVoice == "" && len(msg.CountryCode) > 0 {
-            regionCode := msg.CountryCode[:1]
-            selectedVoice = findNonPartner(regionVoicePools[regionCode])
-            if selectedVoice != "" {
-                util.LogWithLabel(msg.Registration, "Using region fallback (%s) for voice", regionCode)
-            }
-        }
-
-        // TIER 3: Global Safety Net (Strict Zero-Collision Guarantee)
-        if selectedVoice == "" {
-            // Shuffle all available pools to find ANY non-partner voice
-            allKeys := make([]string, 0, len(countryVoicePools))
-            for k := range countryVoicePools { allKeys = append(allKeys, k) }
-            rng.Shuffle(len(allKeys), func(i, j int) { allKeys[i], allKeys[j] = allKeys[j], allKeys[i] })
-
-            for _, k := range allKeys {
-                selectedVoice = findNonPartner(countryVoicePools[k])
-                if selectedVoice != "" { 
-                    util.LogWithLabel(msg.Registration, "Strict fallback triggered: using voice from %s", k)
-                    break 
-                }
-            }
-        }
-
-        // Safety check: keying the result
-        if selectedVoice == "" {
-             // This only happens if total voices < 2
-             util.LogWithLabel(msg.Registration, "FATAL: No non-colliding voice found in any pool")
-             return "", "", 0, "" 
-        }
-
-        sessionVoices[key] = selectedVoice
-    }
-
-    // --- Asset Pathing & Metadata ---
-    onnxPath := filepath.Join(voiceDir, selectedVoice+".onnx")
-    noise := noiseType(msg.Role, msg.FlightPhase)
-    
-    // Sample rate logic remains the same
-    rate := 22050
-    if f, err := os.Open(onnxPath + ".json"); err == nil {
-        var cfg struct {
-            Audio struct { SampleRate int `json:"sample_rate"` }
-        }
-        json.NewDecoder(f).Decode(&cfg)
-        rate = cfg.Audio.SampleRate
-        f.Close()
-    }
-
-    return selectedVoice, onnxPath, rate, noise
 }
 
 func noiseType(role string, flightPhase int) string {

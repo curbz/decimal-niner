@@ -25,6 +25,7 @@ func setupLocaleMockPools() {
 func TestResolveVoiceAirtight(t *testing.T) {
     setupLocaleMockPools()
     voiceDir := "./test_voices"
+	vm := NewVoiceManager(voiceDir)
 
     // TEST 1: The "Pilot Blindspot"
     t.Run("Pilot Should Not Mimic Controller", func(t *testing.T) {
@@ -32,15 +33,27 @@ func TestResolveVoiceAirtight(t *testing.T) {
         
         // 1. Controller gets assigned first
         msgATC := ATCMessage{
-            Callsign: "EZY123", Role: "TOWER", ICAO: "EGKK", CountryCode: "EG",
+			AircraftSnap: &Aircraft{
+				Registration: "G-TEST1",
+				Flight: Flight{
+					Comms: Comms{Callsign: "EZY123"},
+				},
+			},	
+            Role: "TOWER", ICAO: "EGKK", CountryCode: "EG",
         }
-        atcVoice, _, _, _ := resolveVoice(msgATC, voiceDir)
+        atcVoice, _, _, _ := vm.ResolveVoice(msgATC)
 
         // 2. Pilot for the same flight resolves
         msgPilot := ATCMessage{
-            Callsign: "EZY123", Role: "PILOT", ICAO: "EGKK", CountryCode: "EG",
+						AircraftSnap: &Aircraft{
+				Registration: "G-TEST1",
+				Flight: Flight{
+					Comms: Comms{Callsign: "EZY123"},
+				},
+			},
+            Role: "PILOT", ICAO: "EGKK", CountryCode: "EG",
         }
-        pilotVoice, _, _, _ := resolveVoice(msgPilot, voiceDir)
+        pilotVoice, _, _, _ := vm.ResolveVoice(msgPilot)
 
         if pilotVoice == atcVoice {
             t.Errorf("CRITICAL FAIL: Pilot mimicked Controller (%s). Symmetry check failed.", pilotVoice)
@@ -56,12 +69,26 @@ func TestResolveVoiceAirtight(t *testing.T) {
         sessionVoices["PLANE_B_PILOT"] = "Voice_Beta"
 
         // New conversation: Pilot gets Voice_Alpha (reused duplicate)
-        msgP := ATCMessage{Callsign: "NEW1", Role: "PILOT", ICAO: "EGSS", CountryCode: "EG"}
-        pVoice, _, _, _ := resolveVoice(msgP, voiceDir)
+        msgP := ATCMessage{			
+				AircraftSnap: &Aircraft{
+					Registration: "G-TEST2",
+					Flight: Flight{
+						Comms: Comms{Callsign: "NEW1"},
+					},
+				}, 
+				Role: "PILOT", ICAO: "EGSS", CountryCode: "EG"}
+        pVoice, _, _, _ := vm.ResolveVoice(msgP)
 
         // Controller for NEW1 MUST NOT be Voice_Alpha, even though Voice_Beta is also used.
-        msgC := ATCMessage{Callsign: "NEW1", Role: "TOWER", ICAO: "EGSS", CountryCode: "EG"}
-        cVoice, _, _, _ := resolveVoice(msgC, voiceDir)
+        msgC := ATCMessage{
+				AircraftSnap: &Aircraft{
+					Registration: "G-TEST2",
+					Flight: Flight{
+						Comms: Comms{Callsign: "NEW1"},
+					},
+				}, 
+				Role: "TOWER", ICAO: "EGSS", CountryCode: "EG"}
+        cVoice, _, _, _ := vm.ResolveVoice(msgC)
 
         if pVoice == cVoice {
             t.Errorf("FAIL: Exhausted pool caused duplicate within conversation (%s)", pVoice)
@@ -72,11 +99,19 @@ func TestResolveVoiceAirtight(t *testing.T) {
 func TestResolveVoiceLocaleHierarchy(t *testing.T) {
     setupLocaleMockPools()
     voiceDir := "./test_voices"
+	vm := NewVoiceManager(voiceDir)
 
     // Country Match (Tier 1)
     t.Run("Exact Country Match", func(t *testing.T) {
-        msg := ATCMessage{CountryCode: "EG", Callsign: "BAW1", Role: "PILOT"}
-        voice, _, _, _ := resolveVoice(msg, voiceDir)
+        msg := ATCMessage{
+			AircraftSnap: &Aircraft{
+				Registration: "G-TEST3",
+					Flight: Flight{
+						Comms: Comms{Callsign: "BAW1"},
+					},
+				}, 
+			CountryCode: "EG", Role: "PILOT"}
+        voice, _, _, _ := vm.ResolveVoice(msg)
         
         // Should be British
         if voice != "British_1" && voice != "British_2" {
@@ -89,8 +124,15 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
     // but we have a "K" Region pool.
     t.Run("Region Fallback Match", func(t *testing.T) {
         // "K" is the country code for USA. icaoToIsoMap has it, but countryVoicePools does NOT.
-        msg := ATCMessage{CountryCode: "K", Callsign: "AAL1", Role: "PILOT"}
-        voice, _, _, _ := resolveVoice(msg, voiceDir)
+        msg := ATCMessage{
+				AircraftSnap: &Aircraft{
+					Registration: "G-TEST4",
+					Flight: Flight{
+						Comms: Comms{Callsign: "AAL1"},
+					},
+				}, 
+			CountryCode: "K", Role: "PILOT"}
+        voice, _, _, _ := vm.ResolveVoice(msg)
         
         if voice != "American_Region_1" && voice != "American_Region_2" {
             t.Errorf("Expected American Region voice for Country K fallback, got %s", voice)
@@ -101,8 +143,15 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
     // Scenario: An ICAO code we've never heard of (e.g., "ZZ"). 
     // Should pick a random country pool.
     t.Run("Total Fallback to Random", func(t *testing.T) {
-        msg := ATCMessage{CountryCode: "ZZ", Callsign: "UFO1", Role: "PILOT"}
-        voice, _, _, _ := resolveVoice(msg, voiceDir)
+        msg := ATCMessage{
+				AircraftSnap: &Aircraft{
+					Registration: "G-TEST5",
+					Flight: Flight{
+						Comms: Comms{Callsign: "UFO1"},
+					},
+				}, 
+			CountryCode: "ZZ", Role: "PILOT"}
+        voice, _, _, _ := vm.ResolveVoice(msg)
         
         if voice == "" {
             t.Error("Expected a random voice for unknown country, got empty string")
