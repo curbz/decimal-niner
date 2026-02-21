@@ -309,23 +309,33 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %s (%d)  Tuned Freq: %d  Target ICAO: %s",
 		uLa, uLo, uAl, roleNameMap[tRole], tRole, tFreq, targetICAO)
 
-	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
 	// If a specific airport ICAO is requested, we only look at points for that airport.
+	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
 	if targetICAO != "" {
+		var backupMatch *Controller
 		for i := range s.Database {
 			c := &s.Database[i]
 			if c.ICAO == targetICAO && c.IsPoint {
-				// If we also have a specific role (e.g., Tower), match it exactly.
+				// If it's an exact role match, we are done.
 				if tRole != -1 && c.RoleID == tRole {
 					return c
 				}
-				// Otherwise, keep the first match for this airport as a fallback.
-				if bestPointMatch == nil {
-					bestPointMatch = c
+				// If it's a wildcard search, any role at this ICAO is good.
+				if tRole == -1 {
+					return c
+				}
+				// Keep a backup in case we find NOTHING else, 
+				// but don't return it yet!
+				if backupMatch == nil {
+					backupMatch = c
 				}
 			}
 		}
-		if bestPointMatch != nil { return bestPointMatch }
+		// Only return the backup if we aren't specifically looking for 
+		// a different role (like Role 6).
+		if tRole == -1 && backupMatch != nil {
+			return backupMatch
+		}
 	}
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
@@ -335,17 +345,26 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 		
-		// Frequency Gate: 100nm limit to prevent global frequency bleed.
+		// Frequency Gate: If a frequency is tuned, it must match and be in range.
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
 				if f/10 == tFreq/10 { fMatch = true; break }
 			}
+			
 			if fMatch && dist < 100.0 {
+				// Perfect match: Freq + Role
 				if tRole != -1 && c.RoleID == tRole { return c }
-				bestPointMatch = c
-				closestPointDist = dist
+				
+				// Shared Freq Tie-breaker: Favour the "higher" RoleID (Tower/Center) 
+				// if no specific role was requested.
+				if bestPointMatch == nil || c.RoleID > bestPointMatch.RoleID {
+					bestPointMatch = c
+					closestPointDist = dist
+				}
 			}
+			// IMPORTANT: We skip proximity logic for this entry because we are in 
+			// "Frequency Mode."
 			continue 
 		}
 

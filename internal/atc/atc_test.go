@@ -122,6 +122,85 @@ func TestPerformSearchGlobal(t *testing.T) {
     }
 }
 
+func TestLocateControllerLogicTiers(t *testing.T) {
+    requiredAirports := map[string]bool{"EGLL": true, "EGLC": true}
+    s := New("config.yaml", nil, requiredAirports)
+
+    // Setup coordinates: Heathrow (EGLL)
+    lat, lon := 51.47, -0.45
+
+    tests := []struct {
+        label      string
+        tFreq      int
+        tRole      int
+        targetICAO string
+        expected   string
+        expRole    int
+    }{
+        // --- TIER 0: ICAO SHORTCUT ---
+        // Even if we are at Heathrow, if we ask for EGLC (London City), we should get it.
+        {"ICAO Shortcut (City Airport)", 0, 3, "EGLC", "EGLC", 3},
+        
+        // --- TIER 1: ROLE FILTERING ---
+        // Ask for Ground (2) specifically at Heathrow
+        {"Specific Role (Ground)", 0, 2, "EGLL", "EGLL", 2},
+        // Ask for Tower (3) specifically at Heathrow
+        {"Specific Role (Tower)", 0, 3, "EGLL", "EGLL", 3},
+
+        // --- TIER 1.5: THE "ANY" SENTINEL ---
+        // Using -1 should return the closest facility (likely Ground or Delivery at these coords)
+        {"Any Role Sentinel (-1)", 0, RoleAny, "EGLL", "EGLL", 1},
+
+        // --- TIER 2: FREQUENCY OVERRIDE ---
+        // Tune London City Tower freq (118.07) while sitting at Heathrow
+        {"Frequency Override", 118070, RoleAny, "", "EGLC", 3},
+
+        // --- TIER 3: POLYGON VS POINT ---
+        // At 35,000ft, ICAO shortcut should still work for the airport, 
+        // but a Role 6 request with no ICAO should hit the Center polygon.
+        {"High Altitude Center", 0, 6, "", "EGTT", 6},
+    }
+
+    for _, tc := range tests {
+        t.Run(tc.label, func(t *testing.T) {
+            // We use a fixed altitude for these logic tests
+            alt := 2000.0
+            if tc.label == "High Altitude Center" { alt = 35000.0 }
+
+            m := s.LocateController(tc.label, tc.tFreq, tc.tRole, lat, lon, alt, tc.targetICAO)
+            
+            if m == nil {
+                t.Fatalf("%s: Got nil, want %s", tc.label, tc.expected)
+            }
+            if m.ICAO != tc.expected {
+                t.Errorf("%s: ICAO mismatch. Got %s, want %s", tc.label, m.ICAO, tc.expected)
+            }
+            if tc.expRole != -1 && m.RoleID != tc.expRole {
+                t.Errorf("%s: Role mismatch. Got %d, want %d", tc.label, m.RoleID, tc.expRole)
+            }
+        })
+    }
+}
+
+func TestUnicomFallbackLogic(t *testing.T) {
+    // Let's use EGTF since we know it has a Role 3 in your data
+    s := New("config.yaml", nil, map[string]bool{"EGTF": true})
+    lat, lon := 51.35, -0.56
+
+    // 1. Search for a role we are SURE isn't there (e.g., Role 6 - Center)
+    // Even if it's Fairoaks, it shouldn't have a 'Center' point record.
+    m := s.LocateController("Fairoaks Center Point", 0, 6, lat, lon, 1000, "EGTF")
+    if m != nil && m.IsPoint {
+        t.Errorf("Expected nil for Fairoaks Center Point, got Role %d", m.RoleID)
+    }
+
+    // 2. Search for the role we now know exists (Role 3)
+    m = s.LocateController("Fairoaks Tower", 0, 3, lat, lon, 1000, "EGTF")
+    if m == nil || m.RoleID != 3 {
+        t.Errorf("Expected Tower (Role 3) for Fairoaks, got %v", m)
+    }
+}
+
 func TestAddFlightPlan(t *testing.T) {
 	tests := []struct {
 		name          string
