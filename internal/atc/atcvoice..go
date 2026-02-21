@@ -242,8 +242,10 @@ func (s *Service) startComms() {
 					}
 					// atc responds
 					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
-					// pilot reads back atc instructions
-					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					// pilot reads back atc instructions, but not for shutdown phase to avoid unecessary repetition
+					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() {
+						s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					}	
 				}
 			}
 

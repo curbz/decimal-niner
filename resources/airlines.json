@@ -399,6 +399,11 @@
     "callsign": "JORDANIAN",
     "icao_country_code": "OJ"
   },
+  "RYR": {
+    "airline_name": "Ryan Air",
+    "callsign": "RYANAIR",
+    "icao_country_code": "EG"
+  },
   "SAA": {
     "airline_name": "South African Airways",
     "callsign": "SPRINGBOK",
