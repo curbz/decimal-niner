@@ -184,6 +184,10 @@ func createVoicePools(path string) error {
 		log.Fatalf("no voice files found in folder %s", path)
 	}
 
+	if len(countryVoicePools) < 2 {
+		log.Fatalf("a minimum of 2 voice files are required in folder %s", path)
+	}
+
 	// create region voice pools
 	for k, v := range icaoToIsoMap {
 		cvp, cvpfound := countryVoicePools[v]
@@ -443,118 +447,122 @@ func RadioPlayer(soxPath string) {
 		}
 
 		// Small gap between transmissions
-		min := 400
-		max := 1200
+		min := 500
+		max := 1000
 		randomMillis := rand.Intn(max-min+1) + min
 		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
 	}
 }
 
-// resolveVoice handles all the mapping and collision logic
 func resolveVoice(msg ATCMessage, voiceDir string) (string, string, int, string) {
-	sessionMutex.Lock()
-	defer sessionMutex.Unlock()
+    sessionMutex.Lock()
+    defer sessionMutex.Unlock()
 
-	key := msg.Callsign + "_PILOT"
-	if msg.Role != "PILOT" {
-		key = msg.ICAO + "_" + msg.Role
-	}
+    // 1. Symmetric Keying
+    key := msg.Callsign + "_PILOT"
+    partnerKey := msg.ICAO + "_" + msg.Role 
+    if msg.Role != "PILOT" {
+        key = msg.ICAO + "_" + msg.Role
+        partnerKey = msg.Callsign + "_PILOT"
+    }
 
-	selectedVoice, exists := sessionVoices[key]
-	if !exists {
-		// assign voice logic
-		var pool []string
-		isoCountry, err := convertIcaoToIso(msg.CountryCode)
-		if err != nil {
-			//no country found - pick a random country
-			rKey := util.PickRandomFromMap(icaoToIsoMap).(string)
-			isoCountry = icaoToIsoMap[rKey]
-			util.LogWithLabel(msg.Registration, "icao country code '%s' not found, '%s' iso country code selected at random for voice",
-				msg.CountryCode, isoCountry)
-		}
-		var found bool
-		pool, found = countryVoicePools[isoCountry]
-		if !found {
-			// no country voice pool found, pick from region pool
-			regionCode := ""
-			if msg.CountryCode != "" {
-				regionCode = msg.CountryCode[:1]
-				pool, found = regionVoicePools[regionCode]
-			} else {
-				util.LogWithLabel(msg.Registration, "WARN: no country code provided in message, cannot determine region code: %v", msg)
-			}
-			if !found {
-				// no pool found for region, pick random pool
-				rKey := util.PickRandomFromMap(countryVoicePools).(string)
-				pool = countryVoicePools[rKey]
-				util.LogWithLabel(msg.Registration, "no voice pool found for icao region '%s', selected iso country '%s' at random for voice",
-					regionCode, rKey)
-			} else {
-				util.LogWithLabel(msg.Registration, "no voice pool found for iso country code '%s' not found, selected icoa region pool '%s' for voice",
-					isoCountry, regionCode)
-			}
-		}
+    selectedVoice, exists := sessionVoices[key]
+    if !exists {
+        partnerVoice := sessionVoices[partnerKey]
+        
+        // Helper to find a voice in a pool that isn't the partner
+        findNonPartner := func(pool []string) string {
+            if len(pool) == 0 { return "" }
+            
+            // Local copy to shuffle so we don't affect the global map order
+            localPool := make([]string, len(pool))
+            copy(localPool, pool)
+            rng.Shuffle(len(localPool), func(i, j int) { localPool[i], localPool[j] = localPool[j], localPool[i] })
+            
+            var bestEffort string
+            for _, v := range localPool {
+                if partnerVoice != "" && v == partnerVoice {
+                    continue // STRICT EXCLUSION
+                }
 
-		rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
-		selectedVoice = pool[0]
-		for _, v := range pool {
-			used := false
-			for _, assigned := range sessionVoices {
-				if assigned == v {
-					used = true
-					break
-				}
-			}
-			if !used {
-				selectedVoice = v
-				break
-			}
-		}
+                // Priority 1: Check if used by ANYONE globally
+                usedGlobally := false
+                for _, assigned := range sessionVoices {
+                    if assigned == v {
+                        usedGlobally = true
+                        break
+                    }
+                }
 
-		// Avoid assigning the same voice to a controller and its pilot (when possible).
-		// If we're assigning a controller voice, check whether the pilot for the same
-		// callsign already has a voice and prefer a different one from the pool.
-		if msg.Role != "PILOT" {
-			pilotKey := ""
-			// best-effort pilot key: callsign + "_PILOT" (may be empty if callsign missing)
-			if msg.Callsign != "" {
-				pilotKey = msg.Callsign + "_PILOT"
-			}
-			if pilotKey != "" {
-				if pilotVoice, ok := sessionVoices[pilotKey]; ok && pilotVoice != "" && pilotVoice == selectedVoice {
-					// try to pick an alternative from pool that's not the pilotVoice
-					for _, v := range pool {
-						if v != pilotVoice {
-							selectedVoice = v
-							break
-						}
-					}
-				}
-			}
-		}
+                if !usedGlobally {
+                    return v 
+                }
+                
+                // Priority 2: Store first non-partner duplicate found
+                if bestEffort == "" {
+                    bestEffort = v
+                }
+            }
+            return bestEffort
+        }
 
-		sessionVoices[key] = selectedVoice
-	}
+        // TIER 1: Exact Country Match
+        isoCountry, err := convertIcaoToIso(msg.CountryCode)
+        if err == nil {
+            selectedVoice = findNonPartner(countryVoicePools[isoCountry])
+        }
 
-	onnxPath := filepath.Join(voiceDir, selectedVoice+".onnx")
+        // TIER 2: Region Fallback (If no country pool OR only partner voice found in T1)
+        if selectedVoice == "" && len(msg.CountryCode) > 0 {
+            regionCode := msg.CountryCode[:1]
+            selectedVoice = findNonPartner(regionVoicePools[regionCode])
+            if selectedVoice != "" {
+                util.LogWithLabel(msg.Registration, "Using region fallback (%s) for voice", regionCode)
+            }
+        }
 
-	// --- Dynamic Noise Logic ---
-	noise := noiseType(msg.Role, msg.FlightPhase)
+        // TIER 3: Global Safety Net (Strict Zero-Collision Guarantee)
+        if selectedVoice == "" {
+            // Shuffle all available pools to find ANY non-partner voice
+            allKeys := make([]string, 0, len(countryVoicePools))
+            for k := range countryVoicePools { allKeys = append(allKeys, k) }
+            rng.Shuffle(len(allKeys), func(i, j int) { allKeys[i], allKeys[j] = allKeys[j], allKeys[i] })
 
-	// Simple sample rate fetch (optimized)
-	rate := 22050
-	if f, err := os.Open(onnxPath + ".json"); err == nil {
-		var cfg struct {
-			Audio struct {
-				SampleRate int `json:"sample_rate"`
-			}
-		}
-		json.NewDecoder(f).Decode(&cfg)
-		rate = cfg.Audio.SampleRate
-		f.Close()
-	}
+            for _, k := range allKeys {
+                selectedVoice = findNonPartner(countryVoicePools[k])
+                if selectedVoice != "" { 
+                    util.LogWithLabel(msg.Registration, "Strict fallback triggered: using voice from %s", k)
+                    break 
+                }
+            }
+        }
 
-	return selectedVoice, onnxPath, rate, noise
+        // Safety check: keying the result
+        if selectedVoice == "" {
+             // This only happens if total voices < 2
+             util.LogWithLabel(msg.Registration, "FATAL: No non-colliding voice found in any pool")
+             return "", "", 0, "" 
+        }
+
+        sessionVoices[key] = selectedVoice
+    }
+
+    // --- Asset Pathing & Metadata ---
+    onnxPath := filepath.Join(voiceDir, selectedVoice+".onnx")
+    noise := noiseType(msg.Role, msg.FlightPhase)
+    
+    // Sample rate logic remains the same
+    rate := 22050
+    if f, err := os.Open(onnxPath + ".json"); err == nil {
+        var cfg struct {
+            Audio struct { SampleRate int `json:"sample_rate"` }
+        }
+        json.NewDecoder(f).Decode(&cfg)
+        rate = cfg.Audio.SampleRate
+        f.Close()
+    }
+
+    return selectedVoice, onnxPath, rate, noise
 }
 
 func noiseType(role string, flightPhase int) string {

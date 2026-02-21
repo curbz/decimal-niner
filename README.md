@@ -3,14 +3,13 @@ The goal of this project is to provide realistic simulated air traffic control c
 
 ## Currently Supported Plug-ins
 
-- Traffic Global (JustFlight)
+- Traffic Global for X-Plane 12 (JustFlight) version TBD Windows/Mac (no Linux version available)
 
 ## Requirements
 
 - X-Plane 12 version 12.4.0+
-- Traffic Global for X-Plane 12 version TBD
 
-## Supported Operating Systems
+## decimal-niner Supported Operating Systems
 
 - Microsoft Windows
 - Apple Mac
@@ -18,15 +17,20 @@ The goal of this project is to provide realistic simulated air traffic control c
 
 ## decimal-niner Core Principles
 
-- All dependecies must be Open Source
-- No dependencies on any subscription based software or cloud services
+- All dependecies* must be Open Source
+- No dependencies* on any subscription based software or cloud services
 - No 'online' requirement for application execution
-- Compatibility with all supported X-Plane desktop operating systems (Microsoft Windows, Apple Mac and Linux)
+- Compatibility with all supported X-Plane desktop operating systems** (Microsoft Windows, Apple Mac and Linux)
+
+*the use of the term 'dependencies' here excludes the supported plug-ins and requirements of those plug-ins
+**not all supported plug-ins may support all X-Plane desktop operating systems, but decimal-niner does
 
 ## Dependencies
 
+These dependencies are required for deimal-niner to function. They are not included in this software and should be installed independently before attempting to run decimal-niner.
+
 - Sox version xxx
-- Piper TTS version xxx
+- Piper TTS version xxx and at least two voices
 
 ## Troubleshooting
 
