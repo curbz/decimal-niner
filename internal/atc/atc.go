@@ -22,7 +22,6 @@ type Service struct {
 	Config           *config
 	Channel          chan *Aircraft
 	Database         []Controller
-	PhraseClasses    PhraseClasses
 	UserState        UserState
 	Airlines         map[string]AirlineInfo
 	AirportLocations map[string]AirportCoords
@@ -71,8 +70,6 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	if err != nil {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
-
-	phraseClasses := loadPhrases(cfg)
 
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
@@ -125,7 +122,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
 	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
 
-	vm := NewVoiceManager(cfg.ATC.Voices.Piper.VoiceDirectory)
+	vm := NewVoiceManager(cfg)
 
 	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) 
 	go RadioPlayer(cfg.ATC.Voices.Sox.Application)     
@@ -134,7 +131,6 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		Config:           cfg,
 		Channel:          make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Database:         db,
-		PhraseClasses:    phraseClasses,
 		Airlines:         airlinesData,
 		AirportLocations: airportLocations,
 		FlightSchedules:  fScheds,

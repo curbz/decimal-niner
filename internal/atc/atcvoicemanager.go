@@ -2,10 +2,12 @@ package atc
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,21 +27,152 @@ const (
 	SessionTypeATC
 )
 
+
 type VoiceManager struct {
-	sessions map[string]VoiceSession
-	mu       sync.RWMutex
-	voiceDir string
-	rng      *rand.Rand
+	PhraseClasses     PhraseClasses
+	sessions          map[string]VoiceSession
+	mu                sync.RWMutex
+	voiceDir          string
+	rng               *rand.Rand
+	countryVoicePools map[string][]string
+	regionVoicePools  map[string][]string
+	globalPool        []string
 }
 
-func NewVoiceManager(dir string) *VoiceManager {
+type PhraseClasses struct {
+	phrases       map[string][]Exchange
+	phrasesUnicom map[string][]Exchange
+}
+
+func NewVoiceManager(cfg *config) *VoiceManager {
 	vm := &VoiceManager{
-		sessions: make(map[string]VoiceSession),
-		voiceDir: dir,
-		// Using a local RNG to avoid global state contention
-		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
+		sessions:          make(map[string]VoiceSession),
+		voiceDir:          cfg.ATC.Voices.Piper.VoiceDirectory,
+		rng:               rand.New(rand.NewSource(time.Now().UnixNano())),
+		countryVoicePools: make(map[string][]string),
+		regionVoicePools:  make(map[string][]string),
 	}
+
+	vm.loadPhrases(cfg) 
+
 	return vm
+}
+
+func (vm *VoiceManager) loadPhrases(cfg *config) {
+
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
+	}
+	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
+		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
+	}
+
+	// load country voice pools
+	err := vm.initialisePools()
+	if err != nil {
+		log.Fatalf("error creating voice pools: %v", err)
+	}
+
+	// load phrases from JSON file
+	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open phrases json file: %v", err)
+	}
+	defer phrasesFile.Close()
+
+	phrasesBytes, err := io.ReadAll(phrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
+	}
+
+	var phrases map[string][]Exchange
+	err = json.Unmarshal(phrasesBytes, &phrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
+	}
+
+	// load unicom phrases from JSON file
+	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not open unicom phrases json file: %v", err)
+	}
+	defer unicomPhrasesFile.Close()
+
+	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
+	if err != nil {
+		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
+	}
+
+	var unicomPhrases map[string][]Exchange
+	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
+	if err != nil {
+		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
+	}
+
+	vm.PhraseClasses = PhraseClasses{
+		phrases:       phrases,
+		phrasesUnicom: unicomPhrases,
+	}
+}
+
+func (vm *VoiceManager) initialisePools() error {
+
+	// Initialize the map
+	vm.countryVoicePools = make(map[string][]string)
+	vm.regionVoicePools = make(map[string][]string)
+
+	files, err := os.ReadDir(vm.voiceDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		fileName := file.Name()
+
+		// Only process .onnx files
+		if strings.HasSuffix(fileName, ".onnx") {
+			// Extract the prefix (first 2 letters) for the key
+			if len(fileName) >= 5 {
+				code := strings.ToUpper(fileName[3:5])
+
+				// Remove the extension for the value
+				// filepath.Ext(fileName) returns ".onnx"
+				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+				// Populate map
+				vm.countryVoicePools[code] = append(vm.countryVoicePools[code], cleanName)
+			}
+		}
+	}
+
+	if len(vm.countryVoicePools) == 0 {
+		log.Fatalf("no voice files found in folder %s", vm.voiceDir)
+	}
+
+	if len(vm.countryVoicePools) < 2 {
+		log.Fatalf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
+	}
+
+	// create region voice pools
+	for k, v := range icaoToIsoMap {
+		cvp, cvpfound := vm.countryVoicePools[v]
+		if !cvpfound {
+			continue
+		}
+		regionCode := k[:1]
+		vm.regionVoicePools[regionCode] = append(vm.regionVoicePools[regionCode], cvp...)
+	}
+	return nil
 }
 
 // ResolveVoice is the main entry point
@@ -115,71 +248,61 @@ func (vm *VoiceManager) getSessionType(role string) int {
 }
 
 func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string) string {
-	// TIER 1: Country Match
-	isoCountry, err := convertIcaoToIso(msg.CountryCode)
-	if err == nil {
-		if voice := vm.findNonPartner(countryVoicePools[isoCountry], partnerVoice); voice != "" {
-			return voice
-		}
+	// 1. TIER 1: Primary Country Match
+	targetISO, _ := convertIcaoToIso(msg.CountryCode)
+	if voice := vm.findBestInPool(vm.countryVoicePools[targetISO], partnerVoice); voice != "" {
+		return voice
 	}
 
-	// TIER 2: Region Match
+	// 2. TIER 2: Regional Fallback
 	if len(msg.CountryCode) > 0 {
-		regionCode := msg.CountryCode[:1]
-		if voice := vm.findNonPartner(regionVoicePools[regionCode], partnerVoice); voice != "" {
+		regionCode := msg.CountryCode[:1] // e.g., 'K' for USA, 'E' for Europe
+		if voice := vm.findBestInPool(vm.regionVoicePools[regionCode], partnerVoice); voice != "" {
 			return voice
 		}
 	}
 
-	// TIER 3: Global Random Fallback (Guarantees no collision)
-	allCountries := make([]string, 0, len(countryVoicePools))
-	for k := range countryVoicePools {
-		allCountries = append(allCountries, k)
-	}
-	vm.rng.Shuffle(len(allCountries), func(i, j int) { allCountries[i], allCountries[j] = allCountries[j], allCountries[i] })
-
-	for _, k := range allCountries {
-		if voice := vm.findNonPartner(countryVoicePools[k], partnerVoice); voice != "" {
-			return voice
-		}
-	}
-
-	return "" // Should be impossible if pools are > 2
+	// 3. TIER 3: Global Fallback
+	// Uses the pre-calculated pool to find ANY voice that isn't the partner.
+	return vm.findBestInPool(vm.globalPool, partnerVoice)
 }
 
-func (vm *VoiceManager) findNonPartner(pool []string, partnerVoice string) string {
+func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) string {
 	if len(pool) == 0 {
 		return ""
 	}
 
-	// Shuffle a copy to maintain randomness without mutating the global pool order
+	// Shuffle to maintain randomness within the pool
 	shuffled := make([]string, len(pool))
 	copy(shuffled, pool)
-	vm.rng.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
+	vm.rng.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
 
-	var fallback string
+	// STAGE A: Seek a unique voice (Not partner, not globally used)
 	for _, v := range shuffled {
-		if partnerVoice != "" && v == partnerVoice {
-			continue
-		}
-
-		// Check global usage
-		used := false
-		for _, s := range vm.sessions {
-			if s.VoiceName == v {
-				used = true
-				break
-			}
-		}
-
-		if !used {
+		if v == partnerVoice { continue }
+		if !vm.isVoiceGloballyUsed(v) {
 			return v
 		}
-		if fallback == "" {
-			fallback = v
+	}
+
+	// STAGE B: Reallocate (The "Twin" Rule)
+	// Pick the voice that was updated (LastSeen) furthest in the past.
+	var bestDuplicate string
+	var oldestSeen time.Time
+
+	for _, v := range shuffled {
+		if v == partnerVoice { continue }
+
+		lastUsed := vm.getLastUsedTime(v)
+		if bestDuplicate == "" || lastUsed.Before(oldestSeen) {
+			bestDuplicate = v
+			oldestSeen = lastUsed
 		}
 	}
-	return fallback
+
+	return bestDuplicate
 }
 
 func (vm *VoiceManager) getVoiceMetadata(name string, msg ATCMessage) (string, string, int, string) {
@@ -267,4 +390,26 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 		log.Printf("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
 		vm.mu.Unlock()
 	}
+}
+
+func (vm *VoiceManager) isVoiceGloballyUsed(voiceName string) bool {
+	for _, s := range vm.sessions {
+		if s.VoiceName == voiceName {
+			return true
+		}
+	}
+	return false
+}
+
+func (vm *VoiceManager) getLastUsedTime(voiceName string) time.Time {
+	var latest time.Time
+	for _, s := range vm.sessions {
+		if s.VoiceName == voiceName {
+			if s.LastSeen.After(latest) {
+				latest = s.LastSeen
+			}
+		}
+	}
+	// If never seen (shouldn't happen), return ancient time so it's picked first
+	return latest 
 }

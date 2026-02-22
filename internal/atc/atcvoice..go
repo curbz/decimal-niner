@@ -1,15 +1,12 @@
 package atc
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"math/rand"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -37,11 +34,6 @@ type Exchange struct {
 	ATC       string `json:"atc"`
 }
 
-type PhraseClasses struct {
-	phrases       map[string][]Exchange
-	phrasesUnicom map[string][]Exchange
-}
-
 type Piper struct {
 	Application    string `yaml:"application"`
 	VoiceDirectory string `yaml:"voice_directory"`
@@ -64,133 +56,11 @@ type PreparedAudio struct {
 var radioQueue chan ATCMessage
 var prepQueue chan PreparedAudio
 
-var sessionVoices = make(map[string]string)
-
-var countryVoicePools map[string][]string
-var regionVoicePools map[string][]string
-
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
 	Audio struct {
 		SampleRate int `json:"sample_rate"`
 	} `json:"audio"`
-}
-
-func loadPhrases(cfg *config) PhraseClasses {
-
-	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
-	}
-
-	// load country voice pools
-	err := createVoicePools(cfg.ATC.Voices.Piper.VoiceDirectory)
-	if err != nil {
-		log.Fatalf("error creating voice pools: %v", err)
-	}
-
-	// load phrases from JSON file
-	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not open phrases json file: %v", err)
-	}
-	defer phrasesFile.Close()
-
-	phrasesBytes, err := io.ReadAll(phrasesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
-	}
-
-	var phrases map[string][]Exchange
-	err = json.Unmarshal(phrasesBytes, &phrases)
-	if err != nil {
-		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
-	}
-
-	// load unicom phrases from JSON file
-	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not open unicom phrases json file: %v", err)
-	}
-	defer unicomPhrasesFile.Close()
-
-	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
-	if err != nil {
-		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
-	}
-
-	var unicomPhrases map[string][]Exchange
-	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
-	if err != nil {
-		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
-	}
-
-	return PhraseClasses{
-		phrases:       phrases,
-		phrasesUnicom: unicomPhrases,
-	}
-}
-
-func createVoicePools(path string) error {
-
-	// Initialize the map
-	countryVoicePools = make(map[string][]string)
-	regionVoicePools = make(map[string][]string)
-
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		fileName := file.Name()
-
-		// Only process .onnx files
-		if strings.HasSuffix(fileName, ".onnx") {
-			// Extract the prefix (first 2 letters) for the key
-			if len(fileName) >= 5 {
-				code := strings.ToUpper(fileName[3:5])
-
-				// Remove the extension for the value
-				// filepath.Ext(fileName) returns ".onnx"
-				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-
-				// Populate map
-				countryVoicePools[code] = append(countryVoicePools[code], cleanName)
-			}
-		}
-	}
-
-	if len(countryVoicePools) == 0 {
-		log.Fatalf("no voice files found in folder %s", path)
-	}
-
-	if len(countryVoicePools) < 2 {
-		log.Fatalf("a minimum of 2 voice files are required in folder %s", path)
-	}
-
-	// create region voice pools
-	for k, v := range icaoToIsoMap {
-		cvp, cvpfound := countryVoicePools[v]
-		if !cvpfound {
-			continue
-		}
-		regionCode := k[:1]
-		regionVoicePools[regionCode] = append(regionVoicePools[regionCode], cvp...)
-	}
-	return nil
 }
 
 // main function to recieve aircraft updates for phrase generation
@@ -204,9 +74,9 @@ func (s *Service) startComms() {
 
 			var phraseSource map[string][]Exchange
 			if ac.Flight.Comms.Controller.RoleID == 0 {
-				phraseSource = s.PhraseClasses.phrasesUnicom
+				phraseSource = s.VoiceManager.PhraseClasses.phrasesUnicom
 			} else {
-				phraseSource = s.PhraseClasses.phrases
+				phraseSource = s.VoiceManager.PhraseClasses.phrases
 			}
 
 			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
@@ -491,37 +361,23 @@ func translateRunway(runway string) string {
 	return runway
 }
 
-// scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
-// is true when the scale is flight levels and false when the returned value is an altitude in feet
-func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool) {
+func formatBaro(icao string, pascals float64) string {
 
-	var roundedAlt int
-	alt := int(rawAlt)
+    digits := ""
 
-	// Contextual Rounding Logic
-	switch ac.Flight.Phase.Current {
-	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
-		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
-		roundedAlt = ((alt + 50) / 100) * 100
-	default:
-		// Standard IFR rounding to nearest 1,000ft (e.g., 33,240 -> 33,000)
-		roundedAlt = ((alt + 500) / 1000) * 1000
-	}
+    // Determine the regional "Keyword"
+    prefix := "QNH" 
+    if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
+        prefix = "altimeter"
+        inHg := pascals * 0.0002953 // Convert Pascals to inches of mercury
+        digits = strings.ReplaceAll(fmt.Sprintf("%.2f", inHg), ".", "") // "2992"
+    } else {
+        hpa := int(pascals / 100) // Convert pascals to hPa
+        digits = fmt.Sprintf("%d", hpa) // "1013"
+    }
 
-	// Flight Level Logic (At or above Transition Altitude)
-	if roundedAlt >= transitionLevel || roundedAlt >= 18000 {
-		fl := roundedAlt / 100
-
-		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
-		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
-			fl = (fl / 10) * 10
-		}
-
-		// Returns "flight level 330"
-		return fl, true
-	}
-
-	return roundedAlt, false
+    // Return the full verbal string to replace {BARO}
+    return fmt.Sprintf("%s %s", prefix, digits)
 }
 
 func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
