@@ -603,8 +603,14 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		updatedFlightPhase := flightPhase.(int)
-		aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
-		aircraft.Flight.Phase.Current = updatedFlightPhase
+		//aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+		//aircraft.Flight.Phase.Current = updatedFlightPhase
+		// ONLY shift the phase if the incoming data actually represents a change
+		if updatedFlightPhase != aircraft.Flight.Phase.Current {
+			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+			aircraft.Flight.Phase.Current = updatedFlightPhase
+			aircraft.Flight.Phase.Transition = time.Now()
+		}
 
 		// Update position
 		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
@@ -685,7 +691,7 @@ func (xpc *XPConnect) updateAircraftData() {
 					ac.Flight.Position.Long, 
 					ac.Flight.Position.Altitude, 
 					int(ac.Flight.Position.Heading))
-					ac.Flight.Phase.Transition = time.Now()
+					//ac.Flight.Phase.Transition = time.Now()
 				// Notify ATC service of flight phase change
 				xpc.atcService.NotifyAircraftChange(ac)
 			}
