@@ -37,6 +37,7 @@ type VoiceManager struct {
 	countryVoicePools map[string][]string
 	regionVoicePools  map[string][]string
 	globalPool        []string
+	voiceLocks sync.Map // Map of string -> *sync.Mutex
 }
 
 type PhraseClasses struct {
@@ -428,4 +429,14 @@ func (vm *VoiceManager) getLastUsedTime(voiceName string) time.Time {
 	}
 	// If never seen (shouldn't happen), return ancient time so it's picked first
 	return latest
+}
+
+func (vm *VoiceManager) getVoiceLock(voiceName string) *sync.Mutex {
+	// If for some reason voiceName is empty, return a 'global' fallback lock
+    if voiceName == "" {
+        voiceName = "default_fallback_voice"
+    }
+	
+    lock, _ := vm.voiceLocks.LoadOrStore(voiceName, &sync.Mutex{})
+    return lock.(*sync.Mutex)
 }

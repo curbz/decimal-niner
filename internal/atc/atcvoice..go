@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -51,6 +52,7 @@ type PreparedAudio struct {
 	NoiseType  string
 	Msg        ATCMessage
 	Voice      string
+	VoiceLock  *sync.Mutex
 }
 
 var radioQueue chan ATCMessage
@@ -235,26 +237,37 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 // PrepSpeech picks up text and starts the Piper process immediately
 func PrepSpeech(piperPath string, vm *VoiceManager) {
+
+	// channel queue processing loop
 	for msg := range radioQueue {
 
 		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase, processing")
 
 		voice, onnx, rate, noise := vm.resolveVoice(msg)
 
+		// Lock this specific voice so no other Piper process touches this .onnx file
+		// CRITICAL: You must pass this lock to the Player to unlock it 
+		vLock := vm.getVoiceLock(voice)
+		if vLock == nil {
+			util.LogWithLabel(msg.AircraftSnap.Registration, "ERROR: Could not retrieve lock for voice: %s", voice)
+   			continue 
+		}
+		vLock.Lock() 
+
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
-			log.Printf("Error obtaining piper stdin pipe: %v", err)
+			util.LogWithLabel(msg.AircraftSnap.Registration, "Error obtaining piper stdin pipe: %v", err)
 			continue
 		}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			log.Printf("Error obtaining piper stdout pipe: %v", err)
+			util.LogWithLabel(msg.AircraftSnap.Registration, "Error obtaining piper stdout pipe: %v", err)
 			continue
 		}
 
 		if err := cmd.Start(); err != nil {
-			log.Printf("Error starting piper: %v", err)
+			util.LogWithLabel(msg.AircraftSnap.Registration, "Error starting piper: %v", err)
 			continue
 		}
 
@@ -264,9 +277,12 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			defer s.Close()
 			_, err := io.WriteString(s, t)
 			if err != nil {
-				log.Printf("Error writing to piper stdin: %v", err)
+				util.LogWithLabel(msg.AircraftSnap.Registration, "Error writing to piper stdin: %v", err)
 				return
 			}
+			// A tiny pause ensures the C++ buffer has moved the text 
+			// to the synthesis engine before the pipe 'disappears'
+			time.Sleep(10 * time.Millisecond)			
 		}(stdin, msg.Text)
 
 		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
@@ -279,6 +295,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			NoiseType:  noise,
 			Msg:        msg,
 			Voice:      voice,
+			VoiceLock:  vLock,
 		}
 	}
 }
@@ -286,57 +303,67 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 // RadioPlayer takes prepared Piper processes and pipes them to SoX sequentially
 func RadioPlayer(soxPath string) {
 
+	// channel queue processing loop
 	for audio := range prepQueue {
 
-		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
+		// Wrap the logic in a closure so defer works per-iteration
+        func(a PreparedAudio) {
 
-		args := []string{
-			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
-		}
-		if runtime.GOOS == "windows" {
-			args = append(args, "-d")
-		}
-		args = append(args,
-			// SoX effects chain
-			"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
-			"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix",
-		)
+			// must unlock voice at end of function regardless of outcome
+            if a.VoiceLock != nil {
+                defer a.VoiceLock.Unlock()
+            }
 
-		playCmd := exec.Command(soxPath, args...)
-		playCmd.Stdin = audio.PiperOut
+			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
 
-		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role),
-			strings.ReplaceAll(audio.Msg.ControllerName, " ", "")),
-			"%s (%s)", audio.Msg.Text, audio.Voice)
+			args := []string{
+				"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
+			}
+			if runtime.GOOS == "windows" {
+				args = append(args, "-d")
+			}
+			args = append(args,
+				// SoX effects chain
+				"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
+				"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix", "pad", "0", "0.2",
+			)
 
-		err := playCmd.Start()
-		if err != nil {
-			log.Printf("Error starting sox: %v", err)
-			// CRITICAL: Even if SoX fails, we MUST wait on Piper to avoid zombies/crashes
-			audio.PiperCmd.Wait()
-			continue
-		}
+			playCmd := exec.Command(soxPath, args...)
+			playCmd.Stdin = audio.PiperOut
 
-		// 1. Wait for SoX first.
-		// When SoX finishes, it closes Stdin (audio.PiperOut).
-		err = playCmd.Wait()
-		if err != nil {
-			log.Printf("Error waiting for sox to finish: %v", err)
-		}
+			util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role),
+				strings.ReplaceAll(audio.Msg.ControllerName, " ", "")),
+				"%s (%s)", audio.Msg.Text, audio.Voice)
 
-		// 2. NOW wait for Piper.
-		// Piper will have seen a 'broken pipe' or EOF and will be ready to exit cleanly.
-		err = audio.PiperCmd.Wait()
-		if err != nil {
-			// We expect some 'broken pipe' errors if SoX stops early,
-			// but the 0xc0000409 should stop.
-			log.Printf("Error on Piper process exit state: %v", err)
-		}
+			if err := playCmd.Start(); err != nil {
+				util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Error starting sox: %v", err)
+				audio.PiperCmd.Process.Kill()
+				return
+			}
 
-		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
+			// 1. Wait for SoX first.
+			// When SoX finishes, it closes Stdin (audio.PiperOut).
+			_ = playCmd.Wait()
 
-		// Small gap between transmissions
-		time.Sleep(time.Duration(rand.Intn(500)+500) * time.Millisecond)
+			// 2. // Explicitly drop the handle to the pipe
+			audio.PiperOut.Close() 
+
+			// 3. NOW wait for Piper.
+			// Piper will have seen a 'broken pipe' or EOF and will be ready to exit cleanly.
+			err := audio.PiperCmd.Wait()
+			if err != nil {
+				// Log if it's not a standard exit, but 0xc0000409 should be gone
+				//if !strings.Contains(err.Error(), "exit status 1") {
+					util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Piper exit for %s: %v", audio.Voice, err)
+				//}
+			}
+
+			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
+
+			// force a small gap between transmissions
+			time.Sleep(time.Duration(rand.Intn(500)+500) * time.Millisecond)
+
+		}(audio)
 	}
 }
 
