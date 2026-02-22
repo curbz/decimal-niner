@@ -45,12 +45,12 @@ type Sox struct {
 
 // PreparedAudio holds a ready-to-play piper command and its metadata
 type PreparedAudio struct {
-	PiperCmd   		*exec.Cmd
-	PiperOut   		io.ReadCloser
-	SampleRate 		int
-	NoiseType  		string
-	Msg        		ATCMessage
-	Voice      		string
+	PiperCmd   *exec.Cmd
+	PiperOut   io.ReadCloser
+	SampleRate int
+	NoiseType  string
+	Msg        ATCMessage
+	Voice      string
 }
 
 var radioQueue chan ATCMessage
@@ -108,7 +108,7 @@ func (s *Service) startComms() {
 					// pilot reads back atc instructions, but not for shutdown phase to avoid unecessary repetition
 					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() {
 						s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
-					}	
+					}
 				}
 			}
 
@@ -133,7 +133,7 @@ func (s *Service) startComms() {
 
 			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no further communications and this allows for quicker recycling of voices in busy airspaces. For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
 			if ac.Flight.Phase.Current == trafficglobal.Shutdown.Index() {
-    			s.VoiceManager.ReleaseSession(ac)
+				s.VoiceManager.ReleaseSession(ac)
 			}
 		}
 	}()
@@ -225,6 +225,8 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 	phrase = translateNumerics(phrase)
 
+	util.LogWithLabel(ac.Registration, "sending phrase to radio queue for speech generation")
+
 	// send message to radio queue
 	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
 		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
@@ -235,9 +237,9 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 func PrepSpeech(piperPath string, vm *VoiceManager) {
 	for msg := range radioQueue {
 
-		//log.Printf("Processing message: %s", msg.Text)
+		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase, processing")
 
-		voice, onnx, rate, noise := vm.ResolveVoice(msg)
+		voice, onnx, rate, noise := vm.resolveVoice(msg)
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
 		stdin, err := cmd.StdinPipe()
@@ -267,6 +269,8 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			}
 		}(stdin, msg.Text)
 
+		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
+
 		// Send the running process to the player queue
 		prepQueue <- PreparedAudio{
 			PiperCmd:   cmd,
@@ -283,6 +287,9 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 func RadioPlayer(soxPath string) {
 
 	for audio := range prepQueue {
+
+		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
+
 		args := []string{
 			"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
 		}
@@ -298,30 +305,38 @@ func RadioPlayer(soxPath string) {
 		playCmd := exec.Command(soxPath, args...)
 		playCmd.Stdin = audio.PiperOut
 
-		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role), 
-				strings.ReplaceAll(audio.Msg.ControllerName, " ", "")), 
-				"%s (%s)", audio.Msg.Text, audio.Voice)
+		util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role),
+			strings.ReplaceAll(audio.Msg.ControllerName, " ", "")),
+			"%s (%s)", audio.Msg.Text, audio.Voice)
 
 		err := playCmd.Start()
 		if err != nil {
 			log.Printf("Error starting sox: %v", err)
+			// CRITICAL: Even if SoX fails, we MUST wait on Piper to avoid zombies/crashes
+			audio.PiperCmd.Wait()
 			continue
 		}
 
-		err = audio.PiperCmd.Wait()
-		if err != nil {
-			log.Printf("Error waiting for piper to finish: %v", err)
-		}
+		// 1. Wait for SoX first.
+		// When SoX finishes, it closes Stdin (audio.PiperOut).
 		err = playCmd.Wait()
 		if err != nil {
 			log.Printf("Error waiting for sox to finish: %v", err)
 		}
 
+		// 2. NOW wait for Piper.
+		// Piper will have seen a 'broken pipe' or EOF and will be ready to exit cleanly.
+		err = audio.PiperCmd.Wait()
+		if err != nil {
+			// We expect some 'broken pipe' errors if SoX stops early,
+			// but the 0xc0000409 should stop.
+			log.Printf("Error on Piper process exit state: %v", err)
+		}
+
+		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
+
 		// Small gap between transmissions
-		min := 500
-		max := 1000
-		randomMillis := rand.Intn(max-min+1) + min
-		time.Sleep(time.Duration(randomMillis) * time.Millisecond)
+		time.Sleep(time.Duration(rand.Intn(500)+500) * time.Millisecond)
 	}
 }
 
@@ -363,21 +378,21 @@ func translateRunway(runway string) string {
 
 func formatBaro(icao string, pascals float64) string {
 
-    digits := ""
+	digits := ""
 
-    // Determine the regional "Keyword"
-    prefix := "QNH" 
-    if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
-        prefix = "altimeter"
-        inHg := pascals * 0.0002953 // Convert Pascals to inches of mercury
-        digits = strings.ReplaceAll(fmt.Sprintf("%.2f", inHg), ".", "") // "2992"
-    } else {
-        hpa := int(pascals / 100) // Convert pascals to hPa
-        digits = fmt.Sprintf("%d", hpa) // "1013"
-    }
+	// Determine the regional "Keyword"
+	prefix := "QNH"
+	if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
+		prefix = "altimeter"
+		inHg := pascals * 0.0002953                                     // Convert Pascals to inches of mercury
+		digits = strings.ReplaceAll(fmt.Sprintf("%.2f", inHg), ".", "") // "2992"
+	} else {
+		hpa := int(pascals / 100)       // Convert pascals to hPa
+		digits = fmt.Sprintf("%d", hpa) // "1013"
+	}
 
-    // Return the full verbal string to replace {BARO}
-    return fmt.Sprintf("%s %s", prefix, digits)
+	// Return the full verbal string to replace {BARO}
+	return fmt.Sprintf("%s %s", prefix, digits)
 }
 
 func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
@@ -556,12 +571,12 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 		0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
 
 	if nextController == nil {
-		util.LogWithLabel(label, "No controller found for handoff: role=%s (%d), searchICAO=%s", 
-				roleNameMap[nextRole], nextRole, searchICAO)
+		util.LogWithLabel(label, "No controller found for handoff: role=%s (%d), searchICAO=%s",
+			roleNameMap[nextRole], nextRole, searchICAO)
 		return ""
 	} else {
-		util.LogWithLabel(label, "Controller found: %s %s Role ID: %s (%d)", 
-				nextController.Name, nextController.ICAO, roleNameMap[nextController.RoleID], nextController.RoleID)
+		util.LogWithLabel(label, "Controller found: %s %s Role ID: %s (%d)",
+			nextController.Name, nextController.ICAO, roleNameMap[nextController.RoleID], nextController.RoleID)
 	}
 
 	// select controller's first listed frequency

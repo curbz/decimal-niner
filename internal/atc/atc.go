@@ -120,7 +120,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	}
 
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
-	prepQueue = make(chan PreparedAudio, 2) // Buffer for pre-warmed audio
+	prepQueue = make(chan PreparedAudio, 1) // Buffer for pre-warmed audio
 
 	vm := NewVoiceManager(cfg)
 

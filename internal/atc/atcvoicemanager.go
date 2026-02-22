@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
+	"github.com/curbz/decimal-niner/pkg/util"
 )
 
 // VoiceSession stores the metadata for an active assignment
@@ -26,7 +27,6 @@ const (
 	SessionTypePilot = iota
 	SessionTypeATC
 )
-
 
 type VoiceManager struct {
 	PhraseClasses     PhraseClasses
@@ -53,7 +53,7 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 		regionVoicePools:  make(map[string][]string),
 	}
 
-	vm.loadPhrases(cfg) 
+	vm.loadPhrases(cfg)
 
 	return vm
 }
@@ -175,12 +175,12 @@ func (vm *VoiceManager) initialisePools() error {
 	return nil
 }
 
-// ResolveVoice is the main entry point
-func (vm *VoiceManager) ResolveVoice(msg ATCMessage) (string, string, int, string) {
+// resolveVoice is the main entry point
+func (vm *VoiceManager) resolveVoice(msg ATCMessage) (string, string, int, string) {
 
 	if msg.AircraftSnap == nil {
-        return "", "", 0, ""
-    }
+		return "", "", 0, ""
+	}
 
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
@@ -214,30 +214,30 @@ func (vm *VoiceManager) ResolveVoice(msg ATCMessage) (string, string, int, strin
 // --- Internal Logic Helpers ---
 
 func (vm *VoiceManager) getSymmetricKeys(msg ATCMessage) (string, string) {
-    // Determine the ID of the aircraft (Callsign is preferred, Reg as fallback)
-    planeID := msg.AircraftSnap.Flight.Comms.Callsign
-    if planeID == "" {
-        planeID = msg.AircraftSnap.Registration
-    }
+	// Determine the ID of the aircraft (Callsign is preferred, Reg as fallback)
+	planeID := msg.AircraftSnap.Flight.Comms.Callsign
+	if planeID == "" {
+		planeID = msg.AircraftSnap.Registration
+	}
 
-    // The ATC ICAO comes from the message context, not the aircraft's permanent stats
-    atcID := msg.ICAO + "_" + msg.Role
+	// The ATC ICAO comes from the message context, not the aircraft's permanent stats
+	atcID := msg.ICAO + "_" + msg.Role
 
-    var key, partnerKey string
+	var key, partnerKey string
 
-    if msg.Role == "PILOT" {
-        // I am the Pilot
-        key = planeID + "_PILOT"
-        // My partner is the Controller I'm talking to
-        partnerKey = atcID
-    } else {
-        // I am the Controller (GROUND, TOWER, etc.)
-        key = atcID
-        // My partner is the Pilot I'm talking to
-        partnerKey = planeID + "_PILOT"
-    }
+	if msg.Role == "PILOT" {
+		// I am the Pilot
+		key = planeID + "_PILOT"
+		// My partner is the Controller I'm talking to
+		partnerKey = atcID
+	} else {
+		// I am the Controller (GROUND, TOWER, etc.)
+		key = atcID
+		// My partner is the Pilot I'm talking to
+		partnerKey = planeID + "_PILOT"
+	}
 
-    return key, partnerKey
+	return key, partnerKey
 }
 
 func (vm *VoiceManager) getSessionType(role string) int {
@@ -248,19 +248,29 @@ func (vm *VoiceManager) getSessionType(role string) int {
 }
 
 func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string) string {
+
+	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection started - target country code: %s", msg.CountryCode)
+
 	// 1. TIER 1: Primary Country Match
 	targetISO, _ := convertIcaoToIso(msg.CountryCode)
 	if voice := vm.findBestInPool(vm.countryVoicePools[targetISO], partnerVoice); voice != "" {
+		util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection on country code successful: %s", voice)
 		return voice
 	}
+
+	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection did not find match for country code: %s", msg.CountryCode)
 
 	// 2. TIER 2: Regional Fallback
 	if len(msg.CountryCode) > 0 {
 		regionCode := msg.CountryCode[:1] // e.g., 'K' for USA, 'E' for Europe
+		util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection falling back to region code: %s", regionCode)
 		if voice := vm.findBestInPool(vm.regionVoicePools[regionCode], partnerVoice); voice != "" {
+			util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection on region code successful: %s", voice)
 			return voice
 		}
 	}
+
+	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection falling back to global voice pool")
 
 	// 3. TIER 3: Global Fallback
 	// Uses the pre-calculated pool to find ANY voice that isn't the partner.
@@ -281,7 +291,9 @@ func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) strin
 
 	// STAGE A: Seek a unique voice (Not partner, not globally used)
 	for _, v := range shuffled {
-		if v == partnerVoice { continue }
+		if v == partnerVoice {
+			continue
+		}
 		if !vm.isVoiceGloballyUsed(v) {
 			return v
 		}
@@ -293,7 +305,9 @@ func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) strin
 	var oldestSeen time.Time
 
 	for _, v := range shuffled {
-		if v == partnerVoice { continue }
+		if v == partnerVoice {
+			continue
+		}
 
 		lastUsed := vm.getLastUsedTime(v)
 		if bestDuplicate == "" || lastUsed.Before(oldestSeen) {
@@ -312,7 +326,9 @@ func (vm *VoiceManager) getVoiceMetadata(name string, msg ATCMessage) (string, s
 	// Try to get sample rate from Piper JSON
 	if f, err := os.Open(path + ".json"); err == nil {
 		var cfg struct {
-			Audio struct{ SampleRate int `json:"sample_rate"` } `json:"audio"`
+			Audio struct {
+				SampleRate int `json:"sample_rate"`
+			} `json:"audio"`
 		}
 		if err := json.NewDecoder(f).Decode(&cfg); err == nil && cfg.Audio.SampleRate > 0 {
 			rate = cfg.Audio.SampleRate
@@ -324,33 +340,33 @@ func (vm *VoiceManager) getVoiceMetadata(name string, msg ATCMessage) (string, s
 }
 
 func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
-    if aircraftSnap == nil {
-        return
-    }
+	if aircraftSnap == nil {
+		return
+	}
 
-    // Identify the ID using the exact same logic as ResolveVoice
-    id := aircraftSnap.Flight.Comms.Callsign
-    if id == "" {
-        id = aircraftSnap.Registration
-    }
+	// Identify the ID using the exact same logic as ResolveVoice
+	id := aircraftSnap.Flight.Comms.Callsign
+	if id == "" {
+		id = aircraftSnap.Registration
+	}
 
-    // We only ever release Pilots on shutdown; ATC stays static.
-    key := id + "_PILOT"
+	// We only ever release Pilots on shutdown; ATC stays static.
+	key := id + "_PILOT"
 
-    // Use a goroutine for a "Graceful Cooldown" 
-    // This prevents the race condition with prepAndQueuePhrase
-    go func(targetKey string) {
-        // 15s is usually enough for the 'Engine Shutdown' audio to finish
-        time.Sleep(15 * time.Second)
+	// Use a goroutine for a "Graceful Cooldown"
+	// This prevents the race condition with prepAndQueuePhrase
+	go func(targetKey string) {
+		// 15s is usually enough for the 'Engine Shutdown' audio to finish
+		time.Sleep(15 * time.Second)
 
-        vm.mu.Lock()
-        defer vm.mu.Unlock()
+		vm.mu.Lock()
+		defer vm.mu.Unlock()
 
-        if _, exists := vm.sessions[targetKey]; exists {
-            delete(vm.sessions, targetKey)
-            log.Printf("VoiceManager: Successfully released %s\n", targetKey)
-        }
-    }(key)
+		if _, exists := vm.sessions[targetKey]; exists {
+			delete(vm.sessions, targetKey)
+			log.Printf("VoiceManager: Successfully released %s\n", targetKey)
+		}
+	}(key)
 }
 
 func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (float64, float64)) {
@@ -383,7 +399,7 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 				evicted++
 			}
 		}
-		
+
 		if evicted > 0 {
 			log.Println("VoiceManager: Evicted", evicted, "stale sessions")
 		}
@@ -411,5 +427,5 @@ func (vm *VoiceManager) getLastUsedTime(voiceName string) time.Time {
 		}
 	}
 	// If never seen (shouldn't happen), return ancient time so it's picked first
-	return latest 
+	return latest
 }
