@@ -61,7 +61,7 @@ func TestResolveVoice(t *testing.T) {
 		pilotVoice, _, _, _ := vm.ResolveVoice(msgPilot)
 
 		if pilotVoice == atcVoice {
-			t.Errorf("CRITICAL FAIL: Pilot mimicked Controller (%s). Rule 1 (Partner) check failed.", pilotVoice)
+			t.Errorf("CRITICAL FAIL: Pilot mimicked Controller (%s)", pilotVoice)
 		}
 		
 		if pilotVoice == "" {
@@ -176,4 +176,44 @@ func TestReleaseSession(t *testing.T) {
 		
 		// We can't easily wait 15s in a unit test, but we can verify the key logic
 	})
+}
+
+func TestVoiceCollisionAvoidance(t *testing.T) {
+    vm := setupMockVoiceManager()
+    
+    // SCENARIO: A German Pilot is talking to a German Controller.
+    // There are ONLY 2 German voices available in the entire pool.
+    vm.countryVoicePools["DE"] = []string{"Hans", "Dieter"}
+    vm.sessions = make(map[string]VoiceSession)
+
+    t.Run("Pilot and ATC must never share a voice in the same ICAO context", func(t *testing.T) {
+        // 1. Controller (Dieter) speaks first
+        msgATC := ATCMessage{
+            ICAO: "EDDF",
+            Role: "TOWER",
+            CountryCode: "DE", // German
+            AircraftSnap: &Aircraft{
+                Registration: "D-AIXA",
+                Flight: Flight{Comms: Comms{Callsign: "DLH123"}},
+            },
+        }
+        atcVoice, _, _, _ := vm.ResolveVoice(msgATC)
+
+        // 2. Pilot (DLH123) speaks back to the same ICAO (EDDF)
+        msgPilot := msgATC
+        msgPilot.Role = "PILOT"
+        
+        pilotVoice, _, _, _ := vm.ResolveVoice(msgPilot)
+
+        // ASSERTIONS
+        if atcVoice == "" || pilotVoice == "" {
+            t.Fatal("Voices failed to resolve")
+        }
+
+        if atcVoice == pilotVoice {
+            t.Errorf("RULE VIOLATION: Both Controller and Pilot assigned '%s'. They must be different.", atcVoice)
+        }
+
+        t.Logf("Success: ATC assigned '%s', Pilot assigned '%s'", atcVoice, pilotVoice)
+    })
 }
