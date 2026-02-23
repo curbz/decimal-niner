@@ -241,6 +241,18 @@ var icaoToIsoMap = map[string]string{
 	"ZM": "MN", // Mongolia
 }
 
+var registrationMap = map[string]string{
+    "G":  "EG", // UK
+    "N":  "K",  // USA
+    "XB": "MM", // Mexico
+    "XA": "MM", // Mexico
+    "D":  "ED", // Germany
+    "F":  "LF", // France
+    "EI": "EI", // Ireland
+    "VH": "YW", // Australia
+    "C":  "CY", // Canada
+}
+
 var phoneticMap = map[string]string{
 	"A": "Alpha", "B": "Bravo", "C": "Charlie", "D": "Delta", "E": "Echo",
 	"F": "Foxtrot", "G": "Golf", "H": "Hotel", "I": "India", "J": "Juliett",

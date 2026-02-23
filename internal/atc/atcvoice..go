@@ -15,6 +15,11 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
+
+	"golang.org/x/text/runes"
+
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -178,8 +183,14 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	if strings.Contains(phrase, "{PARKING}") {
 		phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	}
-	if ac.Flight.Destination != "" && strings.Contains(phrase, "{DESTINATION}") {
-		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", formatAirportName(ac.Flight.Destination, s.AirportLocations))
+	if strings.Contains(phrase, "{DESTINATION}") {
+		sayDest := ac.Flight.Destination
+		if sayDest == "" {
+			sayDest = "as filed"
+		} else {
+			sayDest = formatAirportName(sayDest, s.AirportLocations)
+		}
+		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", sayDest)
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") {
 		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
@@ -218,16 +229,25 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	}
 
 	//cleanup phrase
+	// 1. Decompose accents (é becomes e + ´)
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	phrase, _, _ = transform.String(t, phrase)	
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
+	phrase = strings.ReplaceAll(phrase, "{", "")
+	phrase = strings.ReplaceAll(phrase, "}", "")
+	phrase = strings.ReplaceAll(phrase, "(", "")
+	phrase = strings.ReplaceAll(phrase, ")", "")
 	re := regexp.MustCompile(`\.[\s\.]*$`)
 	phrase = re.ReplaceAllString(phrase, ".")
 	phrase = strings.TrimSpace(phrase)
 	phrase = strings.TrimSuffix(phrase, ",")
+	var reSanitize = regexp.MustCompile(`[^{a-zA-Z0-9\s\.,\-]`)
+	phrase = reSanitize.ReplaceAllString(phrase, "")
 
 	phrase = translateNumerics(phrase)
 
-	util.LogWithLabel(ac.Registration, "sending phrase to radio queue for speech generation")
+	util.LogWithLabel(ac.Registration, "sending phrase to radio queue for speech generation: %s", phrase)
 
 	// send message to radio queue
 	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
@@ -244,6 +264,12 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase, processing")
 
 		voice, onnx, rate, noise := vm.resolveVoice(msg)
+
+		// PROTECT: If voice name is empty, we can't speak
+		if voice == "" {
+			util.LogWithLabel(msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech generation to prevent Piper error")
+			continue
+		}
 
 		// Lock this specific voice so no other Piper process touches this .onnx file
 		// CRITICAL: You must pass this lock to the Player to unlock it 
@@ -306,6 +332,12 @@ func RadioPlayer(soxPath string) {
 	// channel queue processing loop
 	for audio := range prepQueue {
 
+		// PROTECT: If voice name is empty, we can't speak
+		if audio.Voice == "" {
+			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
+			continue
+		}
+
 		// Wrap the logic in a closure so defer works per-iteration
         func(a PreparedAudio) {
 
@@ -354,7 +386,7 @@ func RadioPlayer(soxPath string) {
 			if err != nil {
 				// Log if it's not a standard exit, but 0xc0000409 should be gone
 				//if !strings.Contains(err.Error(), "exit status 1") {
-					util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Piper exit for %s: %v", audio.Voice, err)
+					util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
 				//}
 			}
 

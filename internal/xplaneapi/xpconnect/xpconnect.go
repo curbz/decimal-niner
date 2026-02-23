@@ -606,16 +606,6 @@ func (xpc *XPConnect) updateAircraftData() {
 		// This creates the 'delta' that the next loop will look for.
 		aircraft.Flight.Phase.Current = flightPhase.(int)
 
-		//updatedFlightPhase := flightPhase.(int)
-		//aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
-		//aircraft.Flight.Phase.Current = updatedFlightPhase
-		// ONLY shift the phase if the incoming data actually represents a change
-		// if updatedFlightPhase != aircraft.Flight.Phase.Current {
-		// 	aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
-		// 	aircraft.Flight.Phase.Current = updatedFlightPhase
-		// 	aircraft.Flight.Phase.Transition = time.Now()
-		// }
-
 		// Update position
 		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
 		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_long", index)
@@ -650,11 +640,21 @@ func (xpc *XPConnect) updateAircraftData() {
 
 		// lookup callsign for airline code, default to airline code value if not found in map
 		callsign := airlineCode
-		airlineInfo := xpc.atcService.GetAirline(airlineCode)
-		if airlineInfo != nil {
-			callsign = airlineInfo.Callsign
-			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+		if aircraft.Flight.Comms.Callsign == "" {
+			airlineInfo := xpc.atcService.GetAirline(airlineCode)
+			if airlineInfo != nil {
+				callsign = airlineInfo.Callsign
+				aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+			} else {
+				util.LogWithLabel(aircraft.Registration, "WARN: no airline information found for code %s", airlineCode)
+				// if we don't have airline info, we also won't have country code, so use tail number as fallback
+				if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
+					aircraft.Flight.Comms.CountryCode = ccode
+					util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
+				} 
+			}
 		}
+
 		sizeClassStr := ""
 		if sizeClass > 3 {
 			sizeClassStr = "Heavy"

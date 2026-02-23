@@ -142,7 +142,7 @@ func (vm *VoiceManager) initialisePools() error {
 
 		// Only process .onnx files
 		if strings.HasSuffix(fileName, ".onnx") {
-			// Extract the prefix (first 2 letters) for the key
+			// Extract the country for the key
 			if len(fileName) >= 5 {
 				code := strings.ToUpper(fileName[3:5])
 
@@ -150,18 +150,21 @@ func (vm *VoiceManager) initialisePools() error {
 				// filepath.Ext(fileName) returns ".onnx"
 				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
+				// populate global pool
+        		vm.globalPool = append(vm.globalPool, cleanName)
+
 				// Populate map
 				vm.countryVoicePools[code] = append(vm.countryVoicePools[code], cleanName)
 			}
 		}
 	}
 
-	if len(vm.countryVoicePools) == 0 {
-		log.Fatalf("no voice files found in folder %s", vm.voiceDir)
+	if len(vm.globalPool) < 2 {
+		log.Fatalf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
 	}
 
-	if len(vm.countryVoicePools) < 2 {
-		log.Fatalf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
+	if len(vm.countryVoicePools) == 0 {
+		log.Fatalf("no voice files found in folder %s", vm.voiceDir)
 	}
 
 	// create region voice pools
@@ -173,15 +176,12 @@ func (vm *VoiceManager) initialisePools() error {
 		regionCode := k[:1]
 		vm.regionVoicePools[regionCode] = append(vm.regionVoicePools[regionCode], cvp...)
 	}
+
 	return nil
 }
 
 // resolveVoice is the main entry point
 func (vm *VoiceManager) resolveVoice(msg ATCMessage) (string, string, int, string) {
-
-	if msg.AircraftSnap == nil {
-		return "", "", 0, ""
-	}
 
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
@@ -275,13 +275,18 @@ func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string)
 
 	// 3. TIER 3: Global Fallback
 	// Uses the pre-calculated pool to find ANY voice that isn't the partner.
-	return vm.findBestInPool(vm.globalPool, partnerVoice)
+	voice :=  vm.findBestInPool(vm.globalPool, partnerVoice)
+
+	// If Global pool only had the partnerVoice, findBestInPool returned ""
+    if voice == "" {
+        util.LogWithLabel(msg.AircraftSnap.Registration, "WARN: voice pools are currently drained, reluctant reuse of partner voice")
+        return vm.globalPool[0] 
+    }
+
+	return voice
 }
 
 func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) string {
-	if len(pool) == 0 {
-		return ""
-	}
 
 	// Shuffle to maintain randomness within the pool
 	shuffled := make([]string, len(pool))

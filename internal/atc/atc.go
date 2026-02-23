@@ -186,9 +186,26 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		return
 	}
 
-	if ac.Flight.Origin == "" {
-		// no origin indicates this aircraft has no flight plan
+	if ac.Flight.Destination == "" {
+		//TODO: add logging throughout this block, candidate to extract to a separate function
+		// no destination indicates this aircraft has no flight plan
 		s.AddFlightPlan(ac, s.GetCurrentZuluTime())
+		if ac.Flight.Origin == "" {
+			//still no flight plan, infer what we can from aircraft position and phase
+			s.inferFlightPlan(ac)
+		}
+		// in the unlikely, but possible case that we have not set a country code by now, use the origin airport as a fallback
+		if ac.Flight.Comms.CountryCode == "" {
+			//TODO: use origin when departing, destination when arriving
+			if len(ac.Flight.Origin) > 2 {
+        		ac.Flight.Comms.CountryCode = ac.Flight.Origin[:2]
+				util.LogWithLabel(ac.Registration, "flight plan origin used to set country code %s", ac.Flight.Comms.CountryCode)
+			} else {
+				// we absolutely must have a country code to work with
+				// TODO: set from config
+				ac.Flight.Comms.CountryCode = "GB"
+			}
+    	}
 	}
 
 	// make a snaphot copy of aircraft data and pass this snapshot into the phrase generation process.
@@ -457,11 +474,9 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 	candidateScheds := make([]trafficglobal.ScheduledFlight, 0)
 
-	adjDep := 0
-	//adjArr := 0
-
 	// find active flights using schedule times
 	// when no flight found, expand search by 20 minutes up to 4 hours
+	adjDep := 0
 	for adjArr := 0; adjArr <= 240; adjArr = adjArr + 20 {
 
 		adjDep = -adjArr
@@ -532,9 +547,8 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	if len(candidateScheds) > 1 {
 		util.LogWithLabel(ac.Registration, "multiple (%d) flight plans found for flight number %d days %d and %d", len(candidateScheds), ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		for i, c := range candidateScheds {
-			util.LogWithLabel(ac.Registration, "duplicate flight %d of %d: %v - will try again to determine origin/dest on flight phase changes", i+1, len(candidateScheds), c)
+			util.LogWithLabel(ac.Registration, "duplicate flight %d of %d: %v", i+1, len(candidateScheds), c)
 		}
-		return
 	}
 
 	// use remaining candidate i.e. [0]
@@ -545,6 +559,31 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
 
+}
+
+// inferFlightPlan is last resort strategy to fill in missing origin/destination based on phase and location.
+func (s *Service) inferFlightPlan(ac *Aircraft) {
+	// If we have a full plan, don't touch it.
+	if ac.Flight.Origin != "" && ac.Flight.Destination != "" {
+		return
+	}
+
+	closestAirport := s.Airports.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+	
+	// infer what we can from current location
+	switch ac.Flight.Phase.Class {
+	case Departing:
+		if ac.Flight.Origin == "" {
+			ac.Flight.Origin = closestAirport
+		}
+	case Arriving:
+		if ac.Flight.Destination == "" {
+			ac.Flight.Destination = closestAirport
+		}
+		// Origin can safely remain empty is this scenario
+	}
+
+	// we don't check Cruising phase as we can wait for transition to approach (Arriving phase)
 }
 
 func (s *Service) setFlightPhaseClass(ac *Aircraft) {
@@ -616,6 +655,28 @@ func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
 	default:
 		return ""
 	}
+}
+
+func GetCountryFromRegistration(reg string) string {
+    // Standard registration format is Prefix-Suffix or Prefix1234
+    // We check the first 1 or 2 characters
+    if len(reg) < 1 {
+        return ""
+    }
+
+    // Check 2-char prefixes first (e.g., XB, EI)
+    if len(reg) >= 2 {
+        if code, ok := registrationMap[reg[:2]]; ok {
+            return code
+        }
+    }
+
+    // Check 1-char prefixes (e.g., G, N)
+    if code, ok := registrationMap[reg[:1]]; ok {
+        return code
+    }
+
+    return ""
 }
 
 func normalizeFreq(fRaw int) int {
