@@ -25,6 +25,7 @@ type Service struct {
 	UserState        UserState
 	Airlines         map[string]AirlineInfo
 	AirportLocations map[string]AirportCoords
+	Airports 		 AirportProvider
 	FlightSchedules  map[string][]trafficglobal.ScheduledFlight
 	Weather          *Weather
 	DataProvider     simdata.SimDataProvider
@@ -44,6 +45,11 @@ type ServiceInterface interface {
 	SetSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
 	SetDataProvider(simdata.SimDataProvider)
+}
+
+// AirportProvider defines the behavior for finding the nearest airport
+type AirportProvider interface {
+	GetClosestAirport(lat, long float64) string
 }
 
 // --- configuration structures ---
@@ -545,6 +551,13 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
+    // 1. STICKY GUARD: 
+    // If we've already assigned a specific class (like Preflight or Postflight),
+    // and the Sim phase hasn't actually changed, don't re-run the heavy logic.
+    if ph.Class != Unknown && ph.Current == ph.Previous {
+        return
+    }
+
 	switch ph.Current {
 	case trafficglobal.Parked.Index():
 		if ph.Previous == trafficglobal.Unknown.Index() {
@@ -552,8 +565,10 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
 				util.LogWithLabel(ac.Registration, "WARN: no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
 				ph.Class = Unknown
+				return
 			}
-			currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			//currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			currAirport := s.Airports.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
 			if ac.Flight.Destination == currAirport {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
 				ph.Class = PostflightParked
@@ -584,6 +599,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 		return
 	case trafficglobal.Cruise.Index():
 		ph.Class = Cruising
+		return
 	default:
 		ph.Class = Unknown
 	}

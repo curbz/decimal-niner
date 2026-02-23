@@ -9,6 +9,14 @@ import (
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
+type MockAirportProvider struct {
+	MockReturn string
+}
+
+func (m *MockAirportProvider) GetClosestAirport(lat, long float64) string {
+	return m.MockReturn
+}
+
 func init() {
 	// This runs before any tests in this package
 	// TODO: how can we make this work for custom config locations?
@@ -437,6 +445,85 @@ func TestAddFlightPlan(t *testing.T) {
 				if ac.Flight.Destination != tt.expectDest {
 					t.Errorf("expected Destination=%s, got %s", tt.expectDest, ac.Flight.Destination)
 				}
+			}
+		})
+	}
+}
+
+func TestSetFlightPhaseClass_Detailed(t *testing.T) {
+	mockAirports := &MockAirportProvider{}
+	s := &Service{Airports: mockAirports}
+
+	tests := []struct {
+		name          string
+		prevPhase     int
+		currPhase     int
+		origin        string
+		dest          string
+		closest       string
+		expectedClass PhaseClass
+	}{
+		{
+			name:          "Unknown -> Parked at Origin (Preflight)",
+			prevPhase:     trafficglobal.Unknown.Index(), 
+			currPhase:     trafficglobal.Parked.Index(),  
+			origin:        "EGKK",
+			dest:          "EHAM",
+			closest:       "EGKK",
+			expectedClass: PreflightParked,
+		},
+		{
+			name:          "Unknown -> Parked at Destination (Postflight)",
+			prevPhase:     trafficglobal.Unknown.Index(),
+			currPhase:     trafficglobal.Parked.Index(),
+			origin:        "EGKK",
+			dest:          "EHAM",
+			closest:       "EHAM",
+			expectedClass: PostflightParked,
+		},
+		{
+			name:          "Shutdown -> Parked (Standard Arrival)",
+			prevPhase:     trafficglobal.Shutdown.Index(), 
+			currPhase:     trafficglobal.Parked.Index(),
+			expectedClass: PostflightParked,
+		},
+		{
+			name:          "Sticky Guard (No change if already classified)",
+			prevPhase:     1, 
+			currPhase:     1,
+			origin:        "EGKK",
+			dest:          "EHAM",
+			closest:       "EGKK",
+			expectedClass: PreflightParked, // Should stay what it was
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set the mock to return the 'closest' airport for this specific test case
+			mockAirports.MockReturn = tt.closest
+
+			ac := &Aircraft{
+				Flight: Flight{
+					Origin:      tt.origin,
+					Destination: tt.dest,
+					Phase: Phase{
+						Previous: tt.prevPhase,
+						Current:  tt.currPhase,
+						Class:    tt.expectedClass, // Pre-set for sticky test
+					},
+				},
+			}
+			
+			// For non-sticky tests, ensure class starts at Unknown
+			if tt.name != "Sticky Guard (No change if already classified)" {
+				ac.Flight.Phase.Class = Unknown
+			}
+
+			s.setFlightPhaseClass(ac)
+
+			if ac.Flight.Phase.Class != tt.expectedClass {
+				t.Errorf("%s: expected %v, got %v", tt.name, tt.expectedClass, ac.Flight.Phase.Class)
 			}
 		})
 	}

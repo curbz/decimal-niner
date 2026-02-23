@@ -602,15 +602,19 @@ func (xpc *XPConnect) updateAircraftData() {
 			return
 		}
 
-		updatedFlightPhase := flightPhase.(int)
+		// Update ONLY Current. 
+		// This creates the 'delta' that the next loop will look for.
+		aircraft.Flight.Phase.Current = flightPhase.(int)
+
+		//updatedFlightPhase := flightPhase.(int)
 		//aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
 		//aircraft.Flight.Phase.Current = updatedFlightPhase
 		// ONLY shift the phase if the incoming data actually represents a change
-		if updatedFlightPhase != aircraft.Flight.Phase.Current {
-			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
-			aircraft.Flight.Phase.Current = updatedFlightPhase
-			aircraft.Flight.Phase.Transition = time.Now()
-		}
+		// if updatedFlightPhase != aircraft.Flight.Phase.Current {
+		// 	aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+		// 	aircraft.Flight.Phase.Current = updatedFlightPhase
+		// 	aircraft.Flight.Phase.Transition = time.Now()
+		// }
 
 		// Update position
 		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
@@ -675,13 +679,17 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	}
 
-	if !xpc.initialised {
-		xpc.initialised = true
-		log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
-	} else {
-		// check for flight phase changes
-		for _, ac := range xpc.aircraftMap {
-			if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
+	// now go through all aircraft looking for flight phase changes
+	for _, ac := range xpc.aircraftMap {
+		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
+
+			// If we are already initialised, this is a REAL mid-session change.
+        	// We notify the service.
+			if xpc.initialised {
+				
+				// Notify ATC service of flight phase change
+				xpc.atcService.NotifyAircraftChange(ac)
+
 				util.LogWithLabel(ac.Registration, 
 					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d", 
 					ac.Flight.Number, 
@@ -691,11 +699,19 @@ func (xpc *XPConnect) updateAircraftData() {
 					ac.Flight.Position.Long, 
 					ac.Flight.Position.Altitude, 
 					int(ac.Flight.Position.Heading))
-					//ac.Flight.Phase.Transition = time.Now()
-				// Notify ATC service of flight phase change
-				xpc.atcService.NotifyAircraftChange(ac)
 			}
+
+			// ALWAYS commit the state. 
+        	// If initialised is false, this "silently" syncs the starting state.
+			ac.Flight.Phase.Previous = ac.Flight.Phase.Current
+			ac.Flight.Phase.Transition = time.Now()
+			
 		}
+	}
+	
+	if !xpc.initialised {
+		xpc.initialised = true
+		log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
 	}
 }
 
