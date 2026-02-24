@@ -288,6 +288,10 @@ func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string)
 
 func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) string {
 
+	if len(pool) == 0 {
+		return ""
+	}
+	
 	// Shuffle to maintain randomness within the pool
 	shuffled := make([]string, len(pool))
 	copy(shuffled, pool)
