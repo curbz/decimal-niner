@@ -296,6 +296,7 @@ func (s *Service) GetWeatherState() *Weather {
 	return s.Weather
 }
 
+
 func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
 
 	s.UserState.Position = pos

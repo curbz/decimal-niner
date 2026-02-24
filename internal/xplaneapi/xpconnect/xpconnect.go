@@ -488,54 +488,75 @@ func (xpc *XPConnect) updateWeatherData() {
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
-	// update comms
+	// get updated comms
 	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
 	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
 	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
-
+	
+	// check for errors
 	if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
 		logErrors(errC1, errC2, errF1, errF2)
 		return
 	}
 
+	// check we got values
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
 		log.Println("WARN: Couldn't update user state as com1 or com2 dataref values are not available")
 		return
 	}
 
+	// convert to target types
 	com1Freq := int(com1FreqVal.(float64))
 	com2Freq := int(com2FreqVal.(float64))
 	com1Facility := int(com1FacilityVal.(float64))
 	com2Facility := int(com2FacilityVal.(float64))
 
 	userState := xpc.atcService.GetUserState()
-	lastTunedFreqs := userState.TunedFreqs
-	lastTunedFacilities := userState.TunedFacilities
-
-	// if no change to tuned frequencies or baro, no need to update user state
-	if com1Freq == lastTunedFreqs[1] && com2Freq == lastTunedFreqs[2] &&
-		com1Facility == lastTunedFacilities[1] && com2Facility == lastTunedFacilities[2] {
-		return
+	// check for changes
+	commsChanged := false
+	if com1Freq != userState.TunedFreqs[1] || com2Freq != userState.TunedFreqs[2] ||
+		com1Facility != userState.TunedFacilities[1] || com2Facility != userState.TunedFacilities[2] {
+			commsChanged = true
 	}
 
-	// update position
-	lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
-	lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
-	alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
+	// get updated position
+	latVal, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
+	lngVal, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
+	altVal, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
 
+	// check for errors
 	if errLat != nil || errLng != nil || errAlt != nil {
 		logErrors(errLat, errLng, errAlt)
 		return
 	}
 
-	//TODO: only notify if change has occurred
-	xpc.atcService.NotifyUserChange(atc.Position{
-		Lat:      lat.(float64),
-		Long:     lng.(float64),
-		Altitude: alt.(float64) * 3.28084,
-	}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
+	// check we got values
+	if latVal == nil || lngVal == nil || altVal == nil {
+		log.Println("WARN: Couldn't update user state as psitional dataref values are not available")
+		return
+	}
+
+	// convert to target value types
+	lat := latVal.(float64)
+	lng := lngVal.(float64)
+	alt := altVal.(float64) * 3.28084
+	
+	// check for changes
+	posChanged := false
+	if lat != userState.Position.Lat || lng != userState.Position.Long || alt != userState.Position.Altitude {
+		posChanged = true
+	}
+
+	//only notify if change has occurred
+	if commsChanged || posChanged {
+		xpc.atcService.NotifyUserChange(atc.Position{
+			Lat:      lat,
+			Long:     lng,
+			Altitude: alt,
+		}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
+	}
 
 }
 
