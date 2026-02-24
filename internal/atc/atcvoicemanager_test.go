@@ -50,7 +50,7 @@ func TestResolveVoice(t *testing.T) {
 					Position: Position{Lat: 51.1, Long: -0.1},
 				},
 			},
-			Role: "TOWER", ICAO: "EGKK", CountryCode: "EG",
+			Role: "TOWER", ControllerICAO: "EGKK", CountryCode: "EG",
 		}
 		atcVoice, _, _, _ := vm.resolveVoice(msgATC)
 
@@ -85,7 +85,7 @@ func TestResolveVoice(t *testing.T) {
 					Position: Position{Lat: 51.1, Long: -0.1},
 				},
 			},
-			Role: "PILOT", ICAO: "EGKK", CountryCode: "EG",
+			Role: "PILOT", ControllerICAO: "EGKK", CountryCode: "EG",
 		}
 
 		voice, _, _, _ := vm.resolveVoice(msgTwin)
@@ -189,9 +189,9 @@ func TestVoiceCollisionAvoidance(t *testing.T) {
 	t.Run("Pilot and ATC must never share a voice in the same ICAO context", func(t *testing.T) {
 		// 1. Controller (Dieter) speaks first
 		msgATC := ATCMessage{
-			ICAO:        "EDDF",
-			Role:        "TOWER",
-			CountryCode: "DE", // German
+			ControllerICAO: "EDDF",
+			Role:           "TOWER",
+			CountryCode:    "DE", // German
 			AircraftSnap: &Aircraft{
 				Registration: "D-AIXA",
 				Flight:       Flight{Comms: Comms{Callsign: "DLH123"}},

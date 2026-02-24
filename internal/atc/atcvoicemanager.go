@@ -2,6 +2,7 @@ package atc
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -37,7 +38,7 @@ type VoiceManager struct {
 	countryVoicePools map[string][]string
 	regionVoicePools  map[string][]string
 	globalPool        []string
-	voiceLocks sync.Map // Map of string -> *sync.Mutex
+	voiceLocks        sync.Map // Map of string -> *sync.Mutex
 }
 
 type PhraseClasses struct {
@@ -151,7 +152,7 @@ func (vm *VoiceManager) initialisePools() error {
 				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
 				// populate global pool
-        		vm.globalPool = append(vm.globalPool, cleanName)
+				vm.globalPool = append(vm.globalPool, cleanName)
 
 				// Populate map
 				vm.countryVoicePools[code] = append(vm.countryVoicePools[code], cleanName)
@@ -222,7 +223,7 @@ func (vm *VoiceManager) getSymmetricKeys(msg ATCMessage) (string, string) {
 	}
 
 	// The ATC ICAO comes from the message context, not the aircraft's permanent stats
-	atcID := msg.ICAO + "_" + msg.Role
+	atcID := msg.ControllerICAO + "_" + msg.Role
 
 	var key, partnerKey string
 
@@ -250,38 +251,44 @@ func (vm *VoiceManager) getSessionType(role string) int {
 
 func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string) string {
 
-	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection started - target country code: %s", msg.CountryCode)
+	countryCode := msg.CountryCode
+	if msg.Role != "PILOT" {
+		countryCode = msg.ControllerICAO[:2] // For ATC, derive country from ICAO
+	}
+	
+	targetISO, _ := convertIcaoToIso(countryCode)
+	logLabel := fmt.Sprintf("%s_%s", msg.AircraftSnap.Registration, msg.Role)
+	util.LogWithLabel(logLabel, "voice selection started - ISO code: %s (country code %s)", targetISO, countryCode)
 
 	// 1. TIER 1: Primary Country Match
-	targetISO, _ := convertIcaoToIso(msg.CountryCode)
 	if voice := vm.findBestInPool(vm.countryVoicePools[targetISO], partnerVoice); voice != "" {
-		util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection on country code successful: %s", voice)
+		util.LogWithLabel(logLabel, "voice selection on country code successful: %s", voice)
 		return voice
 	}
 
-	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection did not find match for country code: %s", msg.CountryCode)
+	util.LogWithLabel(logLabel, "voice selection did not find match for country code: %s", countryCode)
 
 	// 2. TIER 2: Regional Fallback
-	if len(msg.CountryCode) > 0 {
-		regionCode := msg.CountryCode[:1] // e.g., 'K' for USA, 'E' for Europe
-		util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection falling back to region code: %s", regionCode)
+	if len(countryCode) > 0 {
+		regionCode := countryCode[:1] // e.g., 'K' for USA, 'E' for Europe
+		util.LogWithLabel(logLabel, "voice selection falling back to region code: %s", regionCode)
 		if voice := vm.findBestInPool(vm.regionVoicePools[regionCode], partnerVoice); voice != "" {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection on region code successful: %s", voice)
+			util.LogWithLabel(logLabel, "voice selection on region code %s successful: %s", regionCode, voice)
 			return voice
 		}
 	}
 
-	util.LogWithLabel(msg.AircraftSnap.Registration, "voice selection falling back to global voice pool")
+	util.LogWithLabel(logLabel, "voice selection falling back to global voice pool")
 
 	// 3. TIER 3: Global Fallback
 	// Uses the pre-calculated pool to find ANY voice that isn't the partner.
-	voice :=  vm.findBestInPool(vm.globalPool, partnerVoice)
+	voice := vm.findBestInPool(vm.globalPool, partnerVoice)
 
 	// If Global pool only had the partnerVoice, findBestInPool returned ""
-    if voice == "" {
-        util.LogWithLabel(msg.AircraftSnap.Registration, "WARN: voice pools are currently drained, reluctant reuse of partner voice")
-        return vm.globalPool[0] 
-    }
+	if voice == "" {
+		util.LogWithLabel(logLabel, "WARN: voice pools are currently drained, reluctant reuse of exchange partner voice")
+		return vm.globalPool[0]
+	}
 
 	return voice
 }
@@ -291,7 +298,7 @@ func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) strin
 	if len(pool) == 0 {
 		return ""
 	}
-	
+
 	// Shuffle to maintain randomness within the pool
 	shuffled := make([]string, len(pool))
 	copy(shuffled, pool)
@@ -442,10 +449,10 @@ func (vm *VoiceManager) getLastUsedTime(voiceName string) time.Time {
 
 func (vm *VoiceManager) getVoiceLock(voiceName string) *sync.Mutex {
 	// If for some reason voiceName is empty, return a 'global' fallback lock
-    if voiceName == "" {
-        voiceName = "default_fallback_voice"
-    }
-	
-    lock, _ := vm.voiceLocks.LoadOrStore(voiceName, &sync.Mutex{})
-    return lock.(*sync.Mutex)
+	if voiceName == "" {
+		voiceName = "default_fallback_voice"
+	}
+
+	lock, _ := vm.voiceLocks.LoadOrStore(voiceName, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }

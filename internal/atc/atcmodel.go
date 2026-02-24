@@ -34,7 +34,7 @@ type Wind struct {
 type Baro struct {
 	Flight        float64
 	Sealevel      float64
-	TransitionAlt int		// TODO: remove from here, this is fixed value per ICAO
+	TransitionAlt int // TODO: remove from here, this is fixed value per ICAO
 }
 
 type AirlineInfo struct {
@@ -84,20 +84,20 @@ type Phase struct {
 }
 
 type Comms struct {
-	Callsign         string
-	Controller       *Controller
-	CountryCode      string
+	Callsign    string
+	Controller  *Controller
+	CountryCode string
 }
 
 type PhaseClass int
 
 const (
-	Unknown				PhaseClass = iota - 1  // -1
-	PreflightParked  	// 0
-	Departing       	// 1 = all flight phases from startup to climb out
-	Cruising			// 2
-	Arriving			// 3 = all flight phases from approach to shutdown
-	PostflightParked	// 4            
+	Unknown          PhaseClass = iota - 1 // -1
+	PreflightParked                        // 0
+	Departing                              // 1 = all flight phases from startup to climb out
+	Cruising                               // 2
+	Arriving                               // 3 = all flight phases from approach to shutdown
+	PostflightParked                       // 4
 )
 
 func (fc PhaseClass) String() string {
@@ -115,12 +115,12 @@ func (fc PhaseClass) String() string {
 // | ATCMessage represents a single ATC communication message |
 // +----------------------------------------------------------+
 type ATCMessage struct {
-	ICAO        	string
-	AircraftSnap    *Aircraft
-	Role        	string
-	Text        	string
-	CountryCode 	string
-	ControllerName	string
+	ControllerICAO string
+	AircraftSnap   *Aircraft
+	Role           string
+	Text           string
+	CountryCode    string
+	ControllerName string
 }
 
 // +------------------------------+
@@ -137,12 +137,12 @@ type Controller struct {
 }
 
 type Airspace struct {
-    Floor, Ceiling float64
-    Points         [][2]float64
-    Area           float64
-    // Pre-calculated Bounding Box
-    MinLat, MaxLat float64
-    MinLon, MaxLon float64
+	Floor, Ceiling float64
+	Points         [][2]float64
+	Area           float64
+	// Pre-calculated Bounding Box
+	MinLat, MaxLat float64
+	MinLon, MaxLon float64
 }
 
 type PhaseFacility struct {
@@ -151,7 +151,7 @@ type PhaseFacility struct {
 }
 
 type AirportCoords struct {
-    Lat  float64
-    Lon  float64
-    Name string
+	Lat  float64
+	Lon  float64
+	Name string
 }
