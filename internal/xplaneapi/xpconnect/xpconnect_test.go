@@ -29,7 +29,7 @@ func (m *MockATC) GetAirline(c string) *atc.AirlineInfo { return nil }
 func (m *MockATC) GetUserState() atc.UserState { return atc.UserState{} }
 func (m *MockATC) GetWeatherState() *atc.Weather { return &atc.Weather{} }
 func (m *MockATC) NotifyUserChange(p atc.Position, f1, f2 map[int]int) {}
-func (m *MockATC) AddFlightPlan(ac *atc.Aircraft, t time.Time) {}
+func (m *MockATC) AddFlightPlan(ac *atc.Aircraft, t time.Time) bool { return false}
 func (m *MockATC) GetCurrentZuluTime() time.Time { return time.Now() }
 func (m *MockATC) SetDataProvider(dp simdata.SimDataProvider) {}
 

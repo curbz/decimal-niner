@@ -41,7 +41,7 @@ type ServiceInterface interface {
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
 	GetWeatherState() *Weather
-	AddFlightPlan(ac *Aircraft, simTime time.Time)
+	AddFlightPlan(ac *Aircraft, simTime time.Time) bool
 	SetSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
 	SetDataProvider(simdata.SimDataProvider)
@@ -187,13 +187,13 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 	}
 
 	if ac.Flight.Destination == "" {
-		//TODO: add logging throughout this block, candidate to extract to a separate function
 		// no destination indicates this aircraft has no flight plan
-		s.AddFlightPlan(ac, s.GetCurrentZuluTime())
-		if ac.Flight.Origin == "" {
-			//still no flight plan, infer what we can from aircraft position and phase
+		planAssigned := s.AddFlightPlan(ac, s.GetCurrentZuluTime())
+		if !planAssigned {
+			//still no flight plan, infer what we can from aircraft position and phase, no gaurantees we will set anything
 			s.inferFlightPlan(ac)
 		}
+		// TODO: extract this part to a function passing in ac pointer as param
 		// in the unlikely, but possible case that we have not set a country code by now, use the origin airport as a fallback
 		if ac.Flight.Comms.CountryCode == "" {
 			//TODO: use origin when departing, destination when arriving
@@ -201,9 +201,10 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
         		ac.Flight.Comms.CountryCode = ac.Flight.Origin[:2]
 				util.LogWithLabel(ac.Registration, "flight plan origin used to set country code %s", ac.Flight.Comms.CountryCode)
 			} else {
-				// we absolutely must have a country code to work with
+				// we absolutely must have a country code to work with at this point
 				// TODO: set from config
 				ac.Flight.Comms.CountryCode = "GB"
+				util.LogWithLabel(ac.Registration, "WARN: no country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 			}
     	}
 	}
@@ -466,7 +467,8 @@ func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
 	return closestICAO
 }
 
-func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
+// AddFlightPan locates the flight plan for this aircraft situation, returns true if flight plan assigned successfully
+func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 
 	simTodayDayOfWeek := util.GetISOWeekday(simTime)
 	simYesterdayDayOfWeek := (simTodayDayOfWeek + 6) % 7
@@ -521,7 +523,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 		util.LogWithLabel(ac.Registration, "no active flight plan found for flight no. %d days %d and %d",
 			ac.Flight.Number, simTodayDayOfWeek, simYesterdayDayOfWeek)
 		if s.Config.ATC.StrictFlightPlanMatch {
-			return
+			return false
 		}
 		// fallback to find by tail number and flight only, on any day and time
 		util.LogWithLabel(ac.Registration, "find inactive flight plan for flight no. %d", ac.Flight.Number)
@@ -538,7 +540,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 
 		if len(candidateScheds) == 0 {
 			util.LogWithLabel(ac.Registration, "no inactive flight plan found for flight no. %d", ac.Flight.Number)
-			return
+			return false
 		}
 	}
 
@@ -559,11 +561,12 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) {
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
 
+	return true
 }
 
 // inferFlightPlan is last resort strategy to fill in missing origin/destination based on phase and location.
 func (s *Service) inferFlightPlan(ac *Aircraft) {
-	// If we have a full plan, don't touch it.
+	// Safety guard: If we have a full plan, don't touch it.
 	if ac.Flight.Origin != "" && ac.Flight.Destination != "" {
 		return
 	}
@@ -574,16 +577,18 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 	switch ac.Flight.Phase.Class {
 	case Departing:
 		if ac.Flight.Origin == "" {
+			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign departing flight with origin of %s", closestAirport)
 			ac.Flight.Origin = closestAirport
 		}
 	case Arriving:
 		if ac.Flight.Destination == "" {
+			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign arriving flight with destination of %s", closestAirport)
 			ac.Flight.Destination = closestAirport
 		}
-		// Origin can safely remain empty is this scenario
+		// Origin can safely remain empty is this scenario as it is unlikely to be referenced by ATC at this stage of flight
 	}
 
-	// we don't check Cruising phase as we can wait for transition to approach (Arriving phase)
+	// we don't check Cruising phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
 }
 
 func (s *Service) setFlightPhaseClass(ac *Aircraft) {

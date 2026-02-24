@@ -393,8 +393,6 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	}
 
-	// TODO: review, do we ALWAYS need to be calling these?
-	// and within each function, do we need to do everything? some things could not be necessary and expensive
 	xpc.updateUserData()
 	xpc.updateAircraftData()
 	xpc.updateWeatherData()
@@ -490,6 +488,7 @@ func (xpc *XPConnect) updateWeatherData() {
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
+	// update comms
 	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
 	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
@@ -502,7 +501,7 @@ func (xpc *XPConnect) updateUserData() {
 
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
-		log.Println("WARNING: Couldn't update user state as com1 or com2 dataref values are not available")
+		log.Println("WARN: Couldn't update user state as com1 or com2 dataref values are not available")
 		return
 	}
 
@@ -521,6 +520,7 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
+	// update position
 	lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
 	lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
 	alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
@@ -530,6 +530,7 @@ func (xpc *XPConnect) updateUserData() {
 		return
 	}
 
+	//TODO: only notify if change has occurred
 	xpc.atcService.NotifyUserChange(atc.Position{
 		Lat:      lat.(float64),
 		Long:     lng.(float64),
@@ -544,12 +545,12 @@ func (xpc *XPConnect) updateAircraftData() {
 	// get tail numbers/registrations
 	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/tail_number")
 	if tailNumbersDR == nil {
-		log.Println("Error: tail number dataref not found")
+		log.Println("error: tail number dataref not found")
 		return
 	}
 	tailNumbers, ok := tailNumbersDR.Value.([]string)
 	if !ok {
-		log.Println("Error: tail number dataref has invalid type")
+		log.Println("error: tail number dataref has invalid type")
 		return
 	}
 
@@ -558,15 +559,15 @@ func (xpc *XPConnect) updateAircraftData() {
 	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/airline_code")
 	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_num")
 	if airlineCodesDR == nil || flightNumsDR == nil {
-		log.Println("Error: airline code or flight number dataref not found")
+		log.Println("error: airline code or flight number dataref not found")
 	} else {
 		airlineCodes, ok = airlineCodesDR.Value.([]string)
 		if !ok {
-			log.Println("Error: airline code dataref has invalid type")
+			log.Println("error: airline code dataref has invalid type")
 		}
 		flightNums, ok = flightNumsDR.Value.([]int)
 		if !ok {
-			log.Println("Error: flight number dataref has invalid type")
+			log.Println("error: flight number dataref has invalid type")
 		}
 	}
 
@@ -574,25 +575,12 @@ func (xpc *XPConnect) updateAircraftData() {
 	for index, tailNumber := range tailNumbers {
 		acKey := fmt.Sprintf("%s_%d", tailNumber, flightNums[index])
 		aircraft, exists := xpc.aircraftMap[acKey]
-		newAircraft := !exists
-		if newAircraft {
-			// set flight phase to unknown initially
-			fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
-			aircraft = &atc.Aircraft{
-				Registration: tailNumber,
-				Flight: atc.Flight{
-					Number: flightNums[index],
-					// Squawk random number between 1200 and 6999
-					Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
-					Phase: atc.Phase{
-						Class:      atc.Unknown,
-						Current:    fpUnknown.Index(),
-						Previous:   fpUnknown.Index(),
-						Transition: time.Now()},
-				},
+		if !exists {
+			airlineCode := "unknown"
+			if index < len(airlineCodes) {
+				airlineCode = airlineCodes[index]
 			}
-			xpc.aircraftMap[acKey] = aircraft
-			util.LogWithLabel(tailNumber, "New aircraft detected - map key: %s (tail#_flight#)", acKey)
+			aircraft = xpc.createNewAircraft(index, flightNums[index], acKey, tailNumber, airlineCode)
 		}
 
 		// Update aircraft flight phase
@@ -615,7 +603,6 @@ func (xpc *XPConnect) updateAircraftData() {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
 		}
-
 		aircraft.Flight.Position = atc.Position{
 			Lat:      lat.(float64),
 			Long:     lng.(float64),
@@ -623,45 +610,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			Heading:  hdg.(float64),
 		}
 
-		// update airline code
-		airlineCode := "unknown"
-		if index < len(airlineCodes) {
-			airlineCode = airlineCodes[index]
-		}
-
-		// get aircraft class
-		class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
-		sizeClass := class.(int)
-		if err != nil || sizeClass > 5 {
-			log.Println(err)
-			sizeClass = 3 // size class 'D'
-		}
-		aircraft.SizeClass = atc.SizeClass[sizeClass]
-
-		// lookup callsign for airline code, default to airline code value if not found in map
-		callsign := airlineCode
-		if aircraft.Flight.Comms.Callsign == "" {
-			airlineInfo := xpc.atcService.GetAirline(airlineCode)
-			if airlineInfo != nil {
-				callsign = airlineInfo.Callsign
-				aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
-			} else {
-				util.LogWithLabel(aircraft.Registration, "WARN: no airline information found for code %s", airlineCode)
-				// if we don't have airline info, we also won't have country code, so use tail number as fallback
-				if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
-					aircraft.Flight.Comms.CountryCode = ccode
-					util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
-				} 
-			}
-		}
-
-		sizeClassStr := ""
-		if sizeClass > 3 {
-			sizeClassStr = "Heavy"
-		}
-		aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
-
-		// get parking
+		// update parking
 		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)
 		if err != nil {
 			log.Println(err)
@@ -669,7 +618,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 		aircraft.Flight.AssignedParking = parking.(string)
 
-		// get assigned runway
+		// update assigned runway
 		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/runway", index)
 		if err != nil {
 			log.Println(err)
@@ -713,6 +662,61 @@ func (xpc *XPConnect) updateAircraftData() {
 		xpc.initialised = true
 		log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
 	}
+}
+
+func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
+	
+	// set flight phase to unknown initially
+	fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
+	aircraft := &atc.Aircraft{
+		Registration: registration,
+		Flight: atc.Flight{
+			Number: flightNumber,
+			// Squawk random number between 1200 and 6999
+			Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
+			Phase: atc.Phase{
+				Class:      atc.Unknown,
+				Current:    fpUnknown.Index(),
+				Previous:   fpUnknown.Index(),
+				Transition: time.Now()},
+		},
+	}
+	xpc.aircraftMap[acKey] = aircraft
+	util.LogWithLabel(registration, "New aircraft detected registration %s flight number %d", registration, flightNumber)
+
+	// get aircraft class
+	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
+	sizeClass := class.(int)
+	if err != nil || sizeClass > 5 {
+		log.Println(err)
+		sizeClass = 3 // size class 'D'
+	}
+	aircraft.SizeClass = atc.SizeClass[sizeClass]
+
+	// lookup callsign for airline code, default to airline code value if not found in map
+	callsign := airlineCode
+	if aircraft.Flight.Comms.Callsign == "" {
+		airlineInfo := xpc.atcService.GetAirline(airlineCode)
+		if airlineInfo != nil {
+			callsign = airlineInfo.Callsign
+			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+		} else {
+			util.LogWithLabel(aircraft.Registration, "WARN: no airline information found for code %s", airlineCode)
+			// if we don't have airline info, we also won't have country code, so use tail number as fallback
+			if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
+				aircraft.Flight.Comms.CountryCode = ccode
+				util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
+			} 
+		}
+	}
+
+	sizeClassStr := ""
+	if sizeClass > 3 {
+		sizeClassStr = "Heavy"
+	}
+	aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
+
+	return aircraft
 }
 
 // getDataRefValue retrieves the value of a dataref by name and index (for array types).

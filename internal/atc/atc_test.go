@@ -416,7 +416,7 @@ func TestAddFlightPlan(t *testing.T) {
 			strictFlightPlanMatching: true,
 			expectOrigin: "KATL",
 			expectDest: "KMIA",
-			expectNoMatch: false,
+			expectNoMatch: true,
 		},
 	}
 
@@ -432,10 +432,10 @@ func TestAddFlightPlan(t *testing.T) {
 			}
  
 			atcService.Config.ATC.StrictFlightPlanMatch = tt.strictFlightPlanMatching
-			atcService.AddFlightPlan(ac, tt.simTime)
+			planFound := atcService.AddFlightPlan(ac, tt.simTime)
 
 			if tt.expectNoMatch {
-				if ac.Flight.Origin != "" || ac.Flight.Destination != "" {
+				if planFound {
 					t.Errorf("expected no match, got Origin=%s Destination=%s", ac.Flight.Origin, ac.Flight.Destination)
 				}
 			} else {
