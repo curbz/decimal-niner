@@ -680,6 +680,11 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 }
 
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
+	// If a handoff is already in progress, don't check for another one
+    if ac.Flight.Comms.CruiseHandoff != NoHandoff {
+        return
+    }
+
 	// if aircraft is in cruise, check distance travelled from previous position for possible sector changes
 	if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
 		if ac.Flight.LastCheckedPosition.Lat != 0 && ac.Flight.LastCheckedPosition.Long != 0 {
