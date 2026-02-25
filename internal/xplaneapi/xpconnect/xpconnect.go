@@ -647,6 +647,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 		aircraft.Flight.AssignedRunway = runway.(string)
 
+		xpc.atcService.CheckForCruiseSectorChange(aircraft)
 	}
 
 	// now go through all aircraft looking for flight phase changes

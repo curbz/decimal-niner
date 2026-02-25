@@ -56,17 +56,18 @@ type Aircraft struct {
 }
 
 type Flight struct {
-	Position        Position
-	Number          int
-	TaxiRoute       string
-	Origin          string
-	Destination     string
-	Phase           Phase
-	Comms           Comms
-	AltClearance    int
-	AssignedParking string
-	AssignedRunway  string
-	Squawk          string
+	Position            Position
+	LastCheckedPosition Position
+	Number              int
+	TaxiRoute           string
+	Origin              string
+	Destination         string
+	Phase               Phase
+	Comms               Comms
+	AltClearance        int
+	AssignedParking     string
+	AssignedRunway      string
+	Squawk              string
 }
 
 type Position struct {
@@ -84,10 +85,20 @@ type Phase struct {
 }
 
 type Comms struct {
-	Callsign    string
-	Controller  *Controller
-	CountryCode string
+	Callsign       string
+	Controller     *Controller
+	NextController *Controller
+	CruiseHandoff  int // flag to indicate to phrase generation that this is a handoff scenario and not just a routine position update
+	CountryCode    string
 }
+
+type Handoff int
+
+const (
+	NoHandoff = iota
+	HandoffExitSector
+	HandoffEnterSector
+)
 
 type PhaseClass int
 

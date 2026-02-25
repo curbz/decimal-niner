@@ -79,6 +79,37 @@ func (s *Service) startComms() {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a response to the communication
 
+			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+
+			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
+				switch ac.Flight.Comms.CruiseHandoff {
+				case HandoffEnterSector:
+					util.LogWithLabel(ac.Registration, "Processing handoff enter sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
+					phrase := "{FACILITY}, {CALLSIGN} {ALTITUDE}"
+					s.prepAndQueuePhrase(phrase, "PILOT", ac, s.Weather.Baro)
+					phrase = "{CALLSIGN} , {FACILITY} identified"
+					s.prepAndQueuePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					ac.Flight.Comms.CruiseHandoff = NoHandoff
+					s.Transmit(s.UserState, ac)
+				case HandoffExitSector:
+					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
+					// select next controller's first listed frequency
+					freqStr := fmt.Sprintf("%.3f", float64(ac.Flight.Comms.NextController.Freqs[0])/1000.0)
+					freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
+					phrase := fmt.Sprintf("{CALLSIGN} contact %s on %s {{VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
+					s.prepAndQueuePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.prepAndQueuePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
+					go func() {
+						time.Sleep(20 * time.Second)
+						ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
+						ac.Flight.Comms.CruiseHandoff = HandoffEnterSector
+						s.Transmit(s.UserState, ac)
+					}()
+				}
+
+				continue
+			}
+
 			var phraseSource map[string][]Exchange
 			if ac.Flight.Comms.Controller.RoleID == 0 {
 				phraseSource = s.VoiceManager.PhraseClasses.phrasesUnicom
@@ -86,7 +117,6 @@ func (s *Service) startComms() {
 				phraseSource = s.VoiceManager.PhraseClasses.phrases
 			}
 
-			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 			exchanges, exists := phraseSource[phaseFacility.atcPhase]
 			if !exists || len(exchanges) == 0 {
 				util.LogWithLabel(ac.Registration, "error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
@@ -231,7 +261,7 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	//cleanup phrase
 	// 1. Decompose accents (é becomes e + ´)
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	phrase, _, _ = transform.String(t, phrase)	
+	phrase, _, _ = transform.String(t, phrase)
 	phrase = strings.ReplaceAll(phrase, "[", "")
 	phrase = strings.ReplaceAll(phrase, "]", "")
 	phrase = strings.ReplaceAll(phrase, "{", "")
@@ -272,13 +302,13 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		}
 
 		// Lock this specific voice so no other Piper process touches this .onnx file
-		// CRITICAL: You must pass this lock to the Player to unlock it 
+		// CRITICAL: You must pass this lock to the Player to unlock it
 		vLock := vm.getVoiceLock(voice)
 		if vLock == nil {
 			util.LogWithLabel(msg.AircraftSnap.Registration, "ERROR: Could not retrieve lock for voice: %s", voice)
-   			continue 
+			continue
 		}
-		vLock.Lock() 
+		vLock.Lock()
 
 		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
 		stdin, err := cmd.StdinPipe()
@@ -306,9 +336,9 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 				util.LogWithLabel(msg.AircraftSnap.Registration, "Error writing to piper stdin: %v", err)
 				return
 			}
-			// A tiny pause ensures the C++ buffer has moved the text 
+			// A tiny pause ensures the C++ buffer has moved the text
 			// to the synthesis engine before the pipe 'disappears'
-			time.Sleep(10 * time.Millisecond)			
+			time.Sleep(10 * time.Millisecond)
 		}(stdin, msg.Text)
 
 		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
@@ -339,12 +369,12 @@ func RadioPlayer(soxPath string) {
 		}
 
 		// Wrap the logic in a closure so defer works per-iteration
-        func(a PreparedAudio) {
+		func(a PreparedAudio) {
 
 			// must unlock voice at end of function regardless of outcome
-            if a.VoiceLock != nil {
-                defer a.VoiceLock.Unlock()
-            }
+			if a.VoiceLock != nil {
+				defer a.VoiceLock.Unlock()
+			}
 
 			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
 
@@ -378,7 +408,7 @@ func RadioPlayer(soxPath string) {
 			_ = playCmd.Wait()
 
 			// 2. // Explicitly drop the handle to the pipe
-			audio.PiperOut.Close() 
+			audio.PiperOut.Close()
 
 			// 3. NOW wait for Piper.
 			// Piper will have seen a 'broken pipe' or EOF and will be ready to exit cleanly.
@@ -386,7 +416,7 @@ func RadioPlayer(soxPath string) {
 			if err != nil {
 				// Log if it's not a standard exit, but 0xc0000409 should be gone
 				//if !strings.Contains(err.Error(), "exit status 1") {
-					util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
+				util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
 				//}
 			}
 

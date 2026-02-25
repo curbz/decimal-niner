@@ -25,19 +25,20 @@ type Service struct {
 	UserState        UserState
 	Airlines         map[string]AirlineInfo
 	AirportLocations map[string]AirportCoords
-	Airports 		 AirportProvider
+	Airports         AirportProvider
 	FlightSchedules  map[string][]trafficglobal.ScheduledFlight
 	Weather          *Weather
 	DataProvider     simdata.SimDataProvider
 	SimInitTime      time.Time
 	SessionInitTime  time.Time
-	VoiceManager	 *VoiceManager
+	VoiceManager     *VoiceManager
 }
 
 type ServiceInterface interface {
 	Run()
 	NotifyAircraftChange(msg *Aircraft)
 	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int)
+	NotifyCruisePositionUpdate(ac *Aircraft)
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
 	GetWeatherState() *Weather
@@ -45,6 +46,8 @@ type ServiceInterface interface {
 	SetSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
 	SetDataProvider(simdata.SimDataProvider)
+	CheckForCruiseSectorChange(ac *Aircraft)
+	Transmit(userState UserState, ac *Aircraft)
 }
 
 // AirportProvider defines the behavior for finding the nearest airport
@@ -130,8 +133,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	vm := NewVoiceManager(cfg)
 
-	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) 
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)     
+	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm)
+	go RadioPlayer(cfg.ATC.Voices.Sox.Application)
 
 	return &Service{
 		Config:           cfg,
@@ -177,9 +180,9 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 
 	// set flight phase classification
 	s.setFlightPhaseClass(ac)
-	util.LogWithLabel(ac.Registration, "flight %d phase classified as %s", 
-						ac.Flight.Number, 
-						ac.Flight.Phase.Class.String())
+	util.LogWithLabel(ac.Registration, "flight %d phase classified as %s",
+		ac.Flight.Number,
+		ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
 	if ac.Flight.Phase.Class == PostflightParked {
@@ -198,7 +201,7 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		if ac.Flight.Comms.CountryCode == "" {
 			//TODO: use origin when departing, destination when arriving
 			if len(ac.Flight.Origin) > 2 {
-        		ac.Flight.Comms.CountryCode = ac.Flight.Origin[:2]
+				ac.Flight.Comms.CountryCode = ac.Flight.Origin[:2]
 				util.LogWithLabel(ac.Registration, "flight plan origin used to set country code %s", ac.Flight.Comms.CountryCode)
 			} else {
 				// we absolutely must have a country code to work with at this point
@@ -206,10 +209,10 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 				ac.Flight.Comms.CountryCode = "GB"
 				util.LogWithLabel(ac.Registration, "WARN: no country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 			}
-    	}
+		}
 	}
 
-	// make a snaphot copy of aircraft data and pass this snapshot into the phrase generation process.
+	// make a snaphot copy of aircraft current state and pass this snapshot into the phrase generation process.
 	// it is safer to do it here rather than in the go routine as there would be a small chance that
 	// the aircraft could get updated concurrently during the deep copy process if this statement was
 	// placed within the go routine.
@@ -225,19 +228,19 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
 
 		aiFac := s.LocateController(
-			acSnap.Registration, 
-			0, phaseFacility.roleId, 
-			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, 
+			acSnap.Registration,
+			0, phaseFacility.roleId,
+			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude,
 			searchICAO)
 
-		// If we are in Cruise but looking for Center (6) and find nothing, 
+		// If we are in Cruise but looking for Center (6) and find nothing,
 		// try looking for Departure (4) as a fallback before going to Unicom.
 		if aiFac == nil && phaseFacility.roleId == 6 {
-			aiFac = s.LocateController(acSnap.Registration+"_CruiseFallback", 0, 4, 
+			aiFac = s.LocateController(acSnap.Registration+"_CruiseFallback", 0, 4,
 				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
 		}
 
-		// Fallback: If no controller found (e.g. at a small grass strip), 
+		// Fallback: If no controller found (e.g. at a small grass strip),
 		// look specifically for Unicom (Role 0) at that airport first, then generally.
 		if aiFac == nil {
 			aiFac = s.LocateController(acSnap.Registration+"_Unicom", 0, 0,
@@ -250,34 +253,41 @@ func (s *Service) NotifyAircraftChange(ac *Aircraft) {
 				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
 		}
 
-		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role: %s (%d)", 
-								aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
+		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role: %s (%d)",
+			aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
 
 		acSnap.Flight.Comms.Controller = aiFac
 
-		// Check match against COM1 and COM2
-		for _, userFac := range userActive {
-			if userFac == nil {
-				continue
-			}
-
-			// Match logic
-			match := (userFac.ICAO == aiFac.ICAO && userFac.RoleID == aiFac.RoleID)
-
-			// Fallback for Regions (Center/Approach) where ICAO might differ
-			if !match && userFac.RoleID >= 4 && aiFac.RoleID >= 4 {
-				match = (userFac.Name == aiFac.Name)
-			}
-
-			if match || s.Config.ATC.ListenAllFreqs {
-				util.LogWithLabel(acSnap.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
-				s.Channel <- acSnap
-				return
-			} else {
-				util.LogWithLabel(acSnap.Registration, "User not on same frequency - audio will not be generated")
-			}
-		}
+		s.Transmit(s.UserState, acSnap)
 	}()
+}
+
+func (s *Service) Transmit(userState UserState, ac *Aircraft) {
+
+	aiFac := ac.Flight.Comms.Controller
+
+	// Check match against COM1 and COM2
+	for _, userFac := range userState.ActiveFacilities {
+		if userFac == nil {
+			continue
+		}
+
+		// match when user and aircraft ICAO are the same and the roles are the same (e.g. both are Tower)
+		match := (userFac.ICAO == aiFac.ICAO && userFac.RoleID == aiFac.RoleID)
+
+		// fallback for Regions (Center/Approach) where ICAO might differ
+		if !match && userFac.RoleID >= 4 && aiFac.RoleID >= 4 {
+			match = (userFac.Name == aiFac.Name)
+		}
+
+		if match || s.Config.ATC.ListenAllFreqs {
+			util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
+			s.Channel <- ac
+			return
+		} else {
+			util.LogWithLabel(ac.Registration, "User not on same frequency - audio will not be generated")
+		}
+	}
 }
 
 func (s *Service) GetAirline(code string) *AirlineInfo {
@@ -295,7 +305,6 @@ func (s *Service) GetUserState() UserState {
 func (s *Service) GetWeatherState() *Weather {
 	return s.Weather
 }
-
 
 func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
 
@@ -333,7 +342,7 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	var bestMatch *Controller
 	var bestPointMatch *Controller
 	smallestArea := math.MaxFloat64
-	closestPointDist := 15.0 
+	closestPointDist := 15.0
 
 	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %s (%d)  Tuned Freq: %d  Target ICAO: %s",
 		uLa, uLo, uAl, roleNameMap[tRole], tRole, tFreq, targetICAO)
@@ -353,14 +362,14 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 				if tRole == -1 {
 					return c
 				}
-				// Keep a backup in case we find NOTHING else, 
+				// Keep a backup in case we find NOTHING else,
 				// but don't return it yet!
 				if backupMatch == nil {
 					backupMatch = c
 				}
 			}
 		}
-		// Only return the backup if we aren't specifically looking for 
+		// Only return the backup if we aren't specifically looking for
 		// a different role (like Role 6).
 		if tRole == -1 && backupMatch != nil {
 			return backupMatch
@@ -370,36 +379,45 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
 	for i := range s.Database {
 		c := &s.Database[i]
-		if !c.IsPoint { continue }
+		if !c.IsPoint {
+			continue
+		}
 
 		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
-		
+
 		// Frequency Gate: If a frequency is tuned, it must match and be in range.
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 { fMatch = true; break }
+				if f/10 == tFreq/10 {
+					fMatch = true
+					break
+				}
 			}
-			
+
 			if fMatch && dist < 100.0 {
 				// Perfect match: Freq + Role
-				if tRole != -1 && c.RoleID == tRole { return c }
-				
-				// Shared Freq Tie-breaker: Favour the "higher" RoleID (Tower/Center) 
+				if tRole != -1 && c.RoleID == tRole {
+					return c
+				}
+
+				// Shared Freq Tie-breaker: Favour the "higher" RoleID (Tower/Center)
 				// if no specific role was requested.
 				if bestPointMatch == nil || c.RoleID > bestPointMatch.RoleID {
 					bestPointMatch = c
 					closestPointDist = dist
 				}
 			}
-			// IMPORTANT: We skip proximity logic for this entry because we are in 
+			// IMPORTANT: We skip proximity logic for this entry because we are in
 			// "Frequency Mode."
-			continue 
+			continue
 		}
 
 		// Proximity Match (within 15nm)
 		if dist < closestPointDist {
-			if tRole != RoleAny && c.RoleID != tRole { continue }
+			if tRole != RoleAny && c.RoleID != tRole {
+				continue
+			}
 			closestPointDist = dist
 			bestPointMatch = c
 		}
@@ -413,18 +431,27 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	// --- TIER 2: SCAN POLYGONS (Center/Oceanic) ---
 	for i := range s.Database {
 		c := &s.Database[i]
-		if len(c.Airspaces) == 0 { continue }
+		if len(c.Airspaces) == 0 {
+			continue
+		}
 
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 { fMatch = true; break }
+				if f/10 == tFreq/10 {
+					fMatch = true
+					break
+				}
 			}
-			if !fMatch { continue }
+			if !fMatch {
+				continue
+			}
 		}
 
 		for _, poly := range c.Airspaces {
-			if uAl < poly.Floor || uAl > poly.Ceiling { continue }
+			if uAl < poly.Floor || uAl > poly.Ceiling {
+				continue
+			}
 
 			// Dateline-aware MBB Check
 			isInside := false
@@ -447,7 +474,9 @@ func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl
 		}
 	}
 
-	if bestMatch != nil { return bestMatch }
+	if bestMatch != nil {
+		return bestMatch
+	}
 	return bestPointMatch
 }
 
@@ -573,7 +602,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 	}
 
 	closestAirport := s.Airports.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
-	
+
 	// infer what we can from current location
 	switch ac.Flight.Phase.Class {
 	case Departing:
@@ -596,12 +625,12 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
-    // 1. STICKY GUARD: 
-    // If we've already assigned a specific class (like Preflight or Postflight),
-    // and the Sim phase hasn't actually changed, don't re-run the heavy logic.
-    if ph.Class != Unknown && ph.Current == ph.Previous {
-        return
-    }
+	// 1. STICKY GUARD:
+	// If we've already assigned a specific class (like Preflight or Postflight),
+	// and the Sim phase hasn't actually changed, don't re-run the heavy logic.
+	if ph.Class != Unknown && ph.Current == ph.Previous {
+		return
+	}
 
 	switch ph.Current {
 	case trafficglobal.Parked.Index():
@@ -650,6 +679,44 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	}
 }
 
+func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
+	// if aircraft is in cruise, check distance travelled from previous position for possible sector changes
+	if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
+		if ac.Flight.LastCheckedPosition.Lat != 0 && ac.Flight.LastCheckedPosition.Long != 0 {
+			dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
+			// Only notify if moved more than 5.0 NM
+			if dist > 5.0 {
+				// Trigger the cruise handoff check logic
+				s.NotifyCruisePositionUpdate(ac)
+				// Update the checkpoint
+				ac.Flight.LastCheckedPosition = ac.Flight.Position
+			}
+		}
+	}
+}
+
+func (s *Service) NotifyCruisePositionUpdate(ac *Aircraft) {
+
+	util.LogWithLabel(ac.Registration, "Position update, checking for sector change")
+	// 1. Determine current sector based on Lat/Long/Alt
+	ac.Flight.Comms.NextController = s.LocateController(ac.Registration+"_CRUISE_UPDATE", 0, 6,
+		ac.Flight.Position.Lat,
+		ac.Flight.Position.Long,
+		ac.Flight.Position.Altitude, "")
+
+	// 2. Check for Handoff
+	if ac.Flight.Comms.Controller.Name != "" && ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
+		util.LogWithLabel(ac.Registration, "Handoff from %s to %s", ac.Flight.Comms.Controller.Name, ac.Flight.Comms.NextController.Name)
+		// creat snapshot of aircraft state for phrase generation
+		acSnap := deepcopy.Copy(ac).(*Aircraft)
+		acSnap.Flight.Comms.CruiseHandoff = HandoffExitSector
+		// send to phrase generation
+		s.Channel <- acSnap
+		// update current controller
+		ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
+	}
+}
+
 func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
 	switch phaseClass {
 	case PreflightParked, Departing:
@@ -664,25 +731,25 @@ func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
 }
 
 func GetCountryFromRegistration(reg string) string {
-    // Standard registration format is Prefix-Suffix or Prefix1234
-    // We check the first 1 or 2 characters
-    if len(reg) < 1 {
-        return ""
-    }
+	// Standard registration format is Prefix-Suffix or Prefix1234
+	// We check the first 1 or 2 characters
+	if len(reg) < 1 {
+		return ""
+	}
 
-    // Check 2-char prefixes first (e.g., XB, EI)
-    if len(reg) >= 2 {
-        if code, ok := registrationMap[reg[:2]]; ok {
-            return code
-        }
-    }
+	// Check 2-char prefixes first (e.g., XB, EI)
+	if len(reg) >= 2 {
+		if code, ok := registrationMap[reg[:2]]; ok {
+			return code
+		}
+	}
 
-    // Check 1-char prefixes (e.g., G, N)
-    if code, ok := registrationMap[reg[:1]]; ok {
-        return code
-    }
+	// Check 1-char prefixes (e.g., G, N)
+	if code, ok := registrationMap[reg[:1]]; ok {
+		return code
+	}
 
-    return ""
+	return ""
 }
 
 func normalizeFreq(fRaw int) int {
@@ -706,4 +773,8 @@ func normalizeFreq(fRaw int) int {
 	}
 
 	return f
+}
+
+func calculateDistance(pos1, pos2 Position) float64 {
+	return geometry.DistNM(pos1.Lat, pos1.Long, pos2.Lat, pos2.Long)
 }
