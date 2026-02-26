@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"maps"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -545,12 +546,14 @@ func (xpc *XPConnect) updateUserData() {
 	
 	// check for changes
 	posChanged := false
-	if lat != userState.Position.Lat || lng != userState.Position.Long || alt != userState.Position.Altitude {
+	// no need to include altitude in change detection 
+	if math.Abs(lat - userState.Position.Lat) > 0.0001 || math.Abs(lng - userState.Position.Long) > 0.0001 {
 		posChanged = true
 	}
 
 	//only notify if change has occurred
 	if commsChanged || posChanged {
+		fmt.Printf("User state change detected. Comms changed: %t, Position changed: %t\n", commsChanged, posChanged)
 		xpc.atcService.NotifyUserChange(atc.Position{
 			Lat:      lat,
 			Long:     lng,

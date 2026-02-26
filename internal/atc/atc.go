@@ -688,7 +688,9 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 	// if aircraft is in cruise, check distance travelled from previous position for possible sector changes
 	if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
 		if ac.Flight.LastCheckedPosition.Lat != 0 && ac.Flight.LastCheckedPosition.Long != 0 {
+			// TODO: add > 0.0001 change as per user position change detection to avoid unnecessary distance calculations when aircraft is stationary
 			dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
+			fmt.Println("Distance from last cruise check: ", dist, " NM")
 			// Only notify if moved more than 5.0 NM
 			if dist > 5.0 {
 				// Trigger the cruise handoff check logic
