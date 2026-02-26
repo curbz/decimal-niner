@@ -557,7 +557,7 @@ func formatParking(parking string, icao string) string {
 	// 1. Detect Area-based parking (Ramp/Apron)
 	if strings.Contains(parking, "RAMP") || strings.Contains(parking, "APRON") {
 		// If X-Plane gives "NORTH RAMP 1", we want to ensure the words stay
-		// but the digits are ready for your final translator.
+		// but the digits are ready for translation to words
 		return phoneticiseSingleAlphas(parking)
 	}
 
@@ -585,19 +585,29 @@ func formatParking(parking string, icao string) string {
 
 		// 2. Handle the Suffix (Single Alpha)
 		if len(suffix) == 1 {
-			phonetic := phoneticMap[suffix]
-			return fmt.Sprintf("%s %s %s", prefix, digits, phonetic)
+			if phonetic, exists := phoneticMap[suffix]; exists {
+				return fmt.Sprintf("%s %s %s", prefix, digits, phonetic)
+			} else {
+				return fmt.Sprintf("%s %s %s", prefix, digits, suffix)
+			}
 		}
 
 		return fmt.Sprintf("%s %s", prefix, digits)
 	}
 
-	// 3. Handle Alpha-First (e.g., "B12" -> "Gate Bravo 12")
+	// 3. Handle Alpha-First followed by digits(e.g., "B12" -> "Gate Bravo 12")
 	// Most common in US/Europe terminals
-	firstChar := string(parking[0])
-	if phonetic, exists := phoneticMap[firstChar]; exists {
-		remaining := parking[1:]
-		return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
+	// Use regex to verify the pattern is indeed an alpha followed by digits
+	match, _ := regexp.MatchString(`^[A-Z]\d+`, parking)
+	if match {
+		firstChar := string(parking[0])
+		if phonetic, exists := phoneticMap[firstChar]; exists {
+			remaining := parking[1:]
+			return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
+		} else {
+			return fmt.Sprintf("%s %s", prefix, parking)
+
+		}
 	}
 
 	return parking
