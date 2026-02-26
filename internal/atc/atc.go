@@ -36,9 +36,9 @@ type Service struct {
 
 type ServiceInterface interface {
 	Run()
-	NotifyAircraftChange(msg *Aircraft)
-	NotifyUserChange(pos Position, com1Freq, com2Freq map[int]int)
-	NotifyCruisePositionUpdate(ac *Aircraft)
+	NotifyFlightPhaseChange(msg *Aircraft)
+	NotifyUserStateChange(pos Position, com1Freq, com2Freq map[int]int)
+	NotifyCruisePositionChange(ac *Aircraft)
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
 	GetWeatherState() *Weather
@@ -169,7 +169,7 @@ func (s *Service) SetSimTime(init time.Time, session time.Time) {
 	s.SessionInitTime = session
 }
 
-func (s *Service) NotifyAircraftChange(ac *Aircraft) {
+func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 	userActive := s.UserState.ActiveFacilities
 
@@ -306,7 +306,7 @@ func (s *Service) GetWeatherState() *Weather {
 	return s.Weather
 }
 
-func (s *Service) NotifyUserChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
+func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
 
 	s.UserState.Position = pos
 	if s.UserState.ActiveFacilities == nil {
@@ -679,30 +679,38 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	}
 }
 
+// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft 
+// is in cruise and has travelled at least 5 NM since the last position check
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
-	// If a handoff is already in progress, don't check for another one
-    if ac.Flight.Comms.CruiseHandoff != NoHandoff {
-        return
-    }
 
-	// if aircraft is in cruise, check distance travelled from previous position for possible sector changes
-	if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
-		if ac.Flight.LastCheckedPosition.Lat != 0 && ac.Flight.LastCheckedPosition.Long != 0 {
-			// TODO: add > 0.0001 change as per user position change detection to avoid unnecessary distance calculations when aircraft is stationary
-			dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-			fmt.Println("Distance from last cruise check: ", dist, " NM")
-			// Only notify if moved more than 5.0 NM
-			if dist > 5.0 {
-				// Trigger the cruise handoff check logic
-				s.NotifyCruisePositionUpdate(ac)
-				// Update the checkpoint
-				ac.Flight.LastCheckedPosition = ac.Flight.Position
-			}
-		}
+	// if last check position has not yet been set for the first time
+	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+		return
+	}
+
+	// if a handoff is already in progress or
+	// the aircraft is not in the cruise phase or
+	// the aircraft has travelled less than ~11 meters (allows for data value fluctuations) then return
+	if ac.Flight.Comms.CruiseHandoff != NoHandoff ||
+		ac.Flight.Phase.Current != trafficglobal.Cruise.Index() ||
+		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
+			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
+		return
+	}
+
+	dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
+	fmt.Println("Distance from last cruise check: ", dist, " NM")
+	// Only notify if moved more than 5.0 NM
+	if dist > 5.0 {
+		// Trigger the cruise handoff detection logic
+		s.NotifyCruisePositionChange(ac)
+		// Update the checkpoint
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
 	}
 }
 
-func (s *Service) NotifyCruisePositionUpdate(ac *Aircraft) {
+func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 
 	util.LogWithLabel(ac.Registration, "Position update, checking for sector change")
 	// 1. Determine current sector based on Lat/Long/Alt

@@ -494,7 +494,7 @@ func (xpc *XPConnect) updateUserData() {
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
 	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
 	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
-	
+
 	// check for errors
 	if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
 		logErrors(errC1, errC2, errF1, errF2)
@@ -519,7 +519,7 @@ func (xpc *XPConnect) updateUserData() {
 	commsChanged := false
 	if com1Freq != userState.TunedFreqs[1] || com2Freq != userState.TunedFreqs[2] ||
 		com1Facility != userState.TunedFacilities[1] || com2Facility != userState.TunedFacilities[2] {
-			commsChanged = true
+		commsChanged = true
 	}
 
 	// get updated position
@@ -543,18 +543,18 @@ func (xpc *XPConnect) updateUserData() {
 	lat := latVal.(float64)
 	lng := lngVal.(float64)
 	alt := altVal.(float64) * 3.28084
-	
+
 	// check for changes
 	posChanged := false
-	// no need to include altitude in change detection 
-	if math.Abs(lat - userState.Position.Lat) > 0.0001 || math.Abs(lng - userState.Position.Long) > 0.0001 {
+	// no need to include altitude in change detection
+	if math.Abs(lat-userState.Position.Lat) > 0.0001 || math.Abs(lng-userState.Position.Long) > 0.0001 {
 		posChanged = true
 	}
 
 	//only notify if change has occurred
 	if commsChanged || posChanged {
 		fmt.Printf("User state change detected. Comms changed: %t, Position changed: %t\n", commsChanged, posChanged)
-		xpc.atcService.NotifyUserChange(atc.Position{
+		xpc.atcService.NotifyUserStateChange(atc.Position{
 			Lat:      lat,
 			Long:     lng,
 			Altitude: alt,
@@ -614,7 +614,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			return
 		}
 
-		// Update ONLY Current. 
+		// Update ONLY Current.
 		// This creates the 'delta' that the next loop will look for.
 		aircraft.Flight.Phase.Current = flightPhase.(int)
 
@@ -650,7 +650,6 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 		aircraft.Flight.AssignedRunway = runway.(string)
 
-		xpc.atcService.CheckForCruiseSectorChange(aircraft)
 	}
 
 	// now go through all aircraft looking for flight phase changes
@@ -658,31 +657,33 @@ func (xpc *XPConnect) updateAircraftData() {
 		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
 
 			// If we are already initialised, this is a REAL mid-session change.
-        	// We notify the service.
+			// We notify the service.
 			if xpc.initialised {
-				
-				// Notify ATC service of flight phase change
-				xpc.atcService.NotifyAircraftChange(ac)
 
-				util.LogWithLabel(ac.Registration, 
-					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d", 
-					ac.Flight.Number, 
-					trafficglobal.FlightPhase(ac.Flight.Phase.Previous).String(), 
+				// Notify ATC service of flight phase change
+				xpc.atcService.NotifyFlightPhaseChange(ac)
+
+				util.LogWithLabel(ac.Registration,
+					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d",
+					ac.Flight.Number,
+					trafficglobal.FlightPhase(ac.Flight.Phase.Previous).String(),
 					trafficglobal.FlightPhase(ac.Flight.Phase.Current).String(),
-					ac.Flight.Position.Lat, 
-					ac.Flight.Position.Long, 
-					ac.Flight.Position.Altitude, 
+					ac.Flight.Position.Lat,
+					ac.Flight.Position.Long,
+					ac.Flight.Position.Altitude,
 					int(ac.Flight.Position.Heading))
 			}
 
-			// ALWAYS commit the state. 
-        	// If initialised is false, this "silently" syncs the starting state.
+			// ALWAYS commit the state.
+			// If initialised is false, this "silently" syncs the starting state.
 			ac.Flight.Phase.Previous = ac.Flight.Phase.Current
 			ac.Flight.Phase.Transition = time.Now()
-			
+		} else {
+			// check for possible sector change
+			xpc.atcService.CheckForCruiseSectorChange(ac)
 		}
 	}
-	
+
 	if !xpc.initialised {
 		xpc.initialised = true
 		log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
@@ -690,7 +691,7 @@ func (xpc *XPConnect) updateAircraftData() {
 }
 
 func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
-	
+
 	// set flight phase to unknown initially
 	fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
 	aircraft := &atc.Aircraft{
@@ -731,7 +732,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 			if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
 				aircraft.Flight.Comms.CountryCode = ccode
 				util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
-			} 
+			}
 		}
 	}
 
