@@ -222,44 +222,54 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		// +-----------------------------------------------------------------+
 		// | Only use acSnap to reference the aircraft within the go routine |
 		// +-----------------------------------------------------------------+
-
-		// Identify AI's intended facility
-		searchICAO := airportICAObyPhaseClass(acSnap, acSnap.Flight.Phase.Class)
-		phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(acSnap.Flight.Phase.Current)]
-
-		aiFac := s.LocateController(
-			acSnap.Registration,
-			0, phaseFacility.roleId,
-			acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude,
-			searchICAO)
-
-		// If we are in Cruise but looking for Center (6) and find nothing,
-		// try looking for Departure (4) as a fallback before going to Unicom.
-		if aiFac == nil && phaseFacility.roleId == 6 {
-			aiFac = s.LocateController(acSnap.Registration+"_CruiseFallback", 0, 4,
-				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
+		acSnap.Flight.Comms.Controller = s.FindController(acSnap)
+		if acSnap.Flight.Comms.Controller != nil {
+			s.Transmit(s.UserState, acSnap)
 		}
-
-		// Fallback: If no controller found (e.g. at a small grass strip),
-		// look specifically for Unicom (Role 0) at that airport first, then generally.
-		if aiFac == nil {
-			aiFac = s.LocateController(acSnap.Registration+"_Unicom", 0, 0,
-				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, searchICAO)
-		}
-
-		// Final Global Fallback (Unicom anywhere nearby)
-		if aiFac == nil {
-			aiFac = s.LocateController(acSnap.Registration+"_GlobalUnicom", 0, 0,
-				acSnap.Flight.Position.Lat, acSnap.Flight.Position.Long, acSnap.Flight.Position.Altitude, "")
-		}
-
-		util.LogWithLabel(acSnap.Registration, "Controller found: %s %s Role: %s (%d)",
-			aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
-
-		acSnap.Flight.Comms.Controller = aiFac
-
-		s.Transmit(s.UserState, acSnap)
 	}()
+}
+
+func (s *Service) FindController(ac *Aircraft) *Controller {
+
+	// Identify AI's intended facility
+	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
+	phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+
+	aiFac := s.locateController(
+		ac.Registration,
+		0, phaseFacility.roleId,
+		ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, searchICAO)
+
+	// If we are in Cruise but looking for Center (6) and find nothing,
+	// try looking for Departure (4) as a fallback before going to Unicom.
+	if aiFac == nil && phaseFacility.roleId == 6 {
+		aiFac = s.locateController(ac.Registration+"_CruiseFallback", 0, 4,
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, searchICAO)
+	}
+
+	// Fallback: If no controller found (e.g. at a small grass strip),
+	// look specifically for Unicom (Role 0)
+	if aiFac == nil {
+		aiFac = s.locateController(ac.Registration+"_Unicom", 0, 0,
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, searchICAO)
+	}
+
+	// Final Global Fallback (Unicom anywhere nearby)
+	// we check searchICAO isn't empty as we may have already performed the same search if the phase-based search returned no ICAO
+	if aiFac == nil && searchICAO != "" {
+		aiFac = s.locateController(ac.Registration+"_GlobalUnicom", 0, 0,
+			ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Altitude, "")
+	}
+
+	if aiFac == nil {
+		util.LogWithLabel(ac.Registration, "No ATC facility found")
+		return nil
+	}
+
+	util.LogWithLabel(ac.Registration, "Controller found: %s %s Role: %s (%d)",
+		aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
+
+	return aiFac
 }
 
 func (s *Service) Transmit(userState UserState, ac *Aircraft) {
@@ -319,7 +329,7 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilitie
 	for idx, freq := range tunedFreqs {
 		uFreq := normalizeFreq(int(freq))
 
-		controller := s.LocateController(
+		controller := s.locateController(
 			fmt.Sprintf("User_COM%d", idx),
 			uFreq,                // Search by freq
 			tunedFacilities[idx], // role
@@ -338,7 +348,7 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilitie
 	}
 }
 
-func (s *Service) LocateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
+func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl float64, targetICAO string) *Controller {
 	var bestMatch *Controller
 	var bestPointMatch *Controller
 	smallestArea := math.MaxFloat64
@@ -679,7 +689,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	}
 }
 
-// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft 
+// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
 // is in cruise and has travelled at least 5 NM since the last position check
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 
@@ -688,7 +698,7 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 		return
 	}
 
-	// if last check position has not yet been set for the first time
+	// if last check position has not yet been set, set it now and return
 	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
 		ac.Flight.LastCheckedPosition = ac.Flight.Position
 		return
@@ -696,13 +706,13 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 
 	// if we don't have a controller assigned, assign one now, update last checked position and return
 	if ac.Flight.Comms.Controller == nil {
-		//TODO: call locate controller code - extract the code from notify aircraft phase change for reuse as this code has all the fallbacks
-		ac.Flight.LastCheckedPosition = ac.Flight.Position		
+		ac.Flight.Comms.Controller = s.FindController(ac)
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
 		return
 	}
 
-	// if a handoff is already in progress or
-	// the aircraft has travelled less than ~11 meters (allows for data value fluctuations) then return
+	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
+	// since last check (allows for data value fluctuations) then return
 	if ac.Flight.Comms.CruiseHandoff != NoHandoff ||
 		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
 			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
@@ -724,14 +734,14 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 
 	util.LogWithLabel(ac.Registration, "Position update, checking for sector change")
 	// 1. Determine current sector based on Lat/Long/Alt
-	ac.Flight.Comms.NextController = s.LocateController(ac.Registration+"_CRUISE_UPDATE", 0, 6,
+	ac.Flight.Comms.NextController = s.locateController(ac.Registration+"_CRUISE_UPDATE", 0, 6,
 		ac.Flight.Position.Lat,
 		ac.Flight.Position.Long,
 		ac.Flight.Position.Altitude, "")
 
 	// 2. Check for Handoff
-	if ac.Flight.Comms.Controller != nil &&ac.Flight.Comms.Controller.Name != "" && 
-				ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
+	if ac.Flight.Comms.Controller != nil && ac.Flight.Comms.Controller.Name != "" &&
+		ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
 		util.LogWithLabel(ac.Registration, "Handoff from %s to %s", ac.Flight.Comms.Controller.Name, ac.Flight.Comms.NextController.Name)
 		// creat snapshot of aircraft state for phrase generation
 		acSnap := deepcopy.Copy(ac).(*Aircraft)

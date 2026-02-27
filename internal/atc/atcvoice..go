@@ -666,7 +666,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
 	pos := ac.Flight.Position
 	label := fmt.Sprintf("%s_HANDOFF", ac.Registration)
-	nextController := s.LocateController(label,
+	nextController := s.locateController(label,
 		0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
 
 	if nextController == nil {
