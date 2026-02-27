@@ -180,8 +180,9 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 	// set flight phase classification
 	s.setFlightPhaseClass(ac)
-	util.LogWithLabel(ac.Registration, "flight %d phase classified as %s",
+	util.LogWithLabel(ac.Registration, "flight %d phase %s classified as %s",
 		ac.Flight.Number,
+		ac.Flight.Phase.Current,
 		ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
