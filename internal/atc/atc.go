@@ -683,24 +683,34 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 // is in cruise and has travelled at least 5 NM since the last position check
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 
+	// if we are not in cruise, there is no need to check for sector changes
+	if ac.Flight.Phase.Current != trafficglobal.Cruise.Index() {
+		return
+	}
+
 	// if last check position has not yet been set for the first time
 	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
 		ac.Flight.LastCheckedPosition = ac.Flight.Position
 		return
 	}
 
+	// if we don't have a controller assigned, assign one now, update last checked position and return
+	if ac.Flight.Comms.Controller == nil {
+		//TODO: call locate controller code - extract the code from notify aircraft phase change for reuse as this code has all the fallbacks
+		ac.Flight.LastCheckedPosition = ac.Flight.Position		
+		return
+	}
+
 	// if a handoff is already in progress or
-	// the aircraft is not in the cruise phase or
 	// the aircraft has travelled less than ~11 meters (allows for data value fluctuations) then return
 	if ac.Flight.Comms.CruiseHandoff != NoHandoff ||
-		ac.Flight.Phase.Current != trafficglobal.Cruise.Index() ||
 		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
 			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
 		return
 	}
 
 	dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	fmt.Println("Distance from last cruise check: ", dist, " NM")
+	//fmt.Println("Distance from last cruise check: ", dist, " NM")
 	// Only notify if moved more than 5.0 NM
 	if dist > 5.0 {
 		// Trigger the cruise handoff detection logic
@@ -720,7 +730,8 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 		ac.Flight.Position.Altitude, "")
 
 	// 2. Check for Handoff
-	if ac.Flight.Comms.Controller.Name != "" && ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
+	if ac.Flight.Comms.Controller != nil &&ac.Flight.Comms.Controller.Name != "" && 
+				ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
 		util.LogWithLabel(ac.Registration, "Handoff from %s to %s", ac.Flight.Comms.Controller.Name, ac.Flight.Comms.NextController.Name)
 		// creat snapshot of aircraft state for phrase generation
 		acSnap := deepcopy.Copy(ac).(*Aircraft)
