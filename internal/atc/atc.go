@@ -262,7 +262,7 @@ func (s *Service) FindController(ac *Aircraft) *Controller {
 	}
 
 	if aiFac == nil {
-		util.LogWithLabel(ac.Registration, "No ATC facility found")
+		util.LogWithLabel(ac.Registration, "WARN: No ATC facility found")
 		return nil
 	}
 
