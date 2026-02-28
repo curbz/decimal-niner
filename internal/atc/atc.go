@@ -129,7 +129,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	}
 
 	radioQueue = make(chan ATCMessage, cfg.ATC.MessageBufferSize)
-	prepQueue = make(chan PreparedAudio, 1) // Buffer for pre-warmed audio
+	radioPlayer = make(chan PreparedAudio, 1) // Buffer for pre-warmed audio
 
 	vm := NewVoiceManager(cfg)
 
@@ -273,6 +273,7 @@ func (s *Service) FindController(ac *Aircraft) *Controller {
 	return aiFac
 }
 
+// always ensure the Aircraft pointer is referecing a deep copy of the original aircraft to avoid state conflicts
 func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 
 	aiFac := ac.Flight.Comms.Controller
@@ -292,8 +293,14 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 		}
 
 		if match || s.Config.ATC.ListenAllFreqs {
-			util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
-			s.Channel <- ac
+			// NON-BLOCKING SEND
+            select {
+            case s.Channel <- ac:
+				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
+            default:
+                // drop the message as channel buffer is full
+                util.LogWithLabel(ac.Registration, "WARN: voice queue full, dropping transmission")
+            }
 			return
 		} else {
 			util.LogWithLabel(ac.Registration, "User not on same frequency - audio will not be generated")

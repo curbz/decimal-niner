@@ -61,7 +61,7 @@ type PreparedAudio struct {
 }
 
 var radioQueue chan ATCMessage
-var prepQueue chan PreparedAudio
+var radioPlayer chan PreparedAudio
 
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
@@ -79,6 +79,9 @@ func (s *Service) startComms() {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a response to the communication
 
+			// log message with remaining capacity of channel buffer
+			util.LogWithLabel(ac.Registration, "transmission required (channel buffer remaining capacity: %d)", cap(s.Channel)-len(s.Channel))
+
 			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
@@ -90,7 +93,6 @@ func (s *Service) startComms() {
 					phrase = "{CALLSIGN} , {FACILITY} identified"
 					s.prepAndQueuePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					ac.Flight.Comms.CruiseHandoff = NoHandoff
-					s.Transmit(s.UserState, ac)
 				case HandoffExitSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					// select next controller's first listed frequency
@@ -280,8 +282,13 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	util.LogWithLabel(ac.Registration, "sending phrase to radio queue for speech generation: %s", phrase)
 
 	// send message to radio queue
-	radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
-		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
+	select {
+		case radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
+			phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
+		}:
+		//success - message sent to buffer
+	default:
+		util.LogWithLabel(ac.Registration, "WARN: radio queue is full. speech generation skipped")	
 	}
 }
 
@@ -291,8 +298,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 	// channel queue processing loop
 	for msg := range radioQueue {
 
-		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase, processing")
-
+		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase (channel buffer remaining capacity: %d)", cap(radioQueue)-len(radioQueue))
 		voice, onnx, rate, noise := vm.resolveVoice(msg)
 
 		// PROTECT: If voice name is empty, we can't speak
@@ -344,7 +350,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
 
 		// Send the running process to the player queue
-		prepQueue <- PreparedAudio{
+		radioPlayer <- PreparedAudio{
 			PiperCmd:   cmd,
 			PiperOut:   stdout,
 			SampleRate: rate,
@@ -360,7 +366,9 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 func RadioPlayer(soxPath string) {
 
 	// channel queue processing loop
-	for audio := range prepQueue {
+	for audio := range radioPlayer {
+
+		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received audio (channel buffer remaining capacity: %d)", cap(radioPlayer)-len(radioPlayer))
 
 		// PROTECT: If voice name is empty, we can't speak
 		if audio.Voice == "" {

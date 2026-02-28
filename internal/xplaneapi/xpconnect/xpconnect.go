@@ -613,9 +613,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			log.Println(err)
 			return
 		}
-
-		// Update ONLY Current.
-		// This creates the 'delta' that the next loop will look for.
+		// Update ONLY current fllight phase - this creates the 'delta' that the next loop will look for.
 		aircraft.Flight.Phase.Current = flightPhase.(int)
 
 		// Update position
