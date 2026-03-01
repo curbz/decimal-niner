@@ -84,6 +84,16 @@
     "callsign": "EVA",
     "icao_country_code": "RC"
   },
+  "EWG": {
+    "airline_name": "Eurowings",
+    "callsign": "EUROWINGS",
+    "icao_country_code": "ED"
+  },
+  "EXS": {
+    "airline_name": "Jet2.com",
+    "callsign": "CHANNEX",
+    "icao_country_code": "EG"
+  },
   "FDX": {
     "airline_name": "FedEx",
     "callsign": "FEDEX",
