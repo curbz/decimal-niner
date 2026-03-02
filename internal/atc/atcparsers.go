@@ -296,6 +296,110 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
     return list, nil
 }
 
+func parseNavData(path string) (map[string]Fix, error) {
+    f, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+
+    fixes := make(map[string]Fix)
+    scan := bufio.NewScanner(f)
+
+    for scan.Scan() {
+        line := strings.TrimSpace(scan.Text())
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+
+        fields := strings.Fields(line)
+        if len(fields) < 10 {
+            continue
+        }
+
+        rowType := fields[0]
+        if rowType != "2" && rowType != "3" && rowType != "12" {
+            continue
+        }
+
+        lat := parseFloat(fields[1])
+        lon := parseFloat(fields[2])
+        ident := fields[7]
+        region := fields[9]
+        fullName := strings.Join(fields[10:], " ")
+
+        key := ident + "_" + region
+        fixes[key] = Fix{
+            Ident:  ident,
+            Region: region,
+            FullName: cleanFixName(fullName),
+            LatRad: lat * math.Pi / 180,
+            LonRad: lon * math.Pi / 180,
+        }
+    }
+
+    return fixes, scan.Err()
+}
+
+func cleanFixName(name string) string {
+
+    name = name + " " // Add trailing space to simplify parsing logic
+
+    if idx := strings.Index(name, " ("); idx != -1 {
+        name = name[:idx]
+    }
+    for _, marker := range []string{" VOR/DME ", " VORTAC ", " NDB ", " VOR ", " DME-ILS ", " DME "} {
+        if idx := strings.Index(name, marker); idx != -1 {
+            name = name[:idx]
+            break
+        }
+    }
+    return strings.TrimSpace(name)
+
+}
+
+func parseHoldData(path string) ([]Hold, error) {
+    f, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+
+    var holds []Hold
+    scan := bufio.NewScanner(f)
+
+    for scan.Scan() {
+        line := strings.TrimSpace(scan.Text())
+        if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "1140 Version") {
+            continue
+        }
+
+        fields := strings.Fields(line)
+        if len(fields) < 11 {
+            continue
+        }
+
+        h := Hold{
+            Name:    fields[0],
+            Region:  fields[1],
+            Type:    fields[2],
+            Seq:     parseInt(fields[3]),
+            Inbound: parseFloat(fields[4]),
+            LegTime: parseFloat(fields[5]),
+            LegDist: parseFloat(fields[6]),
+            Turn:    fields[7],
+            MinAlt:  parseInt(fields[8]),
+            MaxAlt:  parseInt(fields[9]),
+            Speed:   parseInt(fields[10]),
+        }
+
+        holds = append(holds, h)
+    }
+
+    return holds, scan.Err()
+}
+
+
 // convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or
 // a country prefix (e.g., "EG") and returns the ISO country code.
 func convertIcaoToIso(icao string) (string, error) {

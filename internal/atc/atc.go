@@ -21,7 +21,8 @@ import (
 type Service struct {
 	Config           *config
 	Channel          chan *Aircraft
-	Database         []Controller
+	Controllers      []Controller
+	Holds			 []Hold
 	UserState        UserState
 	Airlines         map[string]AirlineInfo
 	AirportLocations map[string]AirportCoords
@@ -61,6 +62,8 @@ type config struct {
 		MessageBufferSize     int          `yaml:"message_buffer_size"`
 		AtcDataFile           string       `yaml:"atc_data_file"`
 		AtcRegionsFile        string       `yaml:"atc_regions_file"`
+		AtcHoldsFile		  string	   `yaml:"atc_holds_file"`
+		AtcNavDataFile		  string	   `yaml:"atc_nav_data_file"`
 		AirportsDataFile      string       `yaml:"airports_data_file"`
 		AirlinesFile          string       `yaml:"airlines_file"`
 		Voices                VoicesConfig `yaml:"voices"`
@@ -79,6 +82,14 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	if err != nil {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
+
+	// load hold data
+	log.Println("Loading X-Plane Holds data")
+	holds, err  := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile)
+	if err != nil {
+		log.Fatalf("Error loading hold data: %v", err)
+	}
+	log.Printf("Holds data loaded: seeded %d holds\n", len(holds))
 
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
@@ -139,7 +150,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	return &Service{
 		Config:           cfg,
 		Channel:          make(chan *Aircraft, cfg.ATC.MessageBufferSize),
-		Database:         db,
+		Controllers:      db,
+		//Holds:            holds,
 		Airlines:         airlinesData,
 		AirportLocations: airportLocations,
 		FlightSchedules:  fScheds,
@@ -369,8 +381,8 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
 	if targetICAO != "" {
 		var backupMatch *Controller
-		for i := range s.Database {
-			c := &s.Database[i]
+		for i := range s.Controllers {
+			c := &s.Controllers[i]
 			if c.ICAO == targetICAO && c.IsPoint {
 				// If it's an exact role match, we are done.
 				if tRole != -1 && c.RoleID == tRole {
@@ -395,8 +407,8 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
-	for i := range s.Database {
-		c := &s.Database[i]
+	for i := range s.Controllers {
+		c := &s.Controllers[i]
 		if !c.IsPoint {
 			continue
 		}
@@ -447,8 +459,8 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// --- TIER 2: SCAN POLYGONS (Center/Oceanic) ---
-	for i := range s.Database {
-		c := &s.Database[i]
+	for i := range s.Controllers {
+		c := &s.Controllers[i]
 		if len(c.Airspaces) == 0 {
 			continue
 		}

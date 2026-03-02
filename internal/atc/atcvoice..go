@@ -250,6 +250,16 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	if strings.Contains(phrase, "{HANDOFF}") {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
 	}
+	if strings.Contains(phrase, "{HOLD_FIX}") {
+		repl := ""
+		holdfix := s.findNearestHold(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+		if holdfix == nil {
+			repl = "published hold"
+		} else {
+			repl = holdfix.FullName
+		}
+		phrase = strings.ReplaceAll(phrase, "{HOLD_FIX}", repl)
+	}
 	if strings.Contains(phrase, "{VALEDICTION}") {
 		factor := s.Config.ATC.Voices.HandoffValedictionFactor
 		replace := "{VALEDICTION}"
