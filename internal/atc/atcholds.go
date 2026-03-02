@@ -5,33 +5,6 @@ import (
 	"strconv"
 )
 
-type Fix struct {
-    Ident  string
-    Region string
-	FullName string
-    LatRad float64
-    LonRad float64
-}
-
-type Hold struct {
-    Name      string
-    Region    string
-	FullName  string
-    Type      string
-    Seq       int
-    Inbound   float64
-    LegTime   float64
-    LegDist   float64
-    Turn      string
-    MinAlt    int
-    MaxAlt    int
-    Speed     int
-
-    LatRad float64
-    LonRad float64
-    X, Y, Z float64
-}
-
 func loadHolds(navDataFile, holdsDataFile string) ([]Hold, error) {
 
 	fixes, err := parseNavData(navDataFile)
@@ -111,6 +84,6 @@ func (s *Service) findNearestHold(lat, lng float64) *Hold {
             best = h
         }
     }
-	
+
     return best
 }

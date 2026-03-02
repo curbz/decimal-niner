@@ -161,8 +161,51 @@ type PhaseFacility struct {
 	roleId   int
 }
 
-type AirportCoords struct {
-	Lat  float64
-	Lon  float64
+// type AirportCoords struct {
+// 	Lat  float64
+// 	Lon  float64
+// 	Name string
+// }
+
+type Runway struct {
+    FAFalt       int    // lowest FAF altitude
+    MAalt        int    // highest MA altitude
+    MAHeading    int    // initial MA course (degrees)
+    MAFix        string // only if HM leg exists
+    BestApproach string // highest precision approach type
+}
+
+type Fix struct {
+    Ident  string
+    Region string
+	FullName string
+    LatRad float64
+    LonRad float64
+}
+
+type Hold struct {
+    Name      string
+    Region    string
+	FullName  string
+    Type      string
+    Seq       int
+    Inbound   float64
+    LegTime   float64
+    LegDist   float64
+    Turn      string
+    MinAlt    int
+    MaxAlt    int
+    Speed     int
+    LatRad float64
+    LonRad float64
+    X, Y, Z float64
+}
+
+type Airport struct { 
+	ICAO string 
 	Name string
+	Lat float64
+	Lon float64
+	Runways map[string]Runway // keyed by "09L", "27R" 
+	Holds []*Hold // both MA holds and arrival-stack holds 
 }

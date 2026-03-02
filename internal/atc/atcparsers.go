@@ -3,6 +3,7 @@ package atc
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -397,6 +398,139 @@ func parseHoldData(path string) ([]Hold, error) {
     }
 
     return holds, scan.Err()
+}
+
+func ParseCIFP(cifpPath string) (map[string]Runway, error) {
+    f, err := os.Open(cifpPath)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+
+    out := make(map[string]Runway)
+    scan := bufio.NewScanner(f)
+
+    parts := strings.Split(strings.TrimSuffix(cifpPath, ".dat"), "/")
+    icao := strings.ToUpper(parts[len(parts)-1])
+
+    for scan.Scan() {
+        line := strings.TrimSpace(scan.Text())
+        if !strings.HasPrefix(line, "APPCH:") {
+            continue
+        }
+
+        fields := strings.Split(line, ",")
+        if len(fields) < 20 {
+            continue
+        }
+
+        // ARINC runway (e.g., L09L, I09L)
+        rwyArinc := strings.TrimSpace(fields[2])
+        if rwyArinc == "" {
+            continue
+        }
+        rwy := normalizeRunway(rwyArinc)
+        key := icao + "_" + rwy
+
+        // Approach type (field 1 after sequence)
+        appType := strings.TrimSpace(fields[1])
+        rw := out[key]
+
+        if rank, ok := approachRank[appType]; ok {
+            if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
+                rw.BestApproach = appType
+            }
+        }
+
+        // Fix and leg type
+        fix := strings.TrimSpace(fields[4])
+        legType := strings.TrimSpace(fields[12])
+
+        // Altitude fields
+        atAlt := strings.TrimSpace(fields[17])
+        atOrAbove := strings.TrimSpace(fields[18])
+        atOrBelow := strings.TrimSpace(fields[19])
+        alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
+
+        // FAF altitude (lowest)
+        if strings.HasPrefix(fix, "FF") && alt >= 0 {
+            if rw.FAFalt == 0 || alt < rw.FAFalt {
+                rw.FAFalt = alt
+            }
+        }
+
+        // Missed-approach altitude (highest)
+        if strings.HasPrefix(fix, "MA") || legType == "CA" || legType == "HM" {
+            if alt > rw.MAalt {
+                rw.MAalt = alt
+            }
+        }
+
+        // Initial MA heading (first MAxx leg)
+        if strings.HasPrefix(fix, "MA") && rw.MAHeading == 0 {
+            courseField := strings.TrimSpace(fields[15])
+            if courseField != "" {
+                if c, err := strconv.Atoi(courseField); err == nil {
+                    rw.MAHeading = c / 10 // tenths of degrees → degrees
+                }
+            }
+        }
+
+        // Named MA fix only if HM leg exists
+        if legType == "HM" && fix != "" {
+            rw.MAFix = fix
+        }
+
+        out[key] = rw
+    }
+
+    return out, scan.Err()
+}
+
+
+func loadRunways(dir string, airports map[string]bool) (map[string]Runway, error) {
+    out := make(map[string]Runway)
+
+    for icao := range airports {
+        path := filepath.Join(dir, icao+".dat")
+
+        m, err := ParseCIFP(path)
+        if err != nil {
+            // Skip missing or unreadable files
+            continue
+        }
+
+        for k, v := range m {
+            out[k] = v
+        }
+    }
+
+    return out, nil
+}
+
+func lowestAltitudeOf(at, above, below string) int {
+    vals := []string{at, above, below}
+    best := -1
+    for _, v := range vals {
+        if v == "" {
+            continue
+        }
+        n, err := strconv.Atoi(v)
+        if err != nil {
+            continue
+        }
+        if best == -1 || n < best {
+            best = n
+        }
+    }
+    return best
+}
+
+func normalizeRunway(arinc string) string {
+    if len(arinc) <= 1 {
+        return arinc
+    }
+    return arinc[1:]
 }
 
 

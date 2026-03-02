@@ -357,3 +357,13 @@ var handoffMap = map[trafficglobal.FlightPhase]int{
     trafficglobal.Braking:  2, // Tower -> Ground
 }
 
+var approachRank = map[string]int{
+    "I": 1, // ILS
+    "L": 2, // LOC
+    "A": 3, // RNAV
+    "V": 4, // VOR
+    "N": 5, // NDB
+    "C": 6, // Circling
+}
+
+

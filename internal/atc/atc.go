@@ -151,7 +151,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		Config:           cfg,
 		Channel:          make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Controllers:      db,
-		//Holds:            holds,
+		Holds:            holds,
 		Airlines:         airlinesData,
 		AirportLocations: airportLocations,
 		FlightSchedules:  fScheds,
@@ -515,7 +515,7 @@ func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
 	minDist := 4.0 // 4 Nautical Miles threshold
 
 	for icao, coords := range s.AirportLocations {
-		// Using your existing DistNM function here
+
 		dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
 
 		if dist < minDist {
