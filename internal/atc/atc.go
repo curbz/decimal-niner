@@ -19,20 +19,20 @@ import (
 )
 
 type Service struct {
-	Config           *config
-	Channel          chan *Aircraft
-	Controllers      []Controller
-	Holds			 []Hold
-	UserState        UserState
-	Airlines         map[string]AirlineInfo
-	AirportLocations map[string]AirportCoords
-	Airports         AirportProvider
-	FlightSchedules  map[string][]trafficglobal.ScheduledFlight
-	Weather          *Weather
-	DataProvider     simdata.SimDataProvider
-	SimInitTime      time.Time
-	SessionInitTime  time.Time
-	VoiceManager     *VoiceManager
+	Config          *config
+	Channel         chan *Aircraft
+	Controllers     []Controller
+	Holds           map[string]*Hold
+	UserState       UserState
+	Airlines        map[string]AirlineInfo
+	Airports        map[string]*Airport
+	AirportService  AirportProvider
+	FlightSchedules map[string][]trafficglobal.ScheduledFlight
+	Weather         *Weather
+	DataProvider    simdata.SimDataProvider
+	SimInitTime     time.Time
+	SessionInitTime time.Time
+	VoiceManager    *VoiceManager
 }
 
 type ServiceInterface interface {
@@ -62,8 +62,9 @@ type config struct {
 		MessageBufferSize     int          `yaml:"message_buffer_size"`
 		AtcDataFile           string       `yaml:"atc_data_file"`
 		AtcRegionsFile        string       `yaml:"atc_regions_file"`
-		AtcHoldsFile		  string	   `yaml:"atc_holds_file"`
-		AtcNavDataFile		  string	   `yaml:"atc_nav_data_file"`
+		AtcHoldsFile          string       `yaml:"atc_holds_file"`
+		AtcNavDataFile        string       `yaml:"atc_nav_data_file"`
+		AirportCIFPDir         string       `yaml:"airports_cifp_dir"`
 		AirportsDataFile      string       `yaml:"airports_data_file"`
 		AirlinesFile          string       `yaml:"airlines_file"`
 		Voices                VoicesConfig `yaml:"voices"`
@@ -85,7 +86,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	// load hold data
 	log.Println("Loading X-Plane Holds data")
-	holds, err  := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile)
+	holds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile)
 	if err != nil {
 		log.Fatalf("Error loading hold data: %v", err)
 	}
@@ -93,8 +94,15 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	// load atc and airport data
 	log.Println("Loading X-Plane ATC and Airport data")
+
+	airports, err := loadAirports(cfg.ATC.AirportCIFPDir, requiredAirports, holds)
+	if err != nil {
+		log.Fatal("Error loading airport data from CIFP files: ", err)
+	}
+
+	// load controller data
 	start := time.Now()
-	arptControllers, airportLocations, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
+	arptControllers, err := parseApt(cfg.ATC.AirportsDataFile, airports)
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
 	}
@@ -148,15 +156,15 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	go RadioPlayer(cfg.ATC.Voices.Sox.Application)
 
 	return &Service{
-		Config:           cfg,
-		Channel:          make(chan *Aircraft, cfg.ATC.MessageBufferSize),
-		Controllers:      db,
-		Holds:            holds,
-		Airlines:         airlinesData,
-		AirportLocations: airportLocations,
-		FlightSchedules:  fScheds,
-		Weather:          &Weather{Wind: Wind{}, Baro: Baro{}},
-		VoiceManager:     vm,
+		Config:          cfg,
+		Channel:         make(chan *Aircraft, cfg.ATC.MessageBufferSize),
+		Controllers:     db,
+		Holds:           holds,
+		Airlines:        airlinesData,
+		Airports:        airports,
+		FlightSchedules: fScheds,
+		Weather:         &Weather{Wind: Wind{}, Baro: Baro{}},
+		VoiceManager:    vm,
 	}
 }
 
@@ -306,13 +314,13 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 
 		if match || s.Config.ATC.ListenAllFreqs {
 			// NON-BLOCKING SEND
-            select {
-            case s.Channel <- ac:
+			select {
+			case s.Channel <- ac:
 				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
-            default:
-                // drop the message as channel buffer is full
-                util.LogWithLabel(ac.Registration, "WARN: voice queue full, dropping transmission")
-            }
+			default:
+				// drop the message as channel buffer is full
+				util.LogWithLabel(ac.Registration, "WARN: voice queue full, dropping transmission")
+			}
 			return
 		} else {
 			util.LogWithLabel(ac.Registration, "User not on same frequency - audio will not be generated")
@@ -514,7 +522,7 @@ func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
 	var closestICAO string
 	minDist := 4.0 // 4 Nautical Miles threshold
 
-	for icao, coords := range s.AirportLocations {
+	for icao, coords := range s.Airports {
 
 		dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
 
@@ -631,7 +639,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 		return
 	}
 
-	closestAirport := s.Airports.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+	closestAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
 
 	// infer what we can from current location
 	switch ac.Flight.Phase.Class {
@@ -672,7 +680,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 				return
 			}
 			//currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
-			currAirport := s.Airports.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			currAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
 			if ac.Flight.Destination == currAirport {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
 				ph.Class = PostflightParked

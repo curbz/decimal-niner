@@ -3,29 +3,30 @@ package atc
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-
 	"bufio"
 	"math"
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
-func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[string]AirportCoords, error) {
-    airportLocations := make(map[string]AirportCoords)
+func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
+
     var controllers []Controller
 
     file, err := os.Open(path)
     if err != nil {
-        return nil, airportLocations, fmt.Errorf("failed to open airports data file: %w", err)
+        return nil, fmt.Errorf("failed to open airports data file: %w", err)
     }
     defer file.Close()
 
     scanner := bufio.NewScanner(file)
+    var curAirport *Airport
     var curICAO, curName string
+    var metaBlock bool // Tracks if we're in the metadata section of an airport block
     var curLat, curLon float64
+    var transAlt, transLevel int
     var isRequiredAirport bool
     var batchStartIdx int // Tracks start of controllers for the current frequency
 
@@ -53,7 +54,7 @@ func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[str
                 curICAO = p[4]
                 
                 // FILTER: Check if this airport is in our schedules
-                _, isRequiredAirport = requiredICAOs[curICAO]
+                curAirport, isRequiredAirport = airports[curICAO]
 
                 // Global Exclusion: Never store helipads or closed strips
                 if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
@@ -66,25 +67,37 @@ func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[str
             continue
         }
 
-        // 2. Runway Record (Capture Coordinates for Airport Center)
-        if isRequiredAirport && (code == "100" || code == "101" || code == "102") {
-            if len(p) >= 11 {
-                la, _ := strconv.ParseFloat(p[9], 64)
-                lo, _ := strconv.ParseFloat(p[10], 64)
-                
-                // Use first valid runway point as airport center reference
-                if math.Abs(la) > 0.1 && curLat == 0 {
-                    curLat, curLon = la, lo
-                    airportLocations[curICAO] = AirportCoords{
-                        Lat:  curLat,
-                        Lon:  curLon,
-                        Name: curName,
+        // get airport locations and capture transistion altitud and level
+        if isRequiredAirport {
+            if code == "1302" {
+                metaBlock = true
+                if len(p) == 3 {
+                    switch p[1] {
+                        case "datum_lat":
+                            curLat, _ = strconv.ParseFloat(p[2], 64)
+                        case "datum_lon":
+                            curLon, _ = strconv.ParseFloat(p[2], 64)
+                        case "transition_alt": 
+                            transAlt, _ = strconv.Atoi(p[2])
+                        case "transition_level": 
+                            transLevel, _ = strconv.Atoi(p[2])
                     }
+                }
+                continue
+            } else {
+                if metaBlock {
+                    // reached end of metablock, update airport with captured data
+                    curAirport.Name = curName
+                    curAirport.Lat = curLat
+                    curAirport.Lon = curLon
+                    curAirport.TransAlt = transAlt
+                    curAirport.TransLevel = transLevel
+                    metaBlock = false
                 }
             }
         }
-
-        // 3. Frequency Records
+   
+        // Frequency Records
         if rID, ok := roleMap[code]; ok {
             isEnroute := rID >= 4
 
@@ -116,7 +129,7 @@ func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[str
             }
         }
 
-        // 4. Specific Transmitter Location (The 1100 Record)
+        // Specific Transmitter Location (The 1100 Record)
         // This applies to the controllers added immediately before it
         if code == "1100" && len(controllers) > 0 {
             la, _ := strconv.ParseFloat(p[1], 64)
@@ -134,9 +147,9 @@ func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[str
     for i := range controllers {
         c := &controllers[i]
         
-        // If Lat/Lon is still 0 (Freq appeared before Runway and no 1100 record found)
+        // If Lat/Lon is still 0 (Freq appeared before 1302 records)
         if c.Lat == 0 {
-            if loc, exists := airportLocations[c.ICAO]; exists {
+            if loc, exists := airports[c.ICAO]; exists {
                 c.Lat = loc.Lat
                 c.Lon = loc.Lon
             }
@@ -157,7 +170,7 @@ func parseApt(path string, requiredICAOs map[string]bool) ([]Controller, map[str
         }
     }
 
-    return controllers, airportLocations, nil
+    return controllers, nil
 }
 
 func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
@@ -359,14 +372,14 @@ func cleanFixName(name string) string {
 
 }
 
-func parseHoldData(path string) ([]Hold, error) {
+func parseHoldData(path string) (map[string]*Hold, error) {
     f, err := os.Open(path)
     if err != nil {
         return nil, err
     }
     defer f.Close()
 
-    var holds []Hold
+    holds := make(map[string]*Hold)
     scan := bufio.NewScanner(f)
 
     for scan.Scan() {
@@ -380,7 +393,7 @@ func parseHoldData(path string) ([]Hold, error) {
             continue
         }
 
-        h := Hold{
+        h := &Hold{
             Name:    fields[0],
             Region:  fields[1],
             Type:    fields[2],
@@ -394,7 +407,7 @@ func parseHoldData(path string) ([]Hold, error) {
             Speed:   parseInt(fields[10]),
         }
 
-        holds = append(holds, h)
+        holds[h.Name] = h
     }
 
     return holds, scan.Err()
@@ -432,24 +445,33 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
         rwy := normalizeRunway(rwyArinc)
         key := icao + "_" + rwy
 
-        // Approach type (field 1 after sequence)
-        appType := strings.TrimSpace(fields[1])
+        // Approach type (only from header line)
+        appType := ""
+        if strings.HasPrefix(fields[0], "APPCH:010") {
+            name := strings.TrimSpace(fields[2]) // e.g. "L27R", "I27R", "R27R"
+            if name != "" {
+                appType = string(name[0]) // first character is the approach type
+            }
+        }
+
         rw := out[key]
 
-        if rank, ok := approachRank[appType]; ok {
-            if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
-                rw.BestApproach = appType
+        if appType != "" {
+            if rank, ok := approachRank[appType]; ok {
+                if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
+                    rw.BestApproach = approachString[appType]
+                }
             }
         }
 
         // Fix and leg type
         fix := strings.TrimSpace(fields[4])
-        legType := strings.TrimSpace(fields[12])
+        legType := strings.TrimSpace(fields[11])
 
-        // Altitude fields
-        atAlt := strings.TrimSpace(fields[17])
-        atOrAbove := strings.TrimSpace(fields[18])
-        atOrBelow := strings.TrimSpace(fields[19])
+        // Altitude fields (correct indices)
+        atOrAbove := strings.TrimSpace(fields[23])
+        atAlt     := strings.TrimSpace(fields[24])
+        atOrBelow := strings.TrimSpace(fields[25])
         alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
 
         // FAF altitude (lowest)
@@ -466,13 +488,11 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
             }
         }
 
-        // Initial MA heading (first MAxx leg)
+        // Initial MA heading (correct index)
         if strings.HasPrefix(fix, "MA") && rw.MAHeading == 0 {
-            courseField := strings.TrimSpace(fields[15])
-            if courseField != "" {
-                if c, err := strconv.Atoi(courseField); err == nil {
-                    rw.MAHeading = c / 10 // tenths of degrees → degrees
-                }
+            courseField := strings.TrimSpace(fields[18])
+            if c, err := strconv.Atoi(courseField); err == nil {
+                rw.MAHeading = c / 10
             }
         }
 
@@ -485,27 +505,6 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
     }
 
     return out, scan.Err()
-}
-
-
-func loadRunways(dir string, airports map[string]bool) (map[string]Runway, error) {
-    out := make(map[string]Runway)
-
-    for icao := range airports {
-        path := filepath.Join(dir, icao+".dat")
-
-        m, err := ParseCIFP(path)
-        if err != nil {
-            // Skip missing or unreadable files
-            continue
-        }
-
-        for k, v := range m {
-            out[k] = v
-        }
-    }
-
-    return out, nil
 }
 
 func lowestAltitudeOf(at, above, below string) int {

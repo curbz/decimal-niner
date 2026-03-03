@@ -366,4 +366,13 @@ var approachRank = map[string]int{
     "C": 6, // Circling
 }
 
+var approachString = map[string]string{
+    "I": "ILS",
+    "L": "LOC",
+    "A": "RNAV",
+    "V": "VOR",
+    "N": "NDB",
+    "C": "Circling",
+}
+
 

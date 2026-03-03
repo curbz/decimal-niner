@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-func loadHolds(navDataFile, holdsDataFile string) ([]Hold, error) {
+func loadHolds(navDataFile, holdsDataFile string) (map[string]*Hold, error) {
 
 	fixes, err := parseNavData(navDataFile)
 	if err != nil {
@@ -15,10 +15,7 @@ func loadHolds(navDataFile, holdsDataFile string) ([]Hold, error) {
 	if err != nil {
 		return nil, err
 	}
-	holds, err = resolveHoldCoordinates(holds, fixes)
-	if err != nil {
-		return nil, err
-	}
+	resolveHoldCoordinates(holds, fixes)
 	
 	return holds, nil
 
@@ -45,8 +42,7 @@ func parseInt(s string) int {
     return i
 }
 
-func resolveHoldCoordinates(holds []Hold, fixes map[string]Fix) ([]Hold, error) {
-    out := make([]Hold, 0, len(holds))
+func resolveHoldCoordinates(holds map[string]*Hold, fixes map[string]Fix) {
 
     for _, h := range holds {
         key := h.Name + "_" + h.Region
@@ -59,11 +55,8 @@ func resolveHoldCoordinates(holds []Hold, fixes map[string]Fix) ([]Hold, error) 
         h.LatRad = fix.LatRad
         h.LonRad = fix.LonRad
         h.InitUnitVector()
-
-        out = append(out, h)
     }
 
-    return out, nil
 }
 
 func (s *Service) findNearestHold(lat, lng float64) *Hold {
@@ -76,9 +69,8 @@ func (s *Service) findNearestHold(lat, lng float64) *Hold {
     var best *Hold
     bestDot := -2.0
 
-    for i := range s.Holds {
-        h := &s.Holds[i]
-        dot := ux*h.X + uy*h.Y + uz*h.Z
+    for _, h := range s.Holds {
+        dot := ux * h.X + uy * h.Y + uz * h.Z
         if dot > bestDot {
             bestDot = dot
             best = h

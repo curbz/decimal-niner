@@ -206,6 +206,8 @@ type Airport struct {
 	Name string
 	Lat float64
 	Lon float64
+	TransAlt int
+	TransLevel int
 	Runways map[string]Runway // keyed by "09L", "27R" 
 	Holds []*Hold // both MA holds and arrival-stack holds 
 }

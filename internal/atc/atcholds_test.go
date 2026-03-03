@@ -8,23 +8,23 @@ import (
 func rad(deg float64) float64 { return deg * math.Pi / 180 }
 
 // Test dataset: 7 real-world holds (VOR-based)
-func testHolds() []Hold {
-    holds := []Hold{
+func testHolds() map[string]*Hold {
+    holds := map[string]*Hold{
         // Heathrow stacks
-        {Name: "LAM", Region: "EG", LatRad: rad(51.646025), LonRad: rad(0.151702778)},
-        {Name: "BNN", Region: "EG", LatRad: rad(51.721), LonRad: rad(-0.561)},
-        {Name: "BIG", Region: "EG", LatRad: rad(51.330), LonRad: rad(0.033)},
-        {Name: "OCK", Region: "EG", LatRad: rad(51.237), LonRad: rad(-0.561)},
+        "LAM": {Name: "LAM", Region: "EG", LatRad: rad(51.646025), LonRad: rad(0.151702778)},
+        "BNN": {Name: "BNN", Region: "EG", LatRad: rad(51.721), LonRad: rad(-0.561)},
+        "BIG": {Name: "BIG", Region: "EG", LatRad: rad(51.330), LonRad: rad(0.033)},
+        "OCK": {Name: "OCK", Region: "EG", LatRad: rad(51.237), LonRad: rad(-0.561)},
 
         // Global holds
-        {Name: "SFO", Region: "US", LatRad: rad(37.619), LonRad: rad(-122.374)}, // SFO VOR
-        {Name: "HNL", Region: "US", LatRad: rad(21.318), LonRad: rad(-157.922)}, // Honolulu
-        {Name: "SYD", Region: "AU", LatRad: rad(-33.946), LonRad: rad(151.177)}, // Sydney
+        "SFO": {Name: "SFO", Region: "US", LatRad: rad(37.619), LonRad: rad(-122.374)}, // SFO VOR
+        "HNL": {Name: "HNL", Region: "US", LatRad: rad(21.318), LonRad: rad(-157.922)}, // Honolulu
+        "SYD": {Name: "SYD", Region: "AU", LatRad: rad(-33.946), LonRad: rad(151.177)}, // Sydney
     }
 
     // Precompute unit vectors
-    for i := range holds {
-        holds[i].InitUnitVector()
+    for _, h := range holds {
+        h.InitUnitVector()
     }
     return holds
 }

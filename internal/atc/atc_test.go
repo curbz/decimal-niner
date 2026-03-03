@@ -453,7 +453,7 @@ func TestAddFlightPlan(t *testing.T) {
 
 func TestSetFlightPhaseClass_Detailed(t *testing.T) {
 	mockAirports := &MockAirportProvider{}
-	s := &Service{Airports: mockAirports}
+	s := &Service{AirportService: mockAirports}
 
 	tests := []struct {
 		name          string

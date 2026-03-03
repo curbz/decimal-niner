@@ -220,7 +220,7 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		if sayDest == "" {
 			sayDest = "as filed"
 		} else {
-			sayDest = formatAirportName(sayDest, s.AirportLocations)
+			sayDest = formatAirportName(sayDest, s.Airports)
 		}
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", sayDest)
 	}
@@ -293,12 +293,12 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 	// send message to radio queue
 	select {
-		case radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
-			phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
-		}:
+	case radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
+		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
+	}:
 		//success - message sent to buffer
 	default:
-		util.LogWithLabel(ac.Registration, "WARN: radio queue is full. speech generation skipped")	
+		util.LogWithLabel(ac.Registration, "WARN: radio queue is full. speech generation skipped")
 	}
 }
 
@@ -643,7 +643,7 @@ func phoneticiseSingleAlphas(input string) string {
 	return strings.ToLower(strings.Join(words, " "))
 }
 
-func formatAirportName(icao string, airportNameLookup map[string]AirportCoords) string {
+func formatAirportName(icao string, airportNameLookup map[string]*Airport) string {
 
 	apc, exists := airportNameLookup[icao]
 	if !exists {

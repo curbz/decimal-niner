@@ -199,6 +199,11 @@
     "callsign": "CHANNEX",
     "icao_country_code": "EG"
   },
+  "EZY": {
+    "airline_name": "EasyJet",
+    "callsign": "EASY",
+    "icao_country_code": "EG"
+  },
   "FDX": {
     "airline_name": "FedEx",
     "callsign": "FEDEX",
@@ -478,6 +483,11 @@
     "airline_name": "United Airlines",
     "callsign": "UNITED",
     "icao_country_code": "K"
+  },
+  "VIR": {
+    "airline_name": "Virgin Atlantic",
+    "callsign": "VIRGIN",
+    "icao_country_code": "EG"
   },
   "VOZ": {
     "airline_name": "Virgin Australia",
