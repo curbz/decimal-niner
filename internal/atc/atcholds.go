@@ -42,6 +42,7 @@ func parseInt(s string) int {
     return i
 }
 
+// enrich holds with lat/lon from fixes, and precompute unit vectors for nearest-hold search
 func resolveHoldCoordinates(holds map[string]*Hold, fixes map[string]Fix) {
 
     for _, h := range holds {

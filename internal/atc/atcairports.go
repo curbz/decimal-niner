@@ -25,7 +25,7 @@ func loadAirports(dir string, airportList map[string]bool, globalHolds map[strin
             ap.Runways[rwy] = data
         }
 
-        // Add missed-approach holds (HM legs)
+        // Add missed-approach holds if present in global holds
         for _, rw := range ap.Runways {
             if rw.MAFix != "" {
                 if h, ok := globalHolds[rw.MAFix]; ok {
