@@ -360,7 +360,7 @@ func cleanFixName(name string) string {
 
     name = name + " " // Add trailing space to simplify parsing logic
 
-    if idx := strings.Index(name, " ("); idx != -1 {
+    if idx := strings.Index(name, "("); idx != -1 {
         name = name[:idx]
     }
     for _, marker := range []string{" VOR/DME ", " VORTAC ", " NDB ", " VOR ", " DME-ILS ", " DME "} {
@@ -369,7 +369,17 @@ func cleanFixName(name string) string {
             break
         }
     }
-    return strings.TrimSpace(name)
+
+    name = strings.ToUpper(strings.TrimSpace(name))
+    // if name has the suffix "INT" or "INTL" remove it
+    for _, suffix := range []string{" INT", " INTL"} {
+        if strings.HasSuffix(name, suffix) {
+            name = strings.TrimSuffix(name, suffix)
+            break
+        }
+    }
+    
+    return name
 
 }
 
