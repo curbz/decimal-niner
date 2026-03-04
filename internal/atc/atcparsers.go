@@ -1,12 +1,13 @@
 package atc
 
 import (
+	"bufio"
 	"fmt"
+	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"bufio"
-	"math"
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
@@ -420,11 +421,14 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
     }
     defer f.Close()
 
-    out := make(map[string]Runway)
+    runways := make(map[string]Runway)
     scan := bufio.NewScanner(f)
 
-    parts := strings.Split(strings.TrimSuffix(cifpPath, ".dat"), "/")
-    icao := strings.ToUpper(parts[len(parts)-1])
+    base := filepath.Base(cifpPath)
+    icao := strings.ToUpper(strings.TrimSuffix(base, ".dat"))
+
+    var currentRunway string
+    var rw Runway
 
     for scan.Scan() {
         line := strings.TrimSpace(scan.Text())
@@ -433,33 +437,29 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
         }
 
         fields := strings.Split(line, ",")
-        if len(fields) < 20 {
+        if len(fields) < 26 {
             continue
         }
 
-        // ARINC runway (e.g., L09L, I09L)
-        rwyArinc := strings.TrimSpace(fields[2])
-        if rwyArinc == "" {
-            continue
-        }
-        rwy := normalizeRunway(rwyArinc)
-        key := icao + "_" + rwy
-
-        // Approach type (only from header line)
-        appType := ""
+        // Detect new approach header
         if strings.HasPrefix(fields[0], "APPCH:010") {
-            name := strings.TrimSpace(fields[2]) // e.g. "L27R", "I27R", "R27R"
-            if name != "" {
-                appType = string(name[0]) // first character is the approach type
+            // If we were accumulating a runway, save it
+            if currentRunway != "" {
+                runways[icao+"_"+currentRunway] = rw
             }
-        }
 
-        rw := out[key]
+            // Reset for new approach
+            currentRunway = ""
+            rw = Runway{}
 
-        if appType != "" {
-            if rank, ok := approachRank[appType]; ok {
-                if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
-                    rw.BestApproach = approachString[appType]
+            // Extract approach type from approach name (fields[2])
+            name := strings.TrimSpace(fields[2])
+            if name != "" {
+                appType := string(name[0])
+                if rank, ok := approachRank[appType]; ok {
+                    if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
+                        rw.BestApproach = approachString[appType]
+                    }
                 }
             }
         }
@@ -468,43 +468,63 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
         fix := strings.TrimSpace(fields[4])
         legType := strings.TrimSpace(fields[11])
 
-        // Altitude fields (correct indices)
+        // Detect runway from RWxx fix
+        if strings.HasPrefix(fix, "RW") && len(fix) >= 4 {
+            currentRunway = fix[2:] // "RW27" → "27"
+        }
+
+        // Skip legs until we know which runway this approach belongs to
+        if currentRunway == "" {
+            continue
+        }
+
+        // Altitude fields
         atOrAbove := strings.TrimSpace(fields[23])
         atAlt     := strings.TrimSpace(fields[24])
         atOrBelow := strings.TrimSpace(fields[25])
         alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
 
-        // FAF altitude (lowest)
-        if strings.HasPrefix(fix, "FF") && alt >= 0 {
+        // FAF detection (FFxx or FIxx)
+        if (strings.HasPrefix(fix, "FF") || strings.HasPrefix(fix, "FI")) && alt >= 0 {
             if rw.FAFalt == 0 || alt < rw.FAFalt {
                 rw.FAFalt = alt
             }
         }
 
-        // Missed-approach altitude (highest)
-        if strings.HasPrefix(fix, "MA") || legType == "CA" || legType == "HM" {
-            if alt > rw.MAalt {
-                rw.MAalt = alt
-            }
+        // Missed-approach detection
+        isMA :=
+            strings.HasPrefix(fix, "MA") ||
+            strings.HasPrefix(fix, "RW") ||
+            strings.HasPrefix(fix, "FD") ||
+            strings.HasPrefix(fix, "CI") ||
+            legType == "CA" ||
+            legType == "CF" ||
+            legType == "HM"
+
+        if isMA && alt > rw.MAalt {
+            rw.MAalt = alt
         }
 
-        // Initial MA heading (correct index)
-        if strings.HasPrefix(fix, "MA") && rw.MAHeading == 0 {
+        // Initial MA heading
+        if isMA && rw.MAHeading == 0 {
             courseField := strings.TrimSpace(fields[18])
             if c, err := strconv.Atoi(courseField); err == nil {
                 rw.MAHeading = c / 10
             }
         }
 
-        // Named MA fix only if HM leg exists
+        // Named MA fix (only if HM leg)
         if legType == "HM" && fix != "" {
             rw.MAFix = fix
         }
-
-        out[key] = rw
     }
 
-    return out, scan.Err()
+    // Save last runway if needed
+    if currentRunway != "" {
+        runways[icao+"_"+currentRunway] = rw
+    }
+
+    return runways, scan.Err()
 }
 
 func lowestAltitudeOf(at, above, below string) int {
