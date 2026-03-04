@@ -168,8 +168,8 @@ type PhaseFacility struct {
 // }
 
 type Runway struct {
-    FAFalt       int    // lowest FAF altitude
-    MAalt        int    // highest MA altitude
+    FAFalt       int    // Final approach fix altitude
+    MAalt        int    // highest missed approach altitude
     MAHeading    int    // initial MA course (degrees)
     MAFix        string // only if HM leg exists
     BestApproach string // highest precision approach type

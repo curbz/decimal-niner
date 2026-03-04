@@ -414,6 +414,53 @@ func parseHoldData(path string) (map[string]*Hold, error) {
     return holds, scan.Err()
 }
 
+func mergeRunway(existing, incoming Runway, appType string) Runway {
+    // BestApproach: keep the better-ranked one
+    if appType != "" {
+        if rankNew, ok := approachRank[appType]; ok {
+            if existing.BestApproach == "" {
+                existing.BestApproach = approachString[appType]
+            } else {
+                // find rank of existing
+                var existingType string
+                for t, s := range approachString {
+                    if s == existing.BestApproach {
+                        existingType = t
+                        break
+                    }
+                }
+                if existingType != "" {
+                    if rankOld, ok2 := approachRank[existingType]; ok2 && rankNew < rankOld {
+                        existing.BestApproach = approachString[appType]
+                    }
+                }
+            }
+        }
+    }
+
+    // FAFalt: keep lowest non-zero
+    if incoming.FAFalt > 0 && (existing.FAFalt == 0 || incoming.FAFalt < existing.FAFalt) {
+        existing.FAFalt = incoming.FAFalt
+    }
+
+    // MAalt: keep highest
+    if incoming.MAalt > existing.MAalt {
+        existing.MAalt = incoming.MAalt
+    }
+
+    // MAHeading: keep first non-zero
+    if existing.MAHeading == 0 && incoming.MAHeading != 0 {
+        existing.MAHeading = incoming.MAHeading
+    }
+
+    // MAFix: keep first non-empty
+    if existing.MAFix == "" && incoming.MAFix != "" {
+        existing.MAFix = incoming.MAFix
+    }
+
+    return existing
+}
+
 func ParseCIFP(cifpPath string) (map[string]Runway, error) {
     f, err := os.Open(cifpPath)
     if err != nil {
@@ -429,6 +476,28 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
 
     var currentRunway string
     var rw Runway
+    var inApproach bool
+    var currentAppType string
+
+    saveApproach := func() {
+        if !inApproach || currentRunway == "" {
+            return
+        }
+        key := icao + "_" + currentRunway
+        existing := runways[key]
+
+        // Only merge if this was a real approach (FAF or approach type)
+        if rw.FAFalt > 0 || rw.BestApproach != "" {
+            runways[key] = mergeRunway(existing, rw, currentAppType)
+        } else {
+            // Ensure runway entry exists, but keep it zeroed
+            if _, ok := runways[key]; !ok {
+                runways[key] = Runway{}
+            }
+        }
+    }
+
+    var sawRunwayLeg bool
 
     for scan.Scan() {
         line := strings.TrimSpace(scan.Text())
@@ -441,46 +510,64 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
             continue
         }
 
-        // Detect new approach header
+        // Route/segment type: A, I, L, etc.
+        routeType := strings.TrimSpace(fields[1])
+        isFinal := routeType == "I" || routeType == "L" || routeType == "R" || routeType == "N"
+
+        // Start of a new approach
         if strings.HasPrefix(fields[0], "APPCH:010") {
-            // If we were accumulating a runway, save it
-            if currentRunway != "" {
-                runways[icao+"_"+currentRunway] = rw
-            }
+            // Save previous approach into runway
+            saveApproach()
 
             // Reset for new approach
+            inApproach = true
             currentRunway = ""
             rw = Runway{}
+            currentAppType = ""
+            sawRunwayLeg = false
 
-            // Extract approach type from approach name (fields[2])
+            // Extract approach type from approach name
             name := strings.TrimSpace(fields[2])
             if name != "" {
                 appType := string(name[0])
-                if rank, ok := approachRank[appType]; ok {
-                    if rw.BestApproach == "" || rank < approachRank[rw.BestApproach] {
-                        rw.BestApproach = approachString[appType]
-                    }
+                if _, ok := approachRank[appType]; ok {
+                    currentAppType = appType
+                    rw.BestApproach = approachString[appType]
                 }
             }
         }
 
-        // Fix and leg type
-        fix := strings.TrimSpace(fields[4])
+        // Fix (can live in several fields)
+        fix := ""
+        fixCandidates := []int{4, 5, 13, 14}
+        for _, idx := range fixCandidates {
+            if idx < len(fields) {
+                f := strings.TrimSpace(fields[idx])
+                if f != "" {
+                    fix = f
+                    break
+                }
+            }
+        }
+
         legType := strings.TrimSpace(fields[11])
 
         // Detect runway from RWxx fix
-        if strings.HasPrefix(fix, "RW") && len(fix) >= 4 {
-            currentRunway = fix[2:] // "RW27" → "27"
-        }
-
-        // Skip legs until we know which runway this approach belongs to
-        if currentRunway == "" {
-            continue
+        if strings.HasPrefix(fix, "RW") {
+            rwy := normalizeRunwayFromFix(fix)
+            if rwy != "" {
+                currentRunway = rwy
+                // Ensure runway entry exists even before merging
+                key := icao + "_" + currentRunway
+                if _, ok := runways[key]; !ok {
+                    runways[key] = Runway{}
+                }
+            }
         }
 
         // Altitude fields
         atOrAbove := strings.TrimSpace(fields[23])
-        atAlt     := strings.TrimSpace(fields[24])
+        atAlt := strings.TrimSpace(fields[24])
         atOrBelow := strings.TrimSpace(fields[25])
         alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
 
@@ -491,41 +578,51 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
             }
         }
 
-        // Missed-approach detection
-        isMA :=
+        // Missed-approach detection (final segment only)
+        isMA := isFinal && (
             strings.HasPrefix(fix, "MA") ||
-            strings.HasPrefix(fix, "RW") ||
-            strings.HasPrefix(fix, "FD") ||
-            strings.HasPrefix(fix, "CI") ||
-            legType == "CA" ||
-            legType == "CF" ||
-            legType == "HM"
+                strings.HasPrefix(fix, "RW") ||
+                strings.HasPrefix(fix, "FD") ||
+                strings.HasPrefix(fix, "CI") ||
+                legType == "CA" ||
+                legType == "CF" ||
+                legType == "HM" ||
+                legType == "AF")
 
         if isMA && alt > rw.MAalt {
             rw.MAalt = alt
         }
 
-        // Initial MA heading
-        if isMA && rw.MAHeading == 0 {
-            courseField := strings.TrimSpace(fields[18])
-            if c, err := strconv.Atoi(courseField); err == nil {
-                rw.MAHeading = c / 10
+        // Detect RW leg
+        if strings.HasPrefix(fix, "RW") {
+            sawRunwayLeg = true
+        }
+
+        // Missed-approach heading: first CA or CI leg AFTER RW leg
+        if sawRunwayLeg && rw.MAHeading == 0 {
+            if legType == "CA" || legType == "CI" {
+                headingField := strings.TrimSpace(fields[20])
+                if h, err := strconv.Atoi(headingField); err == nil {
+                    rw.MAHeading = h / 10
+                }
+                // Stop capturing after first valid MA heading
+                sawRunwayLeg = false
             }
         }
 
-        // Named MA fix (only if HM leg)
-        if legType == "HM" && fix != "" {
+        // MAFix: last MA leg's fix in final segment
+        if isMA && !strings.HasPrefix(fix, "RW") {
             rw.MAFix = fix
         }
     }
 
-    // Save last runway if needed
-    if currentRunway != "" {
-        runways[icao+"_"+currentRunway] = rw
-    }
+    // Save last approach
+    saveApproach()
 
     return runways, scan.Err()
 }
+
+
 
 func lowestAltitudeOf(at, above, below string) int {
     vals := []string{at, above, below}
@@ -545,13 +642,30 @@ func lowestAltitudeOf(at, above, below string) int {
     return best
 }
 
-func normalizeRunway(arinc string) string {
-    if len(arinc) <= 1 {
-        return arinc
+func normalizeRunwayFromFix(fix string) string {
+    // fix is like "RW27", "RW27L", "RW9", "RW09R"
+    if !strings.HasPrefix(fix, "RW") {
+        return ""
     }
-    return arinc[1:]
-}
 
+    core := fix[2:] // strip "RW"
+
+    // Extract digits
+    i := 0
+    for i < len(core) && core[i] >= '0' && core[i] <= '9' {
+        i++
+    }
+
+    num := core[:i]
+    suffix := core[i:] // L/R/C if present
+
+    // Pad single-digit runways
+    if len(num) == 1 {
+        num = "0" + num
+    }
+
+    return num + suffix
+}
 
 // convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or
 // a country prefix (e.g., "EG") and returns the ISO country code.
