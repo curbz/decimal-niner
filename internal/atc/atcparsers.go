@@ -589,6 +589,7 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
                 legType == "HM" ||
                 legType == "AF")
 
+        // set missed approach altitude
         if isMA && alt > rw.MAalt {
             rw.MAalt = alt
         }
@@ -598,15 +599,13 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
             sawRunwayLeg = true
         }
 
-        // Missed-approach heading: first CA or CI leg AFTER RW leg
+        // Capture missed-approach heading
         if sawRunwayLeg && rw.MAHeading == 0 {
-            if legType == "CA" || legType == "CI" {
+            if isMA {
                 headingField := strings.TrimSpace(fields[20])
                 if h, err := strconv.Atoi(headingField); err == nil {
                     rw.MAHeading = h / 10
                 }
-                // Stop capturing after first valid MA heading
-                sawRunwayLeg = false
             }
         }
 
