@@ -64,7 +64,7 @@ type config struct {
 		AtcRegionsFile        string       `yaml:"atc_regions_file"`
 		AtcHoldsFile          string       `yaml:"atc_holds_file"`
 		AtcNavDataFile        string       `yaml:"atc_nav_data_file"`
-		AirportCIFPDir         string       `yaml:"airports_cifp_dir"`
+		AirportCIFPDir        string       `yaml:"airports_cifp_dir"`
 		AirportsDataFile      string       `yaml:"airports_data_file"`
 		AirlinesFile          string       `yaml:"airlines_file"`
 		Voices                VoicesConfig `yaml:"voices"`
@@ -99,7 +99,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	if err != nil {
 		log.Fatal("Error loading airport data from CIFP files: ", err)
 	}
-
+	log.Println("Airport data loaded: seeded", len(airports), "airports")
+	
 	// load controller data
 	start := time.Now()
 	arptControllers, err := parseApt(cfg.ATC.AirportsDataFile, airports)
@@ -253,7 +254,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 func (s *Service) FindController(ac *Aircraft) *Controller {
 
 	// Identify AI's intended facility
-	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
+	searchICAO := airportICAObyPhaseClass(ac)
 	phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 
 	aiFac := s.locateController(
@@ -781,12 +782,12 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 	}
 }
 
-func airportICAObyPhaseClass(ac *Aircraft, phaseClass PhaseClass) string {
-	switch phaseClass {
+func airportICAObyPhaseClass(ac *Aircraft) string {
+	switch ac.Flight.Phase.Class {
 	case PreflightParked, Departing:
 		return ac.Flight.Origin
 	case Cruising:
-		return "" // This forces the coordinate/polygon distance search
+		return "" 
 	case Arriving, PostflightParked:
 		return ac.Flight.Destination
 	default:

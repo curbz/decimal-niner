@@ -33,6 +33,18 @@ type VoicesConfig struct {
 	SayAgainFactor           int    `yaml:"say_again_factor"`
 }
 
+// +----------------------------------------------------------+
+// | ATCMessage represents a single ATC communication message |
+// +----------------------------------------------------------+
+type ATCMessage struct {
+	ControllerICAO string
+	AircraftSnap   *Aircraft
+	Role           string
+	Text           string
+	CountryCode    string
+	ControllerName string
+}
+
 type Exchange struct {
 	ID        string `json:"id"`
 	Initiator string `json:"initiator"` // "pilot" or "atc"
@@ -251,12 +263,16 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
 	}
 	if strings.Contains(phrase, "{HOLD_FIX}") {
+		searchICAO := airportICAObyPhaseClass(ac)
+		holdfix := s.findNearestHold(ac, searchICAO)
 		repl := ""
-		holdfix := s.findNearestHold(ac.Flight.Position.Lat, ac.Flight.Position.Long)
 		if holdfix == nil {
 			repl = "published hold"
 		} else {
 			repl = holdfix.FullName
+			if repl == "" {
+				repl = "published hold"
+			}
 		}
 		phrase = strings.ReplaceAll(phrase, "{HOLD_FIX}", repl)
 	}
@@ -681,7 +697,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	}
 
 	// Locate the "Next" controller
-	searchICAO := airportICAObyPhaseClass(ac, ac.Flight.Phase.Class)
+	searchICAO := airportICAObyPhaseClass(ac)
 	pos := ac.Flight.Position
 	label := fmt.Sprintf("%s_HANDOFF", ac.Registration)
 	nextController := s.locateController(label,

@@ -3,7 +3,27 @@ package atc
 import (
 	"math"
 	"strconv"
+
+	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
+
+type Hold struct {
+    Name      string
+    Region    string
+	FullName  string
+    Type      string
+    Seq       int
+    Inbound   float64
+    LegTime   float64
+    LegDist   float64
+    Turn      string
+    MinAlt    int
+    MaxAlt    int
+    Speed     int
+    LatRad float64
+    LonRad float64
+    X, Y, Z float64
+}
 
 func loadHolds(navDataFile, holdsDataFile string) (map[string]*Hold, error) {
 
@@ -60,23 +80,68 @@ func resolveHoldCoordinates(holds map[string]*Hold, fixes map[string]Fix) {
 
 }
 
-func (s *Service) findNearestHold(lat, lng float64) *Hold {
+func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
+
+	lat := ac.Flight.Position.Lat
+	lng := ac.Flight.Position.Long
+	runway := ac.Flight.AssignedRunway
+	phase := ac.Flight.Phase.Current
 
 	latRad := lat * math.Pi / 180
 	lonRad := lng * math.Pi / 180
+	ux, uy, uz := toUnit(latRad, lonRad)
 
-    ux, uy, uz := toUnit(latRad, lonRad)
+	// 1. Get the Airport from the Service
+	airport, airportExists := s.Airports[icao]
 
-    var best *Hold
-    bestDot := -2.0
+	// 2. Handle Prioritization Logic
+	if airportExists && len(airport.Holds) > 0 {
+		
+		// A. GO-AROUND: Specifically look for the MAFix
+		if phase == trafficglobal.GoAround.Index() {
+			// Find the MAFix name for the specific runway
+			// runway is normalized (e.g., "27R")
+			var targetFix string
+			if r, ok := airport.Runways[runway]; ok {
+				targetFix = r.MAFix
+			}
 
-    for _, h := range s.Holds {
-        dot := ux * h.X + uy * h.Y + uz * h.Z
-        if dot > bestDot {
-            bestDot = dot
-            best = h
-        }
-    }
+			if targetFix != "" {
+				// Search the airport's local holds for this name
+				for _, h := range airport.Holds {
+					if h.Name == targetFix {
+						return h
+					}
+				}
+			}
+			// If no MAFix match found, fall back to nearest airport hold
+		}
 
-    return best
+		// B. OTHER PHASES (or Go-Around fallback): Find nearest hold in Airport.Holds
+		var bestAirportHold *Hold
+		bestDot := -2.0
+		for _, h := range airport.Holds {
+			dot := ux*h.X + uy*h.Y + uz*h.Z
+			if dot > bestDot {
+				bestDot = dot
+				bestAirportHold = h
+			}
+		}
+		if bestAirportHold != nil {
+			return bestAirportHold
+		}
+	}
+
+	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds
+	var bestGlobalHold *Hold
+	bestDotGlobal := -2.0
+	for _, h := range s.Holds {
+		dot := ux*h.X + uy*h.Y + uz*h.Z
+		if dot > bestDotGlobal {
+			bestDotGlobal = dot
+			bestGlobalHold = h
+		}
+	}
+
+	return bestGlobalHold
 }

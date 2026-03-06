@@ -122,17 +122,6 @@ func (fc PhaseClass) String() string {
 	}[fc+1]
 }
 
-// +----------------------------------------------------------+
-// | ATCMessage represents a single ATC communication message |
-// +----------------------------------------------------------+
-type ATCMessage struct {
-	ControllerICAO string
-	AircraftSnap   *Aircraft
-	Role           string
-	Text           string
-	CountryCode    string
-	ControllerName string
-}
 
 // +------------------------------+
 // | ATC Controller related types |
@@ -161,53 +150,3 @@ type PhaseFacility struct {
 	roleId   int
 }
 
-// type AirportCoords struct {
-// 	Lat  float64
-// 	Lon  float64
-// 	Name string
-// }
-
-type Runway struct {
-    FAFalt       int    // Final approach fix altitude
-    MAalt        int    // highest missed approach altitude
-    MAHeading    int    // initial MA course (degrees)
-    MAFix        string // only if HM leg exists
-    BestApproach string // highest precision approach type
-}
-
-type Fix struct {
-    Ident  string
-    Region string
-	FullName string
-    LatRad float64
-    LonRad float64
-}
-
-type Hold struct {
-    Name      string
-    Region    string
-	FullName  string
-    Type      string
-    Seq       int
-    Inbound   float64
-    LegTime   float64
-    LegDist   float64
-    Turn      string
-    MinAlt    int
-    MaxAlt    int
-    Speed     int
-    LatRad float64
-    LonRad float64
-    X, Y, Z float64
-}
-
-type Airport struct { 
-	ICAO string 
-	Name string
-	Lat float64
-	Lon float64
-	TransAlt int
-	TransLevel int
-	Runways map[string]Runway // keyed by "09L", "27R" 
-	Holds []*Hold // both MA holds and arrival-stack holds 
-}
