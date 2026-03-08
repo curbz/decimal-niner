@@ -416,42 +416,46 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
-	for i := range s.Controllers {
-		c := &s.Controllers[i]
-		if !c.IsPoint {
-			continue
-		}
+    for i := range s.Controllers {
+        c := &s.Controllers[i]
+        if !c.IsPoint {
+            continue
+        }
 
-		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+        dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 
-		// Frequency Gate: If a frequency is tuned, it must match and be in range.
-		if tFreq > 0 {
-			fMatch := false
-			for _, f := range c.Freqs {
-				if f/10 == tFreq/10 {
-					fMatch = true
-					break
-				}
-			}
+        // Frequency Gate
+        if tFreq > 0 {
+            fMatch := false
+            for _, f := range c.Freqs {
+                if f/10 == tFreq/10 {
+                    fMatch = true
+                    break
+                }
+            }
 
-			if fMatch && dist < 100.0 {
-				// Perfect match: Freq + Role
-				if tRole != -1 && c.RoleID == tRole {
-					return c
-				}
+            if fMatch && dist < 100.0 {
+                // If Role matches, find the absolute closest one
+                if tRole != -1 && c.RoleID == tRole {
+                    if dist < closestPointDist {
+                        closestPointDist = dist
+                        bestPointMatch = c
+                    }
+                    continue // Keep looking for a closer one
+                }
 
-				// Shared Freq Tie-breaker: Favour the "higher" RoleID (Tower/Center)
-				// if no specific role was requested.
-				if bestPointMatch == nil || c.RoleID > bestPointMatch.RoleID {
-					bestPointMatch = c
-					closestPointDist = dist
-				}
-			}
-			// IMPORTANT: We skip proximity logic for this entry because we are in
-			// "Frequency Mode."
-			continue
-		}
-
+                // If no role requested, favor "higher" RoleIDs (Tower over Ground)
+                // but still within a distance sanity check
+                if tRole == -1 {
+                    if bestPointMatch == nil || (c.RoleID > bestPointMatch.RoleID && dist < 50.0) {
+                        bestPointMatch = c
+                        closestPointDist = dist
+                    }
+                }
+            }
+            continue
+        }
+        
 		// Proximity Match (within 15nm)
 		if dist < closestPointDist {
 			if tRole != RoleAny && c.RoleID != tRole {

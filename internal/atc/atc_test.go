@@ -25,7 +25,7 @@ func init() {
 
 func TestPerformSearch(t *testing.T) {
 
-	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true}
+	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true}
 	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
 
 	tests := []struct {
@@ -39,6 +39,12 @@ func TestPerformSearch(t *testing.T) {
 		{"Heathrow Ground (Proximity)", 0, 2, 51.4706, -0.4522, 1000.0, "", "EGLL", 2},
 		{"Heathrow Ground (Freq)", 121905, 2, 51.4706, -0.4522, 1000.0, "", "EGLL", 2},
 		{"Heathrow Tower (Freq)", 118505, 3, 51.4706, -0.4522, 1000.0, "", "EGLL", 3},
+		{
+			"Shared Freq Tie-breaker (Heathrow vs East Midlands)", 
+			121900, 2, 
+			51.4706, -0.4522, 10.0, // Standing at Heathrow
+			"", "EGLL", 2,           // Should pick EGLL because it's closer
+		},
 		{"London Center (Polygon)", 0, 6, 51.5, -0.1, 20000.0, "", "EGTT", 6},
 		{"Shoreham Ground (Proximity)", 0, 2, 50.835, -0.297, 50.0, "", "EGKA", 2},
 		{"Gatwick Arrival via Southampton (Polygon)", 0, 6, 50.95, -1.35, 15000.0, "", "EGTT", 6},

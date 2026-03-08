@@ -553,7 +553,6 @@ func (xpc *XPConnect) updateUserData() {
 
 	//only notify if change has occurred
 	if commsChanged || posChanged {
-		fmt.Printf("User state change detected. Comms changed: %t, Position changed: %t\n", commsChanged, posChanged)
 		xpc.atcService.NotifyUserStateChange(atc.Position{
 			Lat:      lat,
 			Long:     lng,
