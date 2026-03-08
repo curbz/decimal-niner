@@ -34,7 +34,6 @@ type Wind struct {
 type Baro struct {
 	Flight        float64
 	Sealevel      float64
-	TransitionAlt int // TODO: remove from here, this is fixed value per ICAO
 }
 
 type AirlineInfo struct {

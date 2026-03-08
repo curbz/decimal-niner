@@ -27,7 +27,7 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
     var curICAO, curName string
     var metaBlock bool // Tracks if we're in the metadata section of an airport block
     var curLat, curLon float64
-    var transAlt, transLevel int
+    var transAlt int
     var isRequiredAirport bool
     var batchStartIdx int // Tracks start of controllers for the current frequency
 
@@ -80,8 +80,6 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
                             curLon, _ = strconv.ParseFloat(p[2], 64)
                         case "transition_alt": 
                             transAlt, _ = strconv.Atoi(p[2])
-                        case "transition_level": 
-                            transLevel, _ = strconv.Atoi(p[2])
                     }
                 }
                 continue
@@ -92,7 +90,6 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
                     curAirport.Lat = curLat
                     curAirport.Lon = curLon
                     curAirport.TransAlt = transAlt
-                    curAirport.TransLevel = transLevel
                     metaBlock = false
                 }
             }

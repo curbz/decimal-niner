@@ -236,13 +236,21 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		}
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", sayDest)
 	}
-	if strings.Contains(phrase, "{ALTITUDE}") {
-		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
-		phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
-	}
-	if strings.Contains(phrase, "{ALT_CLEARANCE}") {
-		// TODO: call getTransitionLevel instead of using baro.TransitionAlt
-		phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", generateClearance(ac.Flight.Position.Altitude, baro.TransitionAlt, ac))
+	if strings.Contains(phrase, "{ALTITUDE}") || strings.Contains(phrase, "{ALT_CLEARANCE}") {
+		transitionAlt := 0
+		icao := ac.Flight.Comms.Controller.ICAO
+		if ap, ok := s.Airports[icao]; ok {
+			transitionAlt = ap.TransAlt
+		} else {
+			transitionAlt = 18000
+		}
+		transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
+
+		if strings.Contains(phrase, "{ALT_CLEARANCE}") {
+			phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", generateClearance(ac.Flight.Position.Altitude, transitionLevel, ac))
+		} else {
+			phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac))
+		}
 	}
 	if strings.Contains(phrase, "{HEADING}") {
 		phrase = strings.ReplaceAll(phrase, "{HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
@@ -527,7 +535,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 		return fmt.Sprintf("flight level %d", scaledAlt)
 	}
 
-	// Feet Logic (Below Transition Altitude)
+	// Feet Logic (Below Transition Level)
 	// If it's a clean thousand (e.g., 5000)
 	if scaledAlt%1000 == 0 {
 		return fmt.Sprintf("%d thousand", scaledAlt/1000)
