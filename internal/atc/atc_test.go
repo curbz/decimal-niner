@@ -25,7 +25,7 @@ func init() {
 
 func TestPerformSearch(t *testing.T) {
 
-	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true}
+	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true, "EGHI": true}
 	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
 
 	tests := []struct {
