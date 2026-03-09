@@ -32,8 +32,8 @@ type Wind struct {
 }
 
 type Baro struct {
-	Flight        float64
-	Sealevel      float64
+	Flight   float64
+	Sealevel float64
 }
 
 type AirlineInfo struct {
@@ -63,7 +63,7 @@ type Flight struct {
 	Destination         string
 	Phase               Phase
 	Comms               Comms
-	AltClearance        int
+	CruiseAlt           int
 	AssignedParking     string
 	AssignedRunway      string
 	Squawk              string
@@ -121,7 +121,6 @@ func (fc PhaseClass) String() string {
 	}[fc+1]
 }
 
-
 // +------------------------------+
 // | ATC Controller related types |
 // +------------------------------+
@@ -148,4 +147,3 @@ type PhaseFacility struct {
 	atcPhase string
 	roleId   int
 }
-

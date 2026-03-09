@@ -247,8 +247,8 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") || strings.Contains(phrase, "{ALT_CLEARANCE}") {
 		transitionAlt := 0
-		icao := ac.Flight.Comms.Controller.ICAO
-		if ap, ok := s.Airports[icao]; ok {
+		cIcao := ac.Flight.Comms.Controller.ICAO
+		if ap, ok := s.Airports[cIcao]; ok {
 			transitionAlt = ap.TransAlt
 		} else {
 			transitionAlt = 18000
@@ -256,9 +256,21 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
 
 		if strings.Contains(phrase, "{ALT_CLEARANCE}") {
-			phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", generateClearance(ac.Flight.Position.Altitude, transitionLevel, ac))
+			clearance := 0
+			if ac.Flight.Phase.Class == Arriving {
+				apIcao := airportICAObyPhaseClass(ac)
+				rwy := s.getAirportRunway(apIcao, ac.Flight.AssignedRunway)
+				if rwy != nil {
+					clearance = rwy.FAFalt
+				}
+			} else {
+				clearance = ac.Flight.CruiseAlt
+			}
+			phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", 
+				generateAltClearance(ac.Flight.Position.Altitude, transitionLevel, clearance, ac.Flight.Phase))
 		} else {
-			phrase = strings.ReplaceAll(phrase, "{ALTITUDE}", formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac))
+			phrase = strings.ReplaceAll(phrase, "{ALTITUDE}",
+				formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase))
 		}
 	}
 	if strings.Contains(phrase, "{HEADING}") {
@@ -535,9 +547,9 @@ func formatBaro(icao string, pascals float64) string {
 	return fmt.Sprintf("%s %s", prefix, digits)
 }
 
-func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
+func formatAltitude(rawAlt float64, transitionLevel int, phase Phase) string {
 
-	scaledAlt, flightLevelScale := scaleAltitude(rawAlt, transitionLevel, ac)
+	scaledAlt, flightLevelScale := scaleAltitude(rawAlt, transitionLevel, phase)
 
 	if flightLevelScale {
 		// Returns "flight level 330"
@@ -558,19 +570,19 @@ func formatAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) string {
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }
 
-// generateClearance builds an altitude clearance phrase
-// one of "descend to", "maintain", "climb to"
-func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string {
+// generateAltClearance builds an altitude clearance phrase
+// one of "descend to", "maintain", "climb to" or "" 
+func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase Phase) string {
 
 	instruction := ""
 	phrase := ""
 
-	if ac.Flight.AltClearance == 0 {
+	if clearance == 0 {
 		return phrase
 	}
 
-	scaledClearedAlt, clearedScaleIsFlightLevel := scaleAltitude(float64(ac.Flight.AltClearance), transitionLevel, ac)
-	scaledAlt, scaleIsFlightLevel := scaleAltitude(rawAlt, transitionLevel, ac)
+	scaledClearedAlt, clearedScaleIsFlightLevel := scaleAltitude(float64(clearance), transitionLevel, phase)
+	scaledAlt, scaleIsFlightLevel := scaleAltitude(rawAlt, transitionLevel, phase)
 
 	if scaleIsFlightLevel != clearedScaleIsFlightLevel {
 		// scales are different
@@ -593,7 +605,7 @@ func generateClearance(rawAlt float64, transitionLevel int, ac *Aircraft) string
 		}
 	}
 
-	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(ac.Flight.AltClearance), transitionLevel, ac))
+	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(clearance), transitionLevel, phase))
 
 	return phrase
 }

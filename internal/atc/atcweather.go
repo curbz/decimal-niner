@@ -19,13 +19,13 @@ func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 
 // scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
 // is true when the scale is flight levels and false when the returned value is an altitude in feet
-func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool) {
+func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool) {
 
 	var roundedAlt int
 	alt := int(rawAlt)
 
 	// Contextual Rounding Logic
-	switch ac.Flight.Phase.Current {
+	switch phase.Current {
 	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
 		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
 		roundedAlt = ((alt + 50) / 100) * 100
@@ -39,7 +39,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, ac *Aircraft) (int, bool
 		fl := roundedAlt / 100
 
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
-		if ac.Flight.Phase.Current == trafficglobal.Cruise.Index() {
+		if phase.Current == trafficglobal.Cruise.Index() {
 			fl = (fl / 10) * 10
 		}
 

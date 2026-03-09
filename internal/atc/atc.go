@@ -100,7 +100,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		log.Fatal("Error loading airport data from CIFP files: ", err)
 	}
 	log.Println("Airport data loaded: seeded", len(airports), "airports")
-	
+
 	// load controller data
 	start := time.Now()
 	arptControllers, err := parseApt(cfg.ATC.AirportsDataFile, airports)
@@ -416,46 +416,46 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
-    for i := range s.Controllers {
-        c := &s.Controllers[i]
-        if !c.IsPoint {
-            continue
-        }
+	for i := range s.Controllers {
+		c := &s.Controllers[i]
+		if !c.IsPoint {
+			continue
+		}
 
-        dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
 
-        // Frequency Gate
-        if tFreq > 0 {
-            fMatch := false
-            for _, f := range c.Freqs {
-                if f/10 == tFreq/10 {
-                    fMatch = true
-                    break
-                }
-            }
+		// Frequency Gate
+		if tFreq > 0 {
+			fMatch := false
+			for _, f := range c.Freqs {
+				if f/10 == tFreq/10 {
+					fMatch = true
+					break
+				}
+			}
 
-            if fMatch && dist < 100.0 {
-                // If Role matches, find the absolute closest one
-                if tRole != -1 && c.RoleID == tRole {
-                    if dist < closestPointDist {
-                        closestPointDist = dist
-                        bestPointMatch = c
-                    }
-                    continue // Keep looking for a closer one
-                }
+			if fMatch && dist < 100.0 {
+				// If Role matches, find the absolute closest one
+				if tRole != -1 && c.RoleID == tRole {
+					if dist < closestPointDist {
+						closestPointDist = dist
+						bestPointMatch = c
+					}
+					continue // Keep looking for a closer one
+				}
 
-                // If no role requested, favor "higher" RoleIDs (Tower over Ground)
-                // but still within a distance sanity check
-                if tRole == -1 {
-                    if bestPointMatch == nil || (c.RoleID > bestPointMatch.RoleID && dist < 50.0) {
-                        bestPointMatch = c
-                        closestPointDist = dist
-                    }
-                }
-            }
-            continue
-        }
-        
+				// If no role requested, favor "higher" RoleIDs (Tower over Ground)
+				// but still within a distance sanity check
+				if tRole == -1 {
+					if bestPointMatch == nil || (c.RoleID > bestPointMatch.RoleID && dist < 50.0) {
+						bestPointMatch = c
+						closestPointDist = dist
+					}
+				}
+			}
+			continue
+		}
+
 		// Proximity Match (within 15nm)
 		if dist < closestPointDist {
 			if tRole != RoleAny && c.RoleID != tRole {
@@ -629,10 +629,10 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	// use remaining candidate i.e. [0]
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
-	ac.Flight.AltClearance = candidateScheds[0].CruiseAlt * 100
+	ac.Flight.CruiseAlt = candidateScheds[0].CruiseAlt * 100
 
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
-	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.AltClearance)
+	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
 
 	return true
 }
@@ -793,7 +793,7 @@ func (s *Service) getAirportRunway(icao, rwy string) *Runway {
 		ap, found := s.Airports[icao]
 		if found {
 			r, _ = ap.Runways[rwy]
-		} 
+		}
 	}
 	return r
 }
@@ -803,7 +803,7 @@ func airportICAObyPhaseClass(ac *Aircraft) string {
 	case PreflightParked, Departing:
 		return ac.Flight.Origin
 	case Cruising:
-		return "" 
+		return ""
 	case Arriving, PostflightParked:
 		return ac.Flight.Destination
 	default:
