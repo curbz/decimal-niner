@@ -5,7 +5,7 @@ xplane_api:
 
 # ATC Settings
 atc:
-  message_buffer_size:    20
+  message_buffer_size:    40
   listen_all_frequencies: true
   strict_flightplan_matching: false
   airlines_file:     "resources/airlines.json"

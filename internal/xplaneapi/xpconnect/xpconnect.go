@@ -535,7 +535,7 @@ func (xpc *XPConnect) updateUserData() {
 
 	// check we got values
 	if latVal == nil || lngVal == nil || altVal == nil {
-		log.Println("WARN: Couldn't update user state as psitional dataref values are not available")
+		log.Println("WARN: Couldn't update user state as positional dataref values are not available")
 		return
 	}
 

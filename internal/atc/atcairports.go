@@ -13,7 +13,7 @@ type Airport struct {
 	Lat float64
 	Lon float64
 	TransAlt int
-	Runways map[string]Runway // keyed by "09L", "27R" 
+	Runways map[string]*Runway // keyed by "09L", "27R" 
 	Holds []*Hold // both MA holds and arrival-stack holds 
 }
 
@@ -45,22 +45,22 @@ func loadAirports(dir string, airportList map[string]bool, globalHolds map[strin
         if err != nil {
             if errors.As(err, &pathErr) {
                 // if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
-                log.Println("WARN: CIFP file not found for airport ", icao, ": ", err)
+                log.Println("WARN: CIFP file not found for airport", icao, ": ", err)
             } else {
-                log.Println("error parsing CIFP file for airport ", icao, ": ", err)
+                log.Println("error parsing CIFP file for airport", icao, ": ", err)
             }
             continue
         }
 
         ap := &Airport{
             ICAO:    icao,
-            Runways: make(map[string]Runway),
+            Runways: make(map[string]*Runway),
             Holds:   []*Hold{},
         }
 
         // Add runways
         for rwy, data := range rwyMap {
-            ap.Runways[rwy] = data
+            ap.Runways[rwy] = &data
         }
 
         // Add missed-approach holds if present in global holds

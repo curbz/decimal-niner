@@ -786,6 +786,18 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 	}
 }
 
+// returns nil if not found
+func (s *Service) getAirportRunway(icao, rwy string) *Runway {
+	var r *Runway
+	if icao != "" {
+		ap, found := s.Airports[icao]
+		if found {
+			r, _ = ap.Runways[rwy]
+		} 
+	}
+	return r
+}
+
 func airportICAObyPhaseClass(ac *Aircraft) string {
 	switch ac.Flight.Phase.Class {
 	case PreflightParked, Departing:

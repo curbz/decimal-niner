@@ -280,11 +280,11 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	switch name {
 	// --- User Position (Heathrow Center) ---
 	case "sim/flightmodel/position/latitude":
-		return 51.4700 + (float64(iter) * 0.0001)
+		return 51.4700 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/longitude":
-		return -0.4543 + (float64(iter) * 0.0001)
+		return -0.4543 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/elevation":
-		return 25.0 + float64(iter) // EGLL is ~80ft MSL
+		return 25.0 //+ float64(iter) // // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/psi":
 		return 270.5 // Facing West towards Runway 27R
 

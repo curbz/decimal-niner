@@ -236,6 +236,15 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 		}
 		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", sayDest)
 	}
+	if strings.Contains(phrase, "{APPROACH_TYPE}") {
+		approachType := ""
+		icao := airportICAObyPhaseClass(ac)
+		rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
+		if rwy != nil {
+			approachType = rwy.BestApproach
+			phrase = strings.ReplaceAll(phrase, "{APPROACH_TYPE}", approachType)
+		}
+	}
 	if strings.Contains(phrase, "{ALTITUDE}") || strings.Contains(phrase, "{ALT_CLEARANCE}") {
 		transitionAlt := 0
 		icao := ac.Flight.Comms.Controller.ICAO

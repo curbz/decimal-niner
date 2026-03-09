@@ -39,7 +39,7 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 			APIInfo: xpapimodel.DatarefInfo{}},
 		{Name: "sim/flightmodel/position/elevation",
 			APIInfo: xpapimodel.DatarefInfo{}},
-		{Name: "sim/flightmodel/position/psi",
+		{Name: "sim/flightmodel/position/psi",		// heading
 			APIInfo: xpapimodel.DatarefInfo{}},
 
 		//user tuned atc facilities and frequencies
