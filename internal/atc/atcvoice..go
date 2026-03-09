@@ -315,30 +315,35 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		phrase = strings.ReplaceAll(phrase, replace, s.generateValediction(factor))
 	}
 
-	//cleanup phrase
-	// 1. Decompose accents (é becomes e + ´)
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	phrase, _, _ = transform.String(t, phrase)
-	phrase = strings.ReplaceAll(phrase, "[", "")
-	phrase = strings.ReplaceAll(phrase, "]", "")
-	phrase = strings.ReplaceAll(phrase, "{", "")
-	phrase = strings.ReplaceAll(phrase, "}", "")
-	phrase = strings.ReplaceAll(phrase, "(", "")
-	phrase = strings.ReplaceAll(phrase, ")", "")
-	re := regexp.MustCompile(`\.[\s\.]*$`)
-	phrase = re.ReplaceAllString(phrase, ".")
-	phrase = strings.TrimSpace(phrase)
-	phrase = strings.TrimSuffix(phrase, ",")
-	var reSanitize = regexp.MustCompile(`[^{a-zA-Z0-9\s\.,\-]`)
-	phrase = reSanitize.ReplaceAllString(phrase, "")
-
 	phrase = translateNumerics(phrase)
+	phrase = cleanPhrase(phrase)
 
 	msg := &ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
 		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
 	}
 
 	queuePhrase(msg)
+}
+
+func cleanPhrase(phrase string) string {
+
+	// 1. Decompose accents (é becomes e + ´)
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	phrase, _, _ = transform.String(t, phrase)
+
+	phrase = strings.ReplaceAll(phrase, "  ", " ")
+	phrase = strings.ReplaceAll(phrase, " .", ".")
+
+	re := regexp.MustCompile(`\.[\s\.]*$`)
+	phrase = re.ReplaceAllString(phrase, ".")
+
+	var reSanitize = regexp.MustCompile(`[^a-zA-Z0-9\s\.,\-\']`)
+	phrase = reSanitize.ReplaceAllString(phrase, "")
+	
+	phrase = strings.TrimSuffix(phrase, ",")
+	phrase = strings.TrimSpace(phrase)
+
+	return phrase
 }
 
 func queuePhrase(msg *ATCMessage) {
