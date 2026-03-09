@@ -182,7 +182,7 @@ func (vm *VoiceManager) initialisePools() error {
 }
 
 // resolveVoice is the main entry point
-func (vm *VoiceManager) resolveVoice(msg ATCMessage) (string, string, int, string) {
+func (vm *VoiceManager) resolveVoice(msg *ATCMessage) (string, string, int, string) {
 
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
@@ -199,7 +199,7 @@ func (vm *VoiceManager) resolveVoice(msg ATCMessage) (string, string, int, strin
 
 	// 2. Assign New Voice
 	partnerVoice := vm.sessions[partnerKey].VoiceName
-	selectedVoice := vm.performTieredSearch(msg, partnerVoice)
+	selectedVoice := vm.selectVoice(msg, partnerVoice)
 
 	// 3. Save Session
 	vm.sessions[key] = VoiceSession{
@@ -215,7 +215,7 @@ func (vm *VoiceManager) resolveVoice(msg ATCMessage) (string, string, int, strin
 
 // --- Internal Logic Helpers ---
 
-func (vm *VoiceManager) getSymmetricKeys(msg ATCMessage) (string, string) {
+func (vm *VoiceManager) getSymmetricKeys(msg *ATCMessage) (string, string) {
 	// Determine the ID of the aircraft (Callsign is preferred, Reg as fallback)
 	planeID := msg.AircraftSnap.Flight.Comms.Callsign
 	if planeID == "" {
@@ -249,7 +249,7 @@ func (vm *VoiceManager) getSessionType(role string) int {
 	return SessionTypeATC
 }
 
-func (vm *VoiceManager) performTieredSearch(msg ATCMessage, partnerVoice string) string {
+func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string {
 
 	countryCode := msg.CountryCode
 	if msg.Role != "PILOT" {
@@ -336,7 +336,7 @@ func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) strin
 	return bestDuplicate
 }
 
-func (vm *VoiceManager) getVoiceMetadata(name string, msg ATCMessage) (string, string, int, string) {
+func (vm *VoiceManager) getVoiceMetadata(name string, msg *ATCMessage) (string, string, int, string) {
 	path := filepath.Join(vm.voiceDir, name+".onnx")
 	rate := 22050 // Default
 

@@ -42,7 +42,7 @@ func TestResolveVoice(t *testing.T) {
 		vm.sessions = make(map[string]VoiceSession)
 
 		// 1. Controller resolves first (EGKK Tower - British Pool)
-		msgATC := ATCMessage{
+		msgATC := &ATCMessage{
 			AircraftSnap: &Aircraft{
 				Registration: "G-TEST1",
 				Flight: Flight{
@@ -77,7 +77,7 @@ func TestResolveVoice(t *testing.T) {
 		vm.sessions["OTHER2_PILOT"] = VoiceSession{VoiceName: "British_2", LastSeen: time.Now().Add(-1 * time.Minute)}
 
 		// New plane (G-TWIN) should REUSE British_1 (the oldest) rather than falling back to French
-		msgTwin := ATCMessage{
+		msgTwin := &ATCMessage{
 			AircraftSnap: &Aircraft{
 				Registration: "G-TWIN",
 				Flight: Flight{
@@ -100,7 +100,7 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
 	vm := setupMockVoiceManager()
 
 	t.Run("Exact Country Match (Tier 1)", func(t *testing.T) {
-		msg := ATCMessage{
+		msg := &ATCMessage{
 			AircraftSnap: &Aircraft{
 				Registration: "G-TEST3",
 				Flight:       Flight{Comms: Comms{Callsign: "BAW1"}},
@@ -116,7 +116,7 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
 
 	t.Run("Region Fallback Match (Tier 2)", func(t *testing.T) {
 		// Country code "ED" (Germany) has no Tier 1 pool, should use Region "E"
-		msg := ATCMessage{
+		msg := &ATCMessage{
 			AircraftSnap: &Aircraft{
 				Registration: "D-AIXA",
 				Flight:       Flight{Comms: Comms{Callsign: "DLH1"}},
@@ -140,7 +140,7 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
 
 	t.Run("Global Fallback (Tier 3)", func(t *testing.T) {
 		// Unknown country "ZZ"
-		msg := ATCMessage{
+		msg := &ATCMessage{
 			AircraftSnap: &Aircraft{
 				Registration: "UFO-1",
 				Flight:       Flight{Comms: Comms{Callsign: "UFO1"}},
@@ -188,7 +188,7 @@ func TestVoiceCollisionAvoidance(t *testing.T) {
 
 	t.Run("Pilot and ATC must never share a voice in the same ICAO context", func(t *testing.T) {
 		// 1. Controller (Dieter) speaks first
-		msgATC := ATCMessage{
+		msgATC := &ATCMessage{
 			ControllerICAO: "EDDF",
 			Role:           "TOWER",
 			CountryCode:    "DE", // German

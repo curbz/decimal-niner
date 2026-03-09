@@ -72,8 +72,8 @@ type PreparedAudio struct {
 	VoiceLock  *sync.Mutex
 }
 
-var radioQueue chan ATCMessage
-var radioPlayer chan PreparedAudio
+var radioQueue chan *ATCMessage
+var radioPlayer chan *PreparedAudio
 
 // PiperConfig represents the structure of the Piper ONNX model JSON config
 type PiperConfig struct {
@@ -101,9 +101,9 @@ func (s *Service) startComms() {
 				case HandoffEnterSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff enter sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					phrase := "{FACILITY}, {CALLSIGN} {ALTITUDE}"
-					s.prepAndQueuePhrase(phrase, "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(phrase, "PILOT", ac, s.Weather.Baro)
 					phrase = "{CALLSIGN} , {FACILITY} identified"
-					s.prepAndQueuePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					ac.Flight.Comms.CruiseHandoff = NoHandoff
 				case HandoffExitSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
@@ -111,8 +111,8 @@ func (s *Service) startComms() {
 					freqStr := fmt.Sprintf("%.3f", float64(ac.Flight.Comms.NextController.Freqs[0])/1000.0)
 					freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
 					phrase := fmt.Sprintf("{CALLSIGN} contact %s on %s {{VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
-					s.prepAndQueuePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
-					s.prepAndQueuePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
 					go func() {
 						time.Sleep(20 * time.Second)
 						ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
@@ -144,41 +144,41 @@ func (s *Service) startComms() {
 			didSayAgain := false
 			if exchange.Initiator == "pilot" {
 				// pilot's initial phrase
-				s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+				s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
 					// randomised 'say again'
 					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
-						s.prepAndQueuePhrase("{CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+						s.preparePhrase("{CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 						// pilot repeats phrase
-						s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+						s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 					}
 					// atc responds
-					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					// pilot reads back atc instructions, but not for shutdown phase to avoid unecessary repetition
 					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() {
-						s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 					}
 				}
 			}
 
 			if exchange.Initiator == "atc" {
 				// atc initiates call to pilot
-				s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+				s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				// randomised 'say again'
 				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 					// pilot asks atc to repeat request
-					s.prepAndQueuePhrase("{FACILITY} say again", "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase("{FACILITY} say again", "PILOT", ac, s.Weather.Baro)
 					// atc repeats instructions
-					s.prepAndQueuePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				}
 				if exchange.Pilot == "" {
 					// if the selected exchange does not specify a pilot response, the pilot will read back atc instructions
-					s.prepAndQueuePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 				} else {
 					// else the pilot responds with the specified exchange phrase
-					s.prepAndQueuePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 				}
 			}
 
@@ -208,9 +208,9 @@ func removeBracketedPhrases(input string) string {
 	return result
 }
 
-// PrepPhrase prepares the phrase and queues for speech generation
+// preparePhrase prepares the phrase and creates an ATC message
 // role is either "PILOT" or the facility type e.g "Tower"
-func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Baro) {
+func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
 	// construct message and replace all placeholder variables
 
@@ -334,16 +334,23 @@ func (s *Service) prepAndQueuePhrase(phrase, role string, ac *Aircraft, baro Bar
 
 	phrase = translateNumerics(phrase)
 
-	util.LogWithLabel(ac.Registration, "sending phrase to radio queue for speech generation: %s", phrase)
+	msg := &ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
+		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
+	}
+
+	queuePhrase(msg)
+}
+
+func queuePhrase(msg *ATCMessage) {
+
+	util.LogWithLabel(msg.AircraftSnap.Registration, "sending phrase to radio queue for speech generation: %s", msg.Text)
 
 	// send message to radio queue
 	select {
-	case radioQueue <- ATCMessage{ac.Flight.Comms.Controller.ICAO, ac, role,
-		phrase, ac.Flight.Comms.CountryCode, ac.Flight.Comms.Controller.Name,
-	}:
+	case radioQueue <- msg:
 		//success - message sent to buffer
 	default:
-		util.LogWithLabel(ac.Registration, "WARN: radio queue is full. speech generation skipped")
+		util.LogWithLabel(msg.AircraftSnap.Registration, "WARN: radio queue is full. speech generation skipped")
 	}
 }
 
@@ -405,12 +412,12 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
 
 		// Send the running process to the player queue
-		radioPlayer <- PreparedAudio{
+		radioPlayer <- &PreparedAudio{
 			PiperCmd:   cmd,
 			PiperOut:   stdout,
 			SampleRate: rate,
 			NoiseType:  noise,
-			Msg:        msg,
+			Msg:        *msg,
 			Voice:      voice,
 			VoiceLock:  vLock,
 		}
@@ -432,7 +439,7 @@ func RadioPlayer(soxPath string) {
 		}
 
 		// Wrap the logic in a closure so defer works per-iteration
-		func(a PreparedAudio) {
+		func(a *PreparedAudio) {
 
 			// must unlock voice at end of function regardless of outcome
 			if a.VoiceLock != nil {
