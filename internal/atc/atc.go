@@ -385,35 +385,34 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	var bestMatch *Controller
 	var bestPointMatch *Controller
 	smallestArea := math.MaxFloat64
-	closestPointDist := 15.0
 
-	util.LogWithLabel(label, "Searching controllers at lat %f,lng  %f elev %f. Target Role: %s (%d)  Tuned Freq: %d  Target ICAO: %s",
+	// Adjust search limit: 100nm for frequency, 15nm for pure proximity
+	searchLimit := 100.0
+	if tFreq <= 0 {
+		searchLimit = 15.0
+	}
+	closestPointDist := searchLimit
+
+	util.LogWithLabel(label, "Searching controllers at lat %f, lng %f, elev %f. Target Role: %s (%d) Tuned Freq: %d Target ICAO: %s",
 		uLa, uLo, uAl, roleNameMap[tRole], tRole, tFreq, targetICAO)
 
-	// If a specific airport ICAO is requested, we only look at points for that airport.
 	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
 	if targetICAO != "" {
 		var backupMatch *Controller
 		for i := range s.Controllers {
 			c := &s.Controllers[i]
 			if c.ICAO == targetICAO && c.IsPoint {
-				// If it's an exact role match, we are done.
 				if tRole != -1 && c.RoleID == tRole {
 					return c
 				}
-				// If it's a wildcard search, any role at this ICAO is good.
 				if tRole == -1 {
 					return c
 				}
-				// Keep a backup in case we find NOTHING else,
-				// but don't return it yet!
 				if backupMatch == nil {
 					backupMatch = c
 				}
 			}
 		}
-		// Only return the backup if we aren't specifically looking for
-		// a different role (like Role 6).
 		if tRole == -1 && backupMatch != nil {
 			return backupMatch
 		}
@@ -426,9 +425,18 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 			continue
 		}
 
-		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+		// Vertical Gate: Ground/Tower/Delivery shouldn't be "reachable" at high altitude
+		// Typically, these facilities are only tuned within the terminal environment.
+		if tFreq > 0 && uAl > 10000 && (c.RoleID >= 1 && c.RoleID <= 3) {
+			continue
+		}
 
-		// Frequency Gate
+		dist := geometry.DistNM(uLa, uLo, c.Lat, c.Lon)
+		if dist > searchLimit {
+			continue
+		}
+
+		// Frequency Mode
 		if tFreq > 0 {
 			fMatch := false
 			for _, f := range c.Freqs {
@@ -438,31 +446,35 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 				}
 			}
 
-			if fMatch && dist < 100.0 {
-				// If Role matches, find the absolute closest one
+			if fMatch {
+				// Scenario A: User is looking for a specific role (e.g. Ground)
 				if tRole != -1 && c.RoleID == tRole {
 					if dist < closestPointDist {
+						util.LogWithLabel(label, "  -> Freq/Role Match Found: %s %s (Role %d) at %.2fnm", c.Name, c.ICAO, c.RoleID, dist)
 						closestPointDist = dist
 						bestPointMatch = c
 					}
-					continue // Keep looking for a closer one
 				}
 
-				// If no role requested, favor "higher" RoleIDs (Tower over Ground)
-				// but still within a distance sanity check
+				// Scenario B: User is looking for ANY role (-1)
 				if tRole == -1 {
-					if bestPointMatch == nil || (c.RoleID > bestPointMatch.RoleID && dist < 50.0) {
-						bestPointMatch = c
+					// Logic: Priority 1 is Distance. Priority 2 (Tie-break) is Role Importance.
+					isSignificantImprovement := dist < (closestPointDist - 2.0)
+					isSimilarDist := math.Abs(dist-closestPointDist) <= 2.0
+
+					if bestPointMatch == nil || isSignificantImprovement || (isSimilarDist && c.RoleID > bestPointMatch.RoleID) {
+						//util.LogWithLabel(label, "  -> Potential Freq Match Found: %s %s (Role %d) at %.2fnm", c.Name, c.ICAO, c.RoleID, dist)
 						closestPointDist = dist
+						bestPointMatch = c
 					}
 				}
 			}
 			continue
 		}
 
-		// Proximity Match (within 15nm)
+		// Pure Proximity Mode (No Frequency)
 		if dist < closestPointDist {
-			if tRole != RoleAny && c.RoleID != tRole {
+			if tRole != -1 && c.RoleID != tRole {
 				continue
 			}
 			closestPointDist = dist
@@ -500,7 +512,6 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 				continue
 			}
 
-			// Dateline-aware MBB Check
 			isInside := false
 			if poly.MinLon <= poly.MaxLon {
 				isInside = uLo >= poly.MinLon && uLo <= poly.MaxLon

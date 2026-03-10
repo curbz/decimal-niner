@@ -280,9 +280,9 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	switch name {
 	// --- User Position (Heathrow Center) ---
 	case "sim/flightmodel/position/latitude":
-		return 51.4700 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
+		return 51.471865 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/longitude":
-		return -0.4543 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
+		return -0.485958 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/elevation":
 		return 25.0 //+ float64(iter) // // <-- uncommment to simulate user position changing
 	case "sim/flightmodel/position/psi":
@@ -294,9 +294,9 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	case "sim/cockpit/radios/com2_freq_hz":
 		return int(12190) // EGLL Ground
 	case "sim/atc/com1_tuned_facility":
-		return 3 // Tower
+		return -1 //3 // Tower
 	case "sim/atc/com2_tuned_facility":
-		return 2 // Ground
+		return -1 //2 // Ground
 
 	// --- Sim Time ---
 	case "sim/time/local_date_days":
