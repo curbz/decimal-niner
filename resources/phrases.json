@@ -62,11 +62,11 @@
     { "initiator": "atc", "pilot": "Gear down, runway {RUNWAY} cleared to land, {CALLSIGN}.", "atc": "{CALLSIGN}, runway {RUNWAY} cleared to land, wind {WIND}." }
   ],
   "go_around": [
-    { "initiator": "pilot", "pilot": "Going around, {CALLSIGN}, executing published missed approach.", "atc": "{CALLSIGN}, execute missed approach, climb and maintain {MISS_ALT}, proceed to {MISS_FIX}." },
-    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, on the go, missed approach runway {RUNWAY}.", "atc": "{CALLSIGN}, Roger, fly runway heading, climb and maintain {MISS_ALT}." },
-    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, executing missed approach, climbing.", "atc": "{CALLSIGN}, climb and maintain {MISS_ALT}, follow published missed approach procedure." },
-    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, missed approach runway {RUNWAY}, requesting vectors.", "atc": "{CALLSIGN}, contact Approach on {FREQUENCY} for further instructions." },
-    { "initiator": "pilot", "pilot": "Going around, {CALLSIGN}, runway not clear.", "atc": "{CALLSIGN}, Roger, fly heading {HEADING}, climb and maintain {MISS_ALT}." }
+    { "initiator": "pilot", "pilot": "Going around, {CALLSIGN}", "atc": "{CALLSIGN}, climb and maintain {MAP_ALT}, proceed to {MAP_FIX}." },
+    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, on the go, missed approach runway {RUNWAY}.", "atc": "{CALLSIGN}, Roger, fly {MAP_HEADING}, climb and maintain {MAP_ALT}." },
+    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, executing missed approach, climbing.", "atc": "{CALLSIGN}, continue climb and maintain {MAP_ALT}, turn {MAP_HEAD} hold at {MAP_FIX}." },
+    { "initiator": "pilot", "pilot": "{FACILITY} Tower, {CALLSIGN}, missed approach runway {RUNWAY}, requesting vectors.", "atc": "{CALLSIGN}, climb {MAP_ALT} fly {MAP_HEADING} to {MAP_FIX}" },
+    { "initiator": "pilot", "pilot": "Going around, {CALLSIGN}", "atc": "{CALLSIGN}, Roger, fly {MAP_HEADING}, climb and maintain {MAP_ALT}." }
   ],
   "braking": [
     { "initiator": "atc", "atc": "{CALLSIGN}, clear runway {RUNWAY} [when able], {HANDOFF}" },

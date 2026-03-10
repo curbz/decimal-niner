@@ -212,6 +212,9 @@ func removeBracketedPhrases(input string) string {
 // role is either "PILOT" or the facility type e.g "Tower"
 func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
+	icao := airportICAObyPhaseClass(ac)
+	rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
+
 	// construct message and replace all placeholder variables
 
 	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
@@ -238,12 +241,40 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 	}
 	if strings.Contains(phrase, "{APPROACH_TYPE}") {
 		approachType := ""
-		icao := airportICAObyPhaseClass(ac)
-		rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
 		if rwy != nil {
 			approachType = rwy.BestApproach
 			phrase = strings.ReplaceAll(phrase, "{APPROACH_TYPE}", approachType)
 		}
+	}
+	if strings.Contains(phrase, "{MAP_HEADING}") {
+		sayHeading := "runway heading"
+		if rwy != nil {
+			mHeading := rwy.MAHeading
+			if mHeading > 0 {
+				sayHeading = fmt.Sprintf("heading %d", mHeading)
+			}
+		}
+		phrase = strings.ReplaceAll(phrase, "{MAP_HEADING}", sayHeading)
+	}
+	if strings.Contains(phrase, "{MAP_ALT}") {
+		sayMAlt := "missed approach altitude"
+		if rwy != nil {
+			mAlt := rwy.MAalt
+			if mAlt > 0 {
+				sayMAlt = strconv.Itoa(mAlt)
+			}
+		}
+		phrase = strings.ReplaceAll(phrase, "{MAP_ALT}", sayMAlt)
+	}
+	if strings.Contains(phrase, "{MAP_FIX}") {
+		sayMAfix := "published hold"
+		if rwy != nil {
+			maFix := rwy.MAFix
+			if maFix != "" {
+				sayMAfix = maFix
+			}
+		}
+		phrase = strings.ReplaceAll(phrase, "{MAP_FIX}", sayMAfix)
 	}
 	if strings.Contains(phrase, "{ALTITUDE}") || strings.Contains(phrase, "{ALT_CLEARANCE}") {
 		transitionAlt := 0
@@ -258,8 +289,6 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		if strings.Contains(phrase, "{ALT_CLEARANCE}") {
 			clearance := 0
 			if ac.Flight.Phase.Class == Arriving {
-				apIcao := airportICAObyPhaseClass(ac)
-				rwy := s.getAirportRunway(apIcao, ac.Flight.AssignedRunway)
 				if rwy != nil {
 					clearance = rwy.FAFalt
 				}
@@ -292,8 +321,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
 	}
 	if strings.Contains(phrase, "{HOLD_FIX}") {
-		searchICAO := airportICAObyPhaseClass(ac)
-		holdfix := s.findNearestHold(ac, searchICAO)
+		holdfix := s.findNearestHold(ac, icao)
 		repl := ""
 		if holdfix == nil {
 			repl = "published hold"

@@ -804,7 +804,7 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 // returns nil if not found
 func (s *Service) getAirportRunway(icao, rwy string) *Runway {
 	var r *Runway
-	if icao != "" {
+	if icao != "" && rwy !="" {
 		ap, found := s.Airports[icao]
 		if found {
 			r, _ = ap.Runways[rwy]
