@@ -518,7 +518,7 @@ func (xpc *XPConnect) updateUserData() {
 	// check for changes
 	commsChanged := false
 	if com1Freq != userState.TunedFreqs[1] || com2Freq != userState.TunedFreqs[2] ||
-		com1Facility != userState.TunedFacilities[1] || com2Facility != userState.TunedFacilities[2] {
+		com1Facility != userState.TunedFacilityRoles[1] || com2Facility != userState.TunedFacilityRoles[2] {
 		commsChanged = true
 	}
 

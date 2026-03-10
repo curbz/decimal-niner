@@ -336,6 +336,7 @@ var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility {
 }
 
 var roleNameMap = map[int]string {
+	-1: "None",
     0: "Unicom",    // Mapped from 1051
     1: "Delivery",  // Mapped from 1052
     2: "Ground",    // Mapped from 1053

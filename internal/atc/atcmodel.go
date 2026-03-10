@@ -5,11 +5,11 @@ import (
 )
 
 type UserState struct {
-	NearestICAO      string
-	Position         Position
-	ActiveFacilities map[int]*Controller // Key: 1 for COM1, 2 for COM2
-	TunedFreqs       map[int]int         // Key: 1 for COM1, 2 for COM2
-	TunedFacilities  map[int]int         // Key: 1 for COM1, 2 for COM2
+	NearestICAO        string
+	Position           Position
+	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
+	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
+	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
 }
 
 // +---------------+

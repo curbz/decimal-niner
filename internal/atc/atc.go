@@ -345,7 +345,7 @@ func (s *Service) GetWeatherState() *Weather {
 	return s.Weather
 }
 
-func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilities map[int]int) {
+func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityRoles map[int]int) {
 
 	s.UserState.Position = pos
 	if s.UserState.ActiveFacilities == nil {
@@ -353,15 +353,19 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilitie
 	}
 
 	s.UserState.TunedFreqs = tunedFreqs
-	s.UserState.TunedFacilities = tunedFacilities
+	s.UserState.TunedFacilityRoles = tunedFacilityRoles
 
 	for idx, freq := range tunedFreqs {
 		uFreq := normalizeFreq(int(freq))
-
+		role := tunedFacilityRoles[idx]
+		if role == 0 {
+			// change role to -1 otherwise locatetController will specifically match on Unicom role
+			role = -1
+		}
 		controller := s.locateController(
 			fmt.Sprintf("User_COM%d", idx),
-			uFreq,                // Search by freq
-			tunedFacilities[idx], // role
+			uFreq,                			// Search by freq
+			role, 		
 			pos.Lat, pos.Long, pos.Altitude,
 			"",
 		)
@@ -780,7 +784,7 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 		acSnap := deepcopy.Copy(ac).(*Aircraft)
 		acSnap.Flight.Comms.CruiseHandoff = HandoffExitSector
 		// send to phrase generation
-		s.Channel <- acSnap
+		s.Transmit(s.UserState, acSnap)
 		// update current controller
 		ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
 	}
