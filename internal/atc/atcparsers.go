@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -478,9 +477,6 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
     runways := make(map[string]Runway)
     scan := bufio.NewScanner(f)
 
-    base := filepath.Base(cifpPath)
-    icao := strings.ToUpper(strings.TrimSuffix(base, ".dat"))
-
     var currentRunway string
     var rw Runway
     var inApproach bool
@@ -490,16 +486,16 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
         if !inApproach || currentRunway == "" {
             return
         }
-        key := icao + "_" + currentRunway
-        existing := runways[key]
+
+        existing := runways[currentRunway]
 
         // Only merge if this was a real approach (FAF or approach type)
         if rw.FAFalt > 0 || rw.BestApproach != "" {
-            runways[key] = mergeRunway(existing, rw, currentAppType)
+            runways[currentRunway] = mergeRunway(existing, rw, currentAppType)
         } else {
             // Ensure runway entry exists, but keep it zeroed
-            if _, ok := runways[key]; !ok {
-                runways[key] = Runway{}
+            if _, ok := runways[currentRunway]; !ok {
+                runways[currentRunway] = Runway{}
             }
         }
     }
@@ -508,6 +504,24 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
 
     for scan.Scan() {
         line := strings.TrimSpace(scan.Text())
+
+        if strings.HasPrefix(line, "RWY:") {
+            parts := strings.Split(line, ",")
+            if len(parts) >= 1 {
+                // Extract runway name from RWY:RW08
+                rwyTag := strings.TrimPrefix(parts[0], "RWY:")
+                rwy := strings.TrimSpace(rwyTag)
+                rwy = normalizeRunway(rwy)
+                if rwy != "" {
+                    // Ensure runway entry exists
+                    if _, ok := runways[rwy]; !ok {
+                        runways[rwy] = Runway{}
+                    }
+                }
+            }
+            continue
+        }
+
         if !strings.HasPrefix(line, "APPCH:") {
             continue
         }
@@ -561,13 +575,12 @@ func ParseCIFP(cifpPath string) (map[string]Runway, error) {
 
         // Detect runway from RWxx fix
         if strings.HasPrefix(fix, "RW") {
-            rwy := normalizeRunwayFromFix(fix)
+            rwy := normalizeRunway(fix)
             if rwy != "" {
                 currentRunway = rwy
                 // Ensure runway entry exists even before merging
-                key := icao + "_" + currentRunway
-                if _, ok := runways[key]; !ok {
-                    runways[key] = Runway{}
+                if _, ok := runways[currentRunway]; !ok {
+                    runways[currentRunway] = Runway{}
                 }
             }
         }
@@ -648,13 +661,13 @@ func lowestAltitudeOf(at, above, below string) int {
     return best
 }
 
-func normalizeRunwayFromFix(fix string) string {
+func normalizeRunway(rw string) string {
     // fix is like "RW27", "RW27L", "RW9", "RW09R"
-    if !strings.HasPrefix(fix, "RW") {
+    if !strings.HasPrefix(rw, "RW") {
         return ""
     }
 
-    core := fix[2:] // strip "RW"
+    core := rw[2:] // strip "RW"
 
     // Extract digits
     i := 0
