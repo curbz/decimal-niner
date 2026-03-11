@@ -100,9 +100,9 @@ func (s *Service) startComms() {
 				switch ac.Flight.Comms.CruiseHandoff {
 				case HandoffEnterSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff enter sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
-					phrase := "{FACILITY}, {CALLSIGN} {ALTITUDE}"
+					phrase := "{$FACILITY}, {$CALLSIGN} {$ALTITUDE}"
 					s.preparePhrase(phrase, "PILOT", ac, s.Weather.Baro)
-					phrase = "{CALLSIGN} , {FACILITY} identified"
+					phrase = "{$CALLSIGN} , {$FACILITY} identified"
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					ac.Flight.Comms.CruiseHandoff = NoHandoff
 				case HandoffExitSector:
@@ -110,7 +110,7 @@ func (s *Service) startComms() {
 					// select next controller's first listed frequency
 					freqStr := fmt.Sprintf("%.3f", float64(ac.Flight.Comms.NextController.Freqs[0])/1000.0)
 					freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
-					phrase := fmt.Sprintf("{CALLSIGN} contact %s on %s {{VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
+					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
 					go func() {
@@ -150,7 +150,7 @@ func (s *Service) startComms() {
 					// randomised 'say again'
 					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
-						s.preparePhrase("{CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+						s.preparePhrase("{$CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 						// pilot repeats phrase
 						s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
 					}
@@ -169,7 +169,7 @@ func (s *Service) startComms() {
 				// randomised 'say again'
 				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 					// pilot asks atc to repeat request
-					s.preparePhrase("{FACILITY} say again", "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase("{$FACILITY} say again", "PILOT", ac, s.Weather.Baro)
 					// atc repeats instructions
 					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				}
@@ -194,10 +194,10 @@ func (s *Service) startComms() {
 // this entails moving {CALLSIGN} from the beginning to the end and
 // removng any text enclosed in square brackets
 func autoReadback(phrase string) string {
-	phrase = strings.TrimPrefix(phrase, "{CALLSIGN}")
+	phrase = strings.TrimPrefix(phrase, "{$CALLSIGN}")
 	phrase = strings.TrimPrefix(phrase, ",")
 	phrase = strings.TrimSuffix(phrase, ".")
-	phrase = phrase + " {CALLSIGN}"
+	phrase = phrase + " {$CALLSIGN}"
 	phrase = removeBracketedPhrases(phrase)
 	return phrase
 }
@@ -217,36 +217,36 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
 	// construct message and replace all placeholder variables
 
-	phrase = strings.ReplaceAll(phrase, "{CALLSIGN}", ac.Flight.Comms.Callsign)
-	phrase = strings.ReplaceAll(phrase, "{FACILITY}", ac.Flight.Comms.Controller.Name)
+	phrase = strings.ReplaceAll(phrase, "{$CALLSIGN}", ac.Flight.Comms.Callsign)
+	phrase = strings.ReplaceAll(phrase, "{$FACILITY}", ac.Flight.Comms.Controller.Name)
 
-	if strings.Contains(phrase, "{SQUAWK}") {
-		phrase = strings.ReplaceAll(phrase, "{SQUAWK}", ac.Flight.Squawk)
+	if strings.Contains(phrase, "{$SQUAWK}") {
+		phrase = strings.ReplaceAll(phrase, "{$SQUAWK}", ac.Flight.Squawk)
 	}
 
-	if strings.Contains(phrase, "{RUNWAY}") {
-		phrase = strings.ReplaceAll(phrase, "{RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
+	if strings.Contains(phrase, "{$RUNWAY}") {
+		phrase = strings.ReplaceAll(phrase, "{$RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
 	}
-	if strings.Contains(phrase, "{PARKING}") {
-		phrase = strings.ReplaceAll(phrase, "{PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
+	if strings.Contains(phrase, "{$PARKING}") {
+		phrase = strings.ReplaceAll(phrase, "{$PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
 	}
-	if strings.Contains(phrase, "{DESTINATION}") {
+	if strings.Contains(phrase, "{$DESTINATION}") {
 		sayDest := ac.Flight.Destination
 		if sayDest == "" {
 			sayDest = "as filed"
 		} else {
 			sayDest = formatAirportName(sayDest, s.Airports)
 		}
-		phrase = strings.ReplaceAll(phrase, "{DESTINATION}", sayDest)
+		phrase = strings.ReplaceAll(phrase, "{$DESTINATION}", sayDest)
 	}
-	if strings.Contains(phrase, "{APPROACH_TYPE}") {
+	if strings.Contains(phrase, "{$APPROACH_TYPE}") {
 		approachType := ""
 		if rwy != nil {
 			approachType = rwy.BestApproach
-			phrase = strings.ReplaceAll(phrase, "{APPROACH_TYPE}", approachType)
+			phrase = strings.ReplaceAll(phrase, "{$APPROACH_TYPE}", approachType)
 		}
 	}
-	if strings.Contains(phrase, "{MAP_HEADING}") {
+	if strings.Contains(phrase, "{$MAP_HEADING}") {
 		sayHeading := "runway heading"
 		if rwy != nil {
 			mHeading := rwy.MAHeading
@@ -254,9 +254,9 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 				sayHeading = fmt.Sprintf("heading %d", mHeading)
 			}
 		}
-		phrase = strings.ReplaceAll(phrase, "{MAP_HEADING}", sayHeading)
+		phrase = strings.ReplaceAll(phrase, "{$MAP_HEADING}", sayHeading)
 	}
-	if strings.Contains(phrase, "{MAP_ALT}") {
+	if strings.Contains(phrase, "{$MAP_ALT}") {
 		sayMAlt := "missed approach altitude"
 		if rwy != nil {
 			mAlt := rwy.MAalt
@@ -264,9 +264,9 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 				sayMAlt = strconv.Itoa(mAlt)
 			}
 		}
-		phrase = strings.ReplaceAll(phrase, "{MAP_ALT}", sayMAlt)
+		phrase = strings.ReplaceAll(phrase, "{$MAP_ALT}", sayMAlt)
 	}
-	if strings.Contains(phrase, "{MAP_FIX}") {
+	if strings.Contains(phrase, "{$MAP_FIX}") {
 		sayMAfix := "published hold"
 		if rwy != nil {
 			maFix := rwy.MAFix
@@ -274,9 +274,9 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 				sayMAfix = maFix
 			}
 		}
-		phrase = strings.ReplaceAll(phrase, "{MAP_FIX}", sayMAfix)
+		phrase = strings.ReplaceAll(phrase, "{$MAP_FIX}", sayMAfix)
 	}
-	if strings.Contains(phrase, "{ALTITUDE}") || strings.Contains(phrase, "{ALT_CLEARANCE}") {
+	if strings.Contains(phrase, "{$ALTITUDE}") || strings.Contains(phrase, "{$ALT_CLEARANCE}") {
 		transitionAlt := 0
 		cIcao := ac.Flight.Comms.Controller.ICAO
 		if ap, ok := s.Airports[cIcao]; ok {
@@ -286,7 +286,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		}
 		transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
 
-		if strings.Contains(phrase, "{ALT_CLEARANCE}") {
+		if strings.Contains(phrase, "{$ALT_CLEARANCE}") {
 			clearance := 0
 			if ac.Flight.Phase.Class == Arriving {
 				if rwy != nil {
@@ -295,32 +295,32 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 			} else {
 				clearance = ac.Flight.CruiseAlt
 			}
-			phrase = strings.ReplaceAll(phrase, "{ALT_CLEARANCE}", 
+			phrase = strings.ReplaceAll(phrase, "{$ALT_CLEARANCE}", 
 				generateAltClearance(ac.Flight.Position.Altitude, transitionLevel, clearance, ac.Flight.Phase))
 		} else {
-			phrase = strings.ReplaceAll(phrase, "{ALTITUDE}",
+			phrase = strings.ReplaceAll(phrase, "{$ALTITUDE}",
 				formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase))
 		}
 	}
-	if strings.Contains(phrase, "{HEADING}") {
-		phrase = strings.ReplaceAll(phrase, "{HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
+	if strings.Contains(phrase, "{$HEADING}") {
+		phrase = strings.ReplaceAll(phrase, "{$HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
 	}
-	if strings.Contains(phrase, "{BARO}") {
-		phrase = strings.ReplaceAll(phrase, "{BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
+	if strings.Contains(phrase, "{$BARO}") {
+		phrase = strings.ReplaceAll(phrase, "{$BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
 	}
-	if strings.Contains(phrase, "{WIND}") {
-		phrase = strings.ReplaceAll(phrase, "{WIND}", s.formatWind())
+	if strings.Contains(phrase, "{$WIND}") {
+		phrase = strings.ReplaceAll(phrase, "{$WIND}", s.formatWind())
 	}
-	if strings.Contains(phrase, "{SHEAR}") {
-		phrase = strings.ReplaceAll(phrase, "{SHEAR}", s.formatWindShear())
+	if strings.Contains(phrase, "{$SHEAR}") {
+		phrase = strings.ReplaceAll(phrase, "{$SHEAR}", s.formatWindShear())
 	}
-	if strings.Contains(phrase, "{TURBULENCE}") {
-		phrase = strings.ReplaceAll(phrase, "{TURBULENCE}", s.formatTurbulence(role))
+	if strings.Contains(phrase, "{$TURBULENCE}") {
+		phrase = strings.ReplaceAll(phrase, "{$TURBULENCE}", s.formatTurbulence(role))
 	}
-	if strings.Contains(phrase, "{HANDOFF}") {
-		phrase = strings.ReplaceAll(phrase, "{HANDOFF}", s.generateHandoffPhrase(ac))
+	if strings.Contains(phrase, "{$HANDOFF}") {
+		phrase = strings.ReplaceAll(phrase, "{$HANDOFF}", s.generateHandoffPhrase(ac))
 	}
-	if strings.Contains(phrase, "{HOLD_FIX}") {
+	if strings.Contains(phrase, "{$HOLD_FIX}") {
 		holdfix := s.findNearestHold(ac, icao)
 		repl := ""
 		if holdfix == nil {
@@ -331,14 +331,14 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 				repl = "published hold"
 			}
 		}
-		phrase = strings.ReplaceAll(phrase, "{HOLD_FIX}", repl)
+		phrase = strings.ReplaceAll(phrase, "{$HOLD_FIX}", repl)
 	}
-	if strings.Contains(phrase, "{VALEDICTION}") {
+	if strings.Contains(phrase, "{$VALEDICTION}") {
 		factor := s.Config.ATC.Voices.HandoffValedictionFactor
-		replace := "{VALEDICTION}"
-		if strings.Contains(phrase, "{{VALEDICTION}}") {
+		replace := "{$VALEDICTION}"
+		if strings.Contains(phrase, "{{$VALEDICTION}}") {
 			factor = 1
-			replace = "{{VALEDICTION}}"
+			replace = "{{$VALEDICTION}}"
 		}
 		phrase = strings.ReplaceAll(phrase, replace, s.generateValediction(factor))
 	}
