@@ -64,6 +64,7 @@ type config struct {
 		AtcRegionsFile        string       `yaml:"atc_regions_file"`
 		AtcHoldsFile          string       `yaml:"atc_holds_file"`
 		AtcNavDataFile        string       `yaml:"atc_nav_data_file"`
+		AtcFixesFile 		  string	   `yaml:"atc_fixes_file"`
 		AirportCIFPDir        string       `yaml:"airports_cifp_dir"`
 		AirportsDataFile      string       `yaml:"airports_data_file"`
 		AirlinesFile          string       `yaml:"airlines_file"`
@@ -86,7 +87,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	// load hold data
 	log.Println("Loading X-Plane Holds data")
-	holds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile)
+	holds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
 		log.Fatalf("Error loading hold data: %v", err)
 	}

@@ -437,6 +437,42 @@ func parseHoldData(path string) (map[string]*Hold, error) {
     return holds, scan.Err()
 }
 
+func parseFixData(path string) (map[string]Fix, error) {
+
+    fixes := make(map[string]Fix)
+
+    file, err := os.Open(path)
+    if err != nil {
+        return fixes, err
+    }
+    defer file.Close()
+
+    scanner := bufio.NewScanner(file)
+
+    for scanner.Scan() {
+        line := scanner.Text()
+        parts := strings.Fields(line)
+        if len(parts) < 4 {
+            continue
+        }
+
+        lat, _ := strconv.ParseFloat(parts[0], 64)
+        lon, _ := strconv.ParseFloat(parts[1], 64)
+        ident := parts[2]
+        region := parts[4]
+
+        key := ident + "_" + region
+        fixes[key] = Fix{
+            Ident: ident,
+            Region: region,
+            LatRad: lat, 
+            LonRad: lon,
+        }
+    }
+    return fixes, nil
+
+}
+
 func mergeRunway(existing, incoming Runway, appType string) Runway {
     // BestApproach: keep the better-ranked one
     if appType != "" {

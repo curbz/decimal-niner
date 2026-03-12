@@ -25,17 +25,23 @@ type Hold struct {
     X, Y, Z float64
 }
 
-func loadHolds(navDataFile, holdsDataFile string) (map[string]*Hold, error) {
+func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, error) {
 
-	fixes, err := parseNavData(navDataFile)
+	allFixes, err := parseFixData(fixesFile) 
 	if err != nil {
 		return nil, err
 	}
+
+	namedFixes, err := parseNavData(navDataFile)
+	if err != nil {
+		return nil, err
+	}
+
 	holds, err := parseHoldData(holdsDataFile)
 	if err != nil {
 		return nil, err
 	}
-	resolveHoldCoordinates(holds, fixes)
+	resolveHoldCoordinates(holds, namedFixes, allFixes)
 	
 	return holds, nil
 
@@ -63,18 +69,29 @@ func parseInt(s string) int {
 }
 
 // enrich holds with lat/lon from fixes, and precompute unit vectors for nearest-hold search
-func resolveHoldCoordinates(holds map[string]*Hold, fixes map[string]Fix) {
+func resolveHoldCoordinates(holds map[string]*Hold, namedFixes map[string]Fix, allFixes map[string]Fix) {
 
     for _, h := range holds {
+
         key := h.Name + "_" + h.Region
-        fix, ok := fixes[key]
-        if !ok {
-            continue
+
+        namedFix, found := namedFixes[key]
+        if found {
+			h.FullName = namedFix.FullName
+			h.LatRad = namedFix.LatRad
+			h.LonRad = namedFix.LonRad
         }
 
-		h.FullName = fix.FullName
-        h.LatRad = fix.LatRad
-        h.LonRad = fix.LonRad
+		if h.LatRad == 0 && h.LonRad == 0 {
+        	fix, found := allFixes[key]
+			if found {
+				h.LatRad = fix.LatRad
+				h.LonRad = fix.LonRad
+			} else {
+				continue
+			}	
+		}
+
         h.InitUnitVector()
     }
 

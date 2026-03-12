@@ -73,6 +73,15 @@ func loadAirports(dir string, airports map[string]*Airport, airportList map[stri
             if rw.MAFix != "" {
                 key := rw.MAFix + "_" + ap.Region
                 if h, ok := globalHolds[key]; ok {
+                    // check hold not already present in array
+                    if len(ap.Holds) > 0 {
+                        for _, aph := range ap.Holds {
+                            if aph.Name == h.Name && aph.Region == h.Region {
+                                // hold already present
+                                continue
+                            }
+                        }
+                    }
                     ap.Holds = append(ap.Holds, h)
                 }
             }
