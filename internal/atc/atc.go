@@ -92,18 +92,9 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	}
 	log.Printf("Holds data loaded: seeded %d holds\n", len(holds))
 
-	// load atc and airport data
-	log.Println("Loading X-Plane ATC and Airport data")
-
-	airports, err := loadAirports(cfg.ATC.AirportCIFPDir, requiredAirports, holds)
-	if err != nil {
-		log.Fatal("Error loading airport data from CIFP files: ", err)
-	}
-	log.Println("Airport data loaded: seeded", len(airports), "airports")
-
-	// load controller data
+	// load controller data and create airports
 	start := time.Now()
-	arptControllers, err := parseApt(cfg.ATC.AirportsDataFile, airports)
+	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
 	}
@@ -117,6 +108,15 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		log.Fatalf("Error parsing ATC regions file: %v", err)
 	}
 	db = append(db, regionControllers...)
+
+	// enrich airport data
+	log.Println("Loading X-Plane airport files")
+
+	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, holds)
+	if err != nil {
+		log.Fatal("Error loading airport data from CIFP files: ", err)
+	}
+	log.Println("Airport data loaded: seeded", len(airports), "airports")
 
 	log.Printf("ATC controller database generated: seeded %d controllers in %v\n", len(db), time.Since(start))
 

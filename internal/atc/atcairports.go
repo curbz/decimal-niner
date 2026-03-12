@@ -13,6 +13,7 @@ type Airport struct {
 	Lat float64
 	Lon float64
 	TransAlt int
+    Region string
 	Runways map[string]*Runway // keyed by "09L", "27R" 
 	Holds []*Hold // both MA holds and arrival-stack holds 
 }
@@ -33,8 +34,7 @@ type Fix struct {
     LonRad float64
 }
 
-func loadAirports(dir string, airportList map[string]bool, globalHolds map[string]*Hold) (map[string]*Airport, error) {
-    airports := make(map[string]*Airport)
+func loadAirports(dir string, airports map[string]*Airport, airportList map[string]bool, globalHolds map[string]*Hold) error {
 
     for icao := range airportList {
 
@@ -52,27 +52,32 @@ func loadAirports(dir string, airportList map[string]bool, globalHolds map[strin
             continue
         }
 
-        ap := &Airport{
-            ICAO:    icao,
-            Runways: make(map[string]*Runway),
-            Holds:   []*Hold{},
+        ap, exists := airports[icao]
+        if !exists {
+            ap = &Airport{
+                ICAO:    icao,
+            }
+            airports[icao] = ap
         }
+
+        ap.Runways = make(map[string]*Runway)
+        ap.Holds = []*Hold{}
 
         // Add runways
         for rwy, data := range rwyMap {
             ap.Runways[rwy] = &data
         }
 
-        // Add missed-approach holds if present in global holds
+        // Add missed-approach holds and icao matching holds
         for _, rw := range ap.Runways {
             if rw.MAFix != "" {
-                if h, ok := globalHolds[rw.MAFix]; ok {
+                key := rw.MAFix + "_" + ap.Region
+                if h, ok := globalHolds[key]; ok {
                     ap.Holds = append(ap.Holds, h)
                 }
             }
         }
-        airports[icao] = ap
     }
 
-    return airports, nil
+    return nil
 }

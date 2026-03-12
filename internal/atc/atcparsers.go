@@ -11,19 +11,20 @@ import (
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
-func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
+func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[string]*Airport, error) {
 
     var controllers []Controller
+    airports := make(map[string]*Airport)
 
     file, err := os.Open(path)
     if err != nil {
-        return nil, fmt.Errorf("failed to open airports data file: %w", err)
+        return nil, nil, fmt.Errorf("failed to open airports data file: %w", err)
     }
     defer file.Close()
 
     scanner := bufio.NewScanner(file)
     var curAirport *Airport
-    var curICAO, curName string
+    var curICAO, curName, region string
     var metaBlock bool // Tracks if we're in the metadata section of an airport block
     var curLat, curLon float64
     var transAlt int
@@ -53,12 +54,23 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
             if len(p) >= 5 {
                 curICAO = p[4]
                 
-                // FILTER: Check if this airport is in our schedules
-                curAirport, isRequiredAirport = airports[curICAO]
-
+                // FILTER: Check if this airport is in our required list
+                _, isRequiredAirport = requiredAirports[curICAO]
+                
                 // Global Exclusion: Never store helipads or closed strips
                 if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
                     isRequiredAirport = false
+                }
+
+                if isRequiredAirport {
+                    var exists bool
+                    curAirport, exists = airports[curICAO]
+                    if !exists {
+                        curAirport = &Airport {
+                            ICAO: curICAO,
+                        }
+                        airports[curICAO] = curAirport
+                    }
                 }
 
                 curName = strings.Join(p[5:], " ")
@@ -67,7 +79,7 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
             continue
         }
 
-        // get airport locations and capture transistion altitud and level
+        // get airport locations and capture transistion altitude and level
         if isRequiredAirport {
             if code == "1302" {
                 metaBlock = true
@@ -79,6 +91,8 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
                             curLon, _ = strconv.ParseFloat(p[2], 64)
                         case "transition_alt": 
                             transAlt, _ = strconv.Atoi(p[2])
+                        case "region_code":
+                            region = p[2]
                     }
                 }
                 continue
@@ -89,6 +103,7 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
                     curAirport.Lat = curLat
                     curAirport.Lon = curLon
                     curAirport.TransAlt = transAlt
+                    curAirport.Region = region
                     metaBlock = false
                 }
             }
@@ -146,9 +161,10 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
         
         // If Lat/Lon is still 0 (Freq appeared before 1302 records)
         if c.Lat == 0 {
-            if loc, exists := airports[c.ICAO]; exists {
-                c.Lat = loc.Lat
-                c.Lon = loc.Lon
+            if ap, exists := airports[c.ICAO]; exists {
+                c.Lat = ap.Lat
+                c.Lon = ap.Lon
+                //TODO: add controllers to airport as array
             }
         }
 
@@ -167,7 +183,7 @@ func parseApt(path string, airports map[string]*Airport) ([]Controller, error) {
         }
     }
 
-    return controllers, nil
+    return controllers, airports, nil
 }
 
 func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
@@ -414,7 +430,8 @@ func parseHoldData(path string) (map[string]*Hold, error) {
             Speed:   parseInt(fields[10]),
         }
 
-        holds[h.Name] = h
+        key := h.Name + "_" + h.Region
+        holds[key] = h
     }
 
     return holds, scan.Err()
