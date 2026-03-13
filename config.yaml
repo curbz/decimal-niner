@@ -27,6 +27,7 @@ atc:
       voice_directory:    "/home/dmorris/piper-voices"
     handoff_valediction_factor: 5  
     say_again_factor: 30
+    comms_country_code_default: "GB"
 trafficglobal:
   bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Global_Airlines.bgl"
   #bgl_file: "/home/dmorris/decimal-niner/X-Plane/Traffic_Sample.bgl"

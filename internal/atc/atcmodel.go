@@ -67,6 +67,7 @@ type Flight struct {
 	AssignedParking     string
 	AssignedRunway      string
 	Squawk              string
+	PlanAssigned		bool
 }
 
 type Position struct {

@@ -25,12 +25,13 @@ import (
 )
 
 type VoicesConfig struct {
-	PhrasesFile              string `yaml:"phrases_file"`
-	UnicomPhrasesFile        string `yaml:"unicom_phrases_file"`
-	Piper                    Piper  `yaml:"piper"`
-	Sox                      Sox    `yaml:"sox"`
-	HandoffValedictionFactor int    `yaml:"handoff_valediction_factor"`
-	SayAgainFactor           int    `yaml:"say_again_factor"`
+	PhrasesFile              	string 	`yaml:"phrases_file"`
+	UnicomPhrasesFile        	string 	`yaml:"unicom_phrases_file"`
+	Piper                    	Piper  	`yaml:"piper"`
+	Sox                      	Sox    	`yaml:"sox"`
+	HandoffValedictionFactor 	int    	`yaml:"handoff_valediction_factor"`
+	SayAgainFactor           	int    	`yaml:"say_again_factor"`
+	CommsCountryCodeDefault		string	`yaml:"comms_country_code_default"`
 }
 
 // +----------------------------------------------------------+

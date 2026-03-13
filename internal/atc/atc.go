@@ -212,26 +212,17 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		return
 	}
 
-	if ac.Flight.Destination == "" {
-		// no destination indicates this aircraft has no flight plan
+	if !ac.Flight.PlanAssigned {
+		// attempt to assign a flight plan
 		planAssigned := s.AddFlightPlan(ac, s.GetCurrentZuluTime())
 		if !planAssigned {
-			//still no flight plan, infer what we can from aircraft position and phase, no gaurantees we will set anything
+			// still no flight plan, infer origin/dest from aircraft position and phase, no gaurantees we will set anything
+			// it is also ok to call this on multiple phase changes as this helps to complete the data
 			s.inferFlightPlan(ac)
 		}
-		// TODO: extract this part to a function passing in ac pointer as param
-		// in the unlikely, but possible case that we have not set a country code by now, use the origin airport as a fallback
+		// in the unlikely, but possible case that we have not set a comms country code by now, use flight data as a fallback
 		if ac.Flight.Comms.CountryCode == "" {
-			//TODO: use origin when departing, destination when arriving
-			if len(ac.Flight.Origin) > 2 {
-				ac.Flight.Comms.CountryCode = ac.Flight.Origin[:2]
-				util.LogWithLabel(ac.Registration, "flight plan origin used to set country code %s", ac.Flight.Comms.CountryCode)
-			} else {
-				// we absolutely must have a country code to work with at this point
-				// TODO: set from config
-				ac.Flight.Comms.CountryCode = "GB"
-				util.LogWithLabel(ac.Registration, "WARN: no country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
-			}
+			inferCommsCountryCode(ac, s.Config.ATC.Voices.CommsCountryCodeDefault)
 		}
 	}
 
@@ -650,7 +641,9 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
 
-	return true
+	ac.Flight.PlanAssigned = true
+
+	return ac.Flight.PlanAssigned
 }
 
 // inferFlightPlan is last resort strategy to fill in missing origin/destination based on phase and location.
@@ -678,6 +671,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 	}
 
 	// we don't check Cruising phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
+	// we also do not set Flight.PlanAssigned to true 
 }
 
 func (s *Service) setFlightPhaseClass(ac *Aircraft) {
@@ -847,6 +841,25 @@ func GetCountryFromRegistration(reg string) string {
 	}
 
 	return ""
+}
+
+// infer the comms country code from flight data for use when other methods of setting the comms country code have failed
+func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
+	countrySource := ""
+	if ac.Flight.Phase.Class == Departing {
+		countrySource = ac.Flight.Origin
+	}
+	if ac.Flight.Phase.Class == Arriving {
+		countrySource = ac.Flight.Destination
+	}
+	if len(countrySource) > 2 {
+		ac.Flight.Comms.CountryCode = countrySource[:2]
+		util.LogWithLabel(ac.Registration, "flight data used to set comms country code %s", ac.Flight.Comms.CountryCode)
+	} else {
+		// we absolutely must have a country code to work with at this point
+		ac.Flight.Comms.CountryCode = defaultCode
+		util.LogWithLabel(ac.Registration, "WARN: no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
+	}
 }
 
 func normalizeFreq(fRaw int) int {
