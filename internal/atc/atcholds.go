@@ -1,6 +1,7 @@
 package atc
 
 import (
+	"log"
 	"math"
 	"strconv"
 
@@ -8,92 +9,93 @@ import (
 )
 
 type Hold struct {
-    Name      string
-    Region    string
-	FullName  string
-    Type      string
-    Seq       int
-    Inbound   float64
-    LegTime   float64
-    LegDist   float64
-    Turn      string
-    MinAlt    int
-    MaxAlt    int
-    Speed     int
-    LatRad float64
-    LonRad float64
-    X, Y, Z float64
+	Ident    string
+	Region   string
+	FullName string
+	ICAO     string // airport ICAO or 'ENRT'
+	Seq      int
+	Inbound  float64
+	LegTime  float64
+	LegDist  float64
+	Turn     string
+	MinAlt   int
+	MaxAlt   int
+	Speed    int
+	LatRad   float64
+	LonRad   float64
+	X, Y, Z  float64
 }
 
-func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, error) {
+func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, map[string][]*Hold, error) {
 
-	allFixes, err := parseFixData(fixesFile) 
+	allFixes, err := parseFixData(fixesFile)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	namedFixes, err := parseNavData(navDataFile)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	holds, err := parseHoldData(holdsDataFile)
+	globalHolds, airportHolds, err := parseHoldData(holdsDataFile)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	resolveHoldCoordinates(holds, namedFixes, allFixes)
-	
-	return holds, nil
+	resolveHoldCoordinates(globalHolds, namedFixes, allFixes)
+
+	return globalHolds, airportHolds, nil
 
 }
 
 func toUnit(latRad, lonRad float64) (x, y, z float64) {
-    clat := math.Cos(latRad)
-    return clat * math.Cos(lonRad),
-           clat * math.Sin(lonRad),
-           math.Sin(latRad)
+	clat := math.Cos(latRad)
+	return clat * math.Cos(lonRad),
+		clat * math.Sin(lonRad),
+		math.Sin(latRad)
 }
 
 func (h *Hold) InitUnitVector() {
-    h.X, h.Y, h.Z = toUnit(h.LatRad, h.LonRad)
+	h.X, h.Y, h.Z = toUnit(h.LatRad, h.LonRad)
 }
 
 func parseFloat(s string) float64 {
-    f, _ := strconv.ParseFloat(s, 64)
-    return f
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
 }
 
 func parseInt(s string) int {
-    i, _ := strconv.Atoi(s)
-    return i
+	i, _ := strconv.Atoi(s)
+	return i
 }
 
 // enrich holds with lat/lon from fixes, and precompute unit vectors for nearest-hold search
 func resolveHoldCoordinates(holds map[string]*Hold, namedFixes map[string]Fix, allFixes map[string]Fix) {
 
-    for _, h := range holds {
+	for _, h := range holds {
 
-        key := h.Name + "_" + h.Region
+		key := h.Ident + "_" + h.Region
 
-        namedFix, found := namedFixes[key]
-        if found {
+		namedFix, found := namedFixes[key]
+		if found {
 			h.FullName = namedFix.FullName
 			h.LatRad = namedFix.LatRad
 			h.LonRad = namedFix.LonRad
-        }
+		}
 
 		if h.LatRad == 0 && h.LonRad == 0 {
-        	fix, found := allFixes[key]
+			fix, found := allFixes[key]
 			if found {
 				h.LatRad = fix.LatRad
 				h.LonRad = fix.LonRad
 			} else {
+				log.Println("WARN: hold not found in fix map for key", key)
 				continue
-			}	
+			}
 		}
 
-        h.InitUnitVector()
-    }
+		h.InitUnitVector()
+	}
 
 }
 
@@ -113,7 +115,7 @@ func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
 
 	// 2. Handle Prioritization Logic
 	if airportExists && len(airport.Holds) > 0 {
-		
+
 		// A. GO-AROUND: Specifically look for the MAFix
 		if phase == trafficglobal.GoAround.Index() {
 			// Find the MAFix name for the specific runway
@@ -126,7 +128,7 @@ func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
 			if targetFix != "" {
 				// Search the airport's local holds for this name
 				for _, h := range airport.Holds {
-					if h.Name == targetFix {
+					if h.Ident == targetFix {
 						return h
 					}
 				}

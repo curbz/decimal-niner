@@ -79,7 +79,7 @@ type Position struct {
 
 type Phase struct {
 	Class      PhaseClass
-	Current    int // TODO: Current and Previous should really be FlightPhase type
+	Current    int 
 	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition time.Time
 }

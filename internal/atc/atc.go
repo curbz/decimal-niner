@@ -85,16 +85,17 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
+	start := time.Now()
+
 	// load hold data
 	log.Println("Loading X-Plane Holds data")
-	holds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
+	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
 		log.Fatalf("Error loading hold data: %v", err)
 	}
-	log.Printf("Holds data loaded: seeded %d holds\n", len(holds))
+	log.Printf("Holds data loaded: seeded %d holds\n", len(globalHolds))
 
 	// load controller data and create airports
-	start := time.Now()
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		log.Fatalf("Error parsing airports data file: %v", err)
@@ -113,13 +114,15 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	// enrich airport data
 	log.Println("Loading X-Plane airport files")
 
-	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, holds)
+	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
 	if err != nil {
 		log.Fatal("Error loading airport data from CIFP files: ", err)
 	}
 	log.Println("Airport data loaded: seeded", len(airports), "airports")
 
-	log.Printf("ATC controller database generated: seeded %d controllers in %v\n", len(db), time.Since(start))
+	log.Printf("ATC controller database generated: seeded %d controllers\n", len(db))
+
+	log.Printf("ATC data loaded in %v\n", time.Since(start))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
@@ -161,7 +164,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		Config:          cfg,
 		Channel:         make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Controllers:     db,
-		Holds:           holds,
+		Holds:           globalHolds,
 		Airlines:        airlinesData,
 		Airports:        airports,
 		FlightSchedules: fScheds,
