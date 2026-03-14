@@ -2,6 +2,7 @@ package xpconnect
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"os/signal"
 	"strconv"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -262,7 +264,14 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+		var returnError error
+		if errors.Is(err, syscall.Errno(10061)) {
+			log.Printf("error performing HTTP GET to %s: %v\n", fullURL, err)
+			returnError = errors.New("Connection refused - ensure X-Plane is running, in an active flight situation and the traffic plugin is also running")
+		} else {
+			returnError = fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+		}
+		return response, returnError 
 	}
 	defer resp.Body.Close()
 
@@ -305,7 +314,14 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return response, fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+		var returnError error
+		if errors.Is(err, syscall.Errno(10061)) {
+			log.Printf("error performing HTTP GET to %s: %v\n", fullURL, err)
+			returnError = errors.New("Connection refused - ensure X-Plane is running, in an active flight situation and the traffic plugin is also running")
+		} else {
+			returnError = fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
+		}
+		return response, returnError 
 	}
 
 	if resp.StatusCode != http.StatusOK {
