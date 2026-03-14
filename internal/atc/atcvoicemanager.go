@@ -84,7 +84,7 @@ func (vm *VoiceManager) loadPhrases(cfg *config) {
 	// load phrases from JSON file
 	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open phrases json file: %v", err)
+		log.Fatalf("FATAL: Could not open phrases json file %s: %v", cfg.ATC.Voices.PhrasesFile, err)
 	}
 	defer phrasesFile.Close()
 
@@ -102,7 +102,7 @@ func (vm *VoiceManager) loadPhrases(cfg *config) {
 	// load unicom phrases from JSON file
 	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open unicom phrases json file: %v", err)
+		log.Fatalf("FATAL: Could not open unicom phrases json file %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
 	}
 	defer unicomPhrasesFile.Close()
 

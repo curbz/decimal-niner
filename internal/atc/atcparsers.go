@@ -18,7 +18,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open airports data file: %w", err)
+		return nil, nil, fmt.Errorf("failed to open airports data file %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -189,7 +189,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open generic data file: %w", err)
+		return nil, fmt.Errorf("failed to open ATC data file %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -346,7 +346,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 func parseNavData(path string) (map[string]Fix, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error opening file %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -419,7 +419,7 @@ func cleanFixName(name string) string {
 func parseHoldData(path string) (map[string]*Hold, map[string][]*Hold, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("error opening file %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -475,7 +475,7 @@ func parseFixData(path string) (map[string]Fix, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
-		return fixes, err
+		return fixes, fmt.Errorf("error opening file %s: %w", path, err)
 	}
 	defer file.Close()
 
