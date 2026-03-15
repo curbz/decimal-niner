@@ -21,7 +21,7 @@ import (
 type Service struct {
 	Config          *config
 	Channel         chan *Aircraft
-	Controllers     []Controller
+	Controllers     []*Controller
 	Holds           map[string]*Hold
 	UserState       UserState
 	Airlines        map[string]AirlineInfo
@@ -395,7 +395,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	if targetICAO != "" {
 		var backupMatch *Controller
 		for i := range s.Controllers {
-			c := &s.Controllers[i]
+			c := s.Controllers[i]
 			if c.ICAO == targetICAO && c.IsPoint {
 				if tRole != -1 && c.RoleID == tRole {
 					return c
@@ -415,7 +415,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
 	for i := range s.Controllers {
-		c := &s.Controllers[i]
+		c := s.Controllers[i]
 		if !c.IsPoint {
 			continue
 		}
@@ -484,7 +484,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 	// --- TIER 2: SCAN POLYGONS (Center/Oceanic) ---
 	for i := range s.Controllers {
-		c := &s.Controllers[i]
+		c := s.Controllers[i]
 		if len(c.Airspaces) == 0 {
 			continue
 		}

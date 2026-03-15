@@ -9,13 +9,14 @@ import (
 
 type Airport struct {
 	ICAO     string
-	Name     string
-	Lat      float64
-	Lon      float64
-	TransAlt int
-	Region   string
-	Runways  map[string]*Runway // keyed by "09L", "27R"
-	Holds    []*Hold
+	Name        string
+	Lat         float64
+	Lon         float64
+	TransAlt    int
+	Region      string
+	Runways     map[string]*Runway // keyed by "09L", "27R"
+	Holds       []*Hold
+    Controllers []*Controller
 }
 
 type Runway struct {

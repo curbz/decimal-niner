@@ -11,9 +11,9 @@ import (
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
-func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[string]*Airport, error) {
+func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map[string]*Airport, error) {
 
-	var controllers []Controller
+	var controllers []*Controller
 	airports := make(map[string]*Airport)
 
 	file, err := os.Open(path)
@@ -68,6 +68,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 					if !exists {
 						curAirport = &Airport{
 							ICAO: curICAO,
+                            Controllers: []*Controller{},
 						}
 						airports[curICAO] = curAirport
 					}
@@ -127,7 +128,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 				}
 
 				for _, r := range roles {
-					controllers = append(controllers, Controller{
+                    c := &Controller{
 						Name:    curName,
 						ICAO:    curICAO,
 						RoleID:  r,
@@ -136,8 +137,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 						// Initial coords (will be refined by 1100 or Fixup Step)
 						Lat: curLat,
 						Lon: curLon,
-					})
+					}
+					controllers = append(controllers, c)
+                    if isRequiredAirport && curAirport != nil {
+                        curAirport.Controllers = append(curAirport.Controllers, c)
+                    }
 				}
+
 			}
 		}
 
@@ -157,14 +163,14 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 
 	// --- FIXUP & MBB INITIALIZATION ---
 	for i := range controllers {
-		c := &controllers[i]
+		c := controllers[i]
 
+        //TODO - this doesn't work, at this point airports will always have zero alt/long
 		// If Lat/Lon is still 0 (Freq appeared before 1302 records)
 		if c.Lat == 0 {
 			if ap, exists := airports[c.ICAO]; exists {
 				c.Lat = ap.Lat
 				c.Lon = ap.Lon
-				//TODO: add controllers to airport as array
 			}
 		}
 
@@ -186,7 +192,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]Controller, map[
 	return controllers, airports, nil
 }
 
-func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]Controller, error) {
+func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool) ([]*Controller, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open ATC data file %s: %w", path, err)
@@ -202,7 +208,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 	}
 
 	scanner := bufio.NewScanner(file)
-	var list []Controller
+	var list []*Controller
 	var cur *Controller
 	var curPoly *Airspace
 	var isRequired bool // Track if the current controller block should be kept
@@ -334,7 +340,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 			curPoly = nil
 		case "CONTROLLER_END":
 			if cur != nil && isRequired {
-				list = append(list, *cur)
+				list = append(list, cur)
 			}
 			cur = nil
 			isRequired = false
