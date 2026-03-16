@@ -4,6 +4,27 @@ import (
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
+type Weather struct {
+	Wind       Wind
+	Baro       Baro
+	Temp       float64
+	Vis        float64
+	Humidity   float64
+	MagVar     float64
+	Turbulence float64 // magnitude 0-10
+}
+
+type Wind struct {
+	Direction float64 // degrees
+	Speed     float64 // m/s
+	Shear     float64 // m/s
+}
+
+type Baro struct {
+	Flight   float64
+	Sealevel float64
+}
+
 func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 	// Standard pressure in inches of mercury
 	const standardPressure = 101325.0 // Pascals

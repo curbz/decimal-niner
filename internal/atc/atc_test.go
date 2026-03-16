@@ -198,20 +198,20 @@ func TestLocateControllerLogicTiers(t *testing.T) {
 }
 
 func TestUnicomFallbackLogic(t *testing.T) {
-	// Let's use EGTF since we know it has a Role 3 in your data
+
 	s := New("config.yaml", nil, map[string]bool{"EGTF": true})
 	lat, lon := 51.35, -0.56
 
 	// 1. Search for a role we are SURE isn't there (e.g., Role 6 - Center)
 	// Even if it's Fairoaks, it shouldn't have a 'Center' point record.
 	m := s.locateController("Fairoaks Center Point", 0, 6, lat, lon, 1000, "EGTF")
-	if m != nil && m.IsPoint {
+	if m != nil && m.ICAO == "EGTF" {
 		t.Errorf("Expected nil for Fairoaks Center Point, got Role %d", m.RoleID)
 	}
 
 	// 2. Search for the role we now know exists (Role 3)
 	m = s.locateController("Fairoaks Tower", 0, 3, lat, lon, 1000, "EGTF")
-	if m == nil || m.RoleID != 3 {
+	if m == nil || m.RoleID != 3 || m.ICAO != "EGTF"{
 		t.Errorf("Expected Tower (Role 3) for Fairoaks, got %v", m)
 	}
 }

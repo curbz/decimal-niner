@@ -74,6 +74,14 @@ type config struct {
 	} `yaml:"atc"`
 }
 
+type UserState struct {
+	NearestICAO        string
+	Position           Position
+	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
+	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
+	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
+}
+
 const RoleAny = -1
 
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
@@ -393,23 +401,28 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 	// --- TIER 0: THE TARGET ICAO SHORTCUT ---
 	if targetICAO != "" {
-		var backupMatch *Controller
-		for i := range s.Controllers {
-			c := s.Controllers[i]
-			if c.ICAO == targetICAO && c.IsPoint {
-				if tRole != -1 && c.RoleID == tRole {
-					return c
-				}
-				if tRole == -1 {
-					return c
-				}
-				if backupMatch == nil {
-					backupMatch = c
+		ap, exists := s.Airports[targetICAO]
+		if !exists {
+			// airport not found, resort to proximity search
+			util.LogWithLabel(label, "no airport found for target ICAO of %s - fallback to proximity search", targetICAO)
+		} else {
+			var backupMatch *Controller
+			for _, c := range ap.Controllers {
+				if c.ICAO == targetICAO && c.IsPoint {
+					if tRole != -1 && c.RoleID == tRole {
+						return c
+					}
+					if tRole == -1 {
+						return c
+					}
+					if backupMatch == nil {
+						backupMatch = c
+					}
 				}
 			}
-		}
-		if tRole == -1 && backupMatch != nil {
-			return backupMatch
+			if tRole == -1 && backupMatch != nil {
+				return backupMatch
+			}
 		}
 	}
 

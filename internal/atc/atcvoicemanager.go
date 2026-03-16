@@ -456,3 +456,28 @@ func (vm *VoiceManager) getVoiceLock(voiceName string) *sync.Mutex {
 	lock, _ := vm.voiceLocks.LoadOrStore(voiceName, &sync.Mutex{})
 	return lock.(*sync.Mutex)
 }
+
+// convertIcaoToIso takes a full ICAO airport code (e.g., "EGLL") or
+// a country prefix (e.g., "EG") and returns the ISO country code.
+func convertIcaoToIso(icao string) (string, error) {
+	icao = strings.ToUpper(strings.TrimSpace(icao))
+	if len(icao) < 1 {
+		return "", fmt.Errorf("invalid ICAO code")
+	}
+
+	// 1. Check for 2-letter prefix match (most common)
+	if len(icao) >= 2 {
+		prefix2 := icao[:2]
+		if iso, ok := icaoToIsoMap[prefix2]; ok {
+			return iso, nil
+		}
+	}
+
+	// 2. Check for 1-letter prefix match (Major countries)
+	prefix1 := icao[:1]
+	if iso, ok := icaoToIsoMap[prefix1]; ok {
+		return iso, nil
+	}
+
+	return "", fmt.Errorf("no ISO mapping found for ICAO code: %s", icao)
+}

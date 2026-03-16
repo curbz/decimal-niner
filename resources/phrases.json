@@ -57,7 +57,7 @@
   "final": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {$RUNWAY}.", "atc": "{$CALLSIGN}, runway {$RUNWAY}, cleared to land, wind {$WIND}." },
     { "initiator": "atc", "pilot": "Stabilised on final approach, {$CALLSIGN}.", "atc": "{$CALLSIGN}, continue approach runway {$RUNWAY}. {$SHEAR}." },
-    { "initiator": "atc", "pilot": "Roger, looking for traffic on three mile final, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared runway {$RUNWAY}. {$SHEAR}" },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared runway {$RUNWAY}. {$SHEAR}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on short final runway {$RUNWAY}.", "atc": "{$CALLSIGN}, runway {$RUNWAY} cleared to land. {$SHEAR}." },
     { "initiator": "atc", "pilot": "Gear down, runway {$RUNWAY} cleared to land, {$CALLSIGN}.", "atc": "{$CALLSIGN}, runway {$RUNWAY} cleared to land, wind {$WIND}." }
   ],
