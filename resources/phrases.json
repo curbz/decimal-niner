@@ -24,7 +24,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, holding short runway {$RUNWAY}, ready for departure.", "atc": "{$CALLSIGN}, runway {$RUNWAY}, cleared for takeoff, fly runway heading, wind {$WIND}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for takeoff for {$DESTINATION}.", "atc": "{$CALLSIGN}, cleared for take off runway {$RUNWAY}, {$SHEAR}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, number one, ready for departure.", "atc": "{$CALLSIGN}, line up runway {$RUNWAY}, wind {$WIND}, cleared for take off." },
-    { "initiator": "atc", "pilot": "Holding short runway {$RUNWAY}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared for take off runway {$RUNWAY}. wind {$WIND}" },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared for take off runway {$RUNWAY}. wind {$WIND}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure from runway {$RUNWAY}.", "atc": "{$CALLSIGN}, fly the designated departure, runway {$RUNWAY} cleared for takeoff, wind {$WIND}" }
   ],
   "climb_out": [

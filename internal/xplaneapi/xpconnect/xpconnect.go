@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -278,7 +279,13 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 	if resp.StatusCode != http.StatusOK {
 		// Read body for detailed X-Plane error message
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
+		strBody := string(body)
+		if strings.Contains(strBody, "invalid_dataref_name") {
+			log.Printf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+			return nil, errors.New("invalid_dataref_name error - ensure X-Plane is in an active flight situation and the traffic plugin is running")
+		} else {
+			return nil, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+		}
 	}
 
 	// read the response body
@@ -327,7 +334,13 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 	if resp.StatusCode != http.StatusOK {
 		// Read body for detailed X-Plane error message
 		body, _ := io.ReadAll(resp.Body)
-		return response, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, string(body))
+				strBody := string(body)
+		if strings.Contains(strBody, "invalid_dataref_name") {
+			log.Printf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+			return response, errors.New("invalid_dataref_name error - ensure X-Plane is in an active flight situation and the traffic plugin is running")
+		} else {
+			return response, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+		}
 	}
 
 	// read the response body
