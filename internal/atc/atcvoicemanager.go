@@ -481,3 +481,23 @@ func convertIcaoToIso(icao string) (string, error) {
 
 	return "", fmt.Errorf("no ISO mapping found for ICAO code: %s", icao)
 }
+
+// infer the comms country code from flight data for use when other methods of setting the comms country code have failed
+func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
+	countrySource := ""
+	if ac.Flight.Phase.Class == Departing {
+		countrySource = ac.Flight.Origin
+	}
+	if ac.Flight.Phase.Class == Arriving {
+		countrySource = ac.Flight.Destination
+	}
+	if len(countrySource) > 2 {
+		ac.Flight.Comms.CountryCode = countrySource[:2]
+		util.LogWithLabel(ac.Registration, "flight data used to set comms country code %s", ac.Flight.Comms.CountryCode)
+	} else {
+		// we absolutely must have a country code to work with at this point
+		ac.Flight.Comms.CountryCode = defaultCode
+		util.LogWithLabel(ac.Registration, "WARN: no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
+	}
+}
+

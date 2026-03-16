@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
 type Airport struct {
@@ -43,6 +45,23 @@ type Fix struct {
 
 type aptPoint struct {
     Lat, Lon float64
+}
+
+func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
+	var closestICAO string
+	minDist := 4.0 // 4 Nautical Miles threshold
+
+	for icao, coords := range s.Airports {
+
+		dist := geometry.DistNM(aiLat, aiLon, coords.Lat, coords.Lon)
+
+		if dist < minDist {
+			minDist = dist
+			closestICAO = icao
+		}
+	}
+
+	return closestICAO
 }
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
@@ -577,5 +596,30 @@ func finalizeAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 		if allCtrls[i].Lat == 0 {
 			allCtrls[i].Lat, allCtrls[i].Lon = fLat, fLon
 		}
+	}
+}
+
+// returns nil if not found
+func (s *Service) getAirportRunway(icao, rwy string) *Runway {
+	var r *Runway
+	if icao != "" && rwy != "" {
+		ap, found := s.Airports[icao]
+		if found {
+			r, _ = ap.Runways[rwy]
+		}
+	}
+	return r
+}
+
+func getAirportICAObyPhaseClass(ac *Aircraft) string {
+	switch ac.Flight.Phase.Class {
+	case PreflightParked, Departing:
+		return ac.Flight.Origin
+	case Cruising:
+		return ""
+	case Arriving, PostflightParked:
+		return ac.Flight.Destination
+	default:
+		return ""
 	}
 }

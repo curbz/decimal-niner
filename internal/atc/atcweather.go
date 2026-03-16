@@ -25,6 +25,10 @@ type Baro struct {
 	Sealevel float64
 }
 
+func (s *Service) GetWeatherState() *Weather {
+	return s.Weather
+}
+
 func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 	// Standard pressure in inches of mercury
 	const standardPressure = 101325.0 // Pascals

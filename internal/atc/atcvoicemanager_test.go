@@ -217,3 +217,4 @@ func TestVoiceCollisionAvoidance(t *testing.T) {
 		t.Logf("Success: ATC assigned '%s', Pilot assigned '%s'", atcVoice, pilotVoice)
 	})
 }
+

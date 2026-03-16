@@ -25,13 +25,13 @@ import (
 )
 
 type VoicesConfig struct {
-	PhrasesFile              	string 	`yaml:"phrases_file"`
-	UnicomPhrasesFile        	string 	`yaml:"unicom_phrases_file"`
-	Piper                    	Piper  	`yaml:"piper"`
-	Sox                      	Sox    	`yaml:"sox"`
-	HandoffValedictionFactor 	int    	`yaml:"handoff_valediction_factor"`
-	SayAgainFactor           	int    	`yaml:"say_again_factor"`
-	CommsCountryCodeDefault		string	`yaml:"comms_country_code_default"`
+	PhrasesFile              string `yaml:"phrases_file"`
+	UnicomPhrasesFile        string `yaml:"unicom_phrases_file"`
+	Piper                    Piper  `yaml:"piper"`
+	Sox                      Sox    `yaml:"sox"`
+	HandoffValedictionFactor int    `yaml:"handoff_valediction_factor"`
+	SayAgainFactor           int    `yaml:"say_again_factor"`
+	CommsCountryCodeDefault  string `yaml:"comms_country_code_default"`
 }
 
 // +----------------------------------------------------------+
@@ -213,7 +213,7 @@ func removeBracketedPhrases(input string) string {
 // role is either "PILOT" or the facility type e.g "Tower"
 func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
-	icao := airportICAObyPhaseClass(ac)
+	icao := getAirportICAObyPhaseClass(ac)
 	rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
 
 	// construct message and replace all placeholder variables
@@ -296,7 +296,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 			} else {
 				clearance = ac.Flight.CruiseAlt
 			}
-			phrase = strings.ReplaceAll(phrase, "{$ALT_CLEARANCE}", 
+			phrase = strings.ReplaceAll(phrase, "{$ALT_CLEARANCE}",
 				generateAltClearance(ac.Flight.Position.Altitude, transitionLevel, clearance, ac.Flight.Phase))
 		} else {
 			phrase = strings.ReplaceAll(phrase, "{$ALTITUDE}",
@@ -368,7 +368,7 @@ func cleanPhrase(phrase string) string {
 
 	var reSanitize = regexp.MustCompile(`[^a-zA-Z0-9\s\.,\-\']`)
 	phrase = reSanitize.ReplaceAllString(phrase, "")
-	
+
 	phrase = strings.TrimSuffix(phrase, ",")
 	phrase = strings.TrimSpace(phrase)
 
@@ -612,7 +612,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase Phase) string {
 }
 
 // generateAltClearance builds an altitude clearance phrase
-// one of "descend to", "maintain", "climb to" or "" 
+// one of "descend to", "maintain", "climb to" or ""
 func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase Phase) string {
 
 	instruction := ""
@@ -767,7 +767,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	}
 
 	// Locate the "Next" controller
-	searchICAO := airportICAObyPhaseClass(ac)
+	searchICAO := getAirportICAObyPhaseClass(ac)
 	pos := ac.Flight.Position
 	label := fmt.Sprintf("%s_HANDOFF", ac.Registration)
 	nextController := s.locateController(label,
