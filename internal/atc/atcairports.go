@@ -35,12 +35,12 @@ type Fix struct {
 	LonRad   float64
 }
 
-func loadAirports(dir string, airports map[string]*Airport, airportList map[string]bool,
+func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
 	airportHolds map[string][]*Hold, globalHolds map[string]*Hold) error {
 
-	for icao := range airportList {
+	for icao := range requiredAirports {
 
-		// Parse airport CIFP data
+		// Parse airport CIFP data for runway, approach and fixes data
 		path := filepath.Join(dir, icao+".dat")
 		rwyMap, err := ParseCIFP(path)
 		var pathErr *fs.PathError
