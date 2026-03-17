@@ -59,7 +59,10 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
+	// Keep application alive until interrupt
+	log.Println("Press Ctrl+C to shutdown.")
 	<-interrupt
+
 	log.Println("Received interrupt, shutting down...")
 	xpc.Stop()
 }

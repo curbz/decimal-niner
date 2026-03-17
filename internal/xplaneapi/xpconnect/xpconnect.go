@@ -126,11 +126,10 @@ func (xpc *XPConnect) Start() {
 			_, message, err := xpc.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					log.Println("Connection closed.")
+					log.Println("Connection closed")
 					return
 				}
-				//TODO this would occur if we lose connection with XP so we would need to return to a waiting condition to recxonnect
-				log.Println("Fatal read error:", err)
+				log.Println("Fatal read error. X-Plane may have shutdown:", err)
 				return
 			}
 			xpc.processMessage(message)
@@ -142,16 +141,13 @@ func (xpc *XPConnect) Start() {
 	xpc.sendDatarefSubscription()
 
 	// Keep connection alive until interrupt
-	log.Println("Press Ctrl+C to disconnect.")
 	<-interrupt
 
-	// 5. Graceful Close
-	log.Println("\nInterrupt received. Disconnecting...")
-	xpc.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
 func (xpc *XPConnect) Stop() {
-	// TODO: closedown if needed
+	log.Println("\nDisconnecting...")
+	xpc.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
 // getSimTime fetches the current simulator time via HTTP GET and initialises the in-memory datarefs
