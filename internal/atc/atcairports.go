@@ -671,8 +671,5 @@ func cleanAirportName(n string) string {
 		n = strings.TrimSpace(n[:i])
 	}
 
-    n = strings.TrimSpace(n)
-    fmt.Println(n)
-
-    return n
+    return strings.TrimSpace(n)
 }
