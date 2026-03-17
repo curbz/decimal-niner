@@ -15,7 +15,7 @@ import (
 
 type Service struct {
 	Config          *config
-	Channel         chan *Aircraft
+	Broadcast       chan *Aircraft
 	Controllers     []*Controller
 	Holds           map[string]*Hold
 	UserState       UserState
@@ -156,7 +156,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	return &Service{
 		Config:          cfg,
-		Channel:         make(chan *Aircraft, cfg.ATC.MessageBufferSize),
+		Broadcast:       make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Controllers:     db,
 		Holds:           globalHolds,
 		Airlines:        airlinesData,
@@ -188,7 +188,9 @@ func (s *Service) SetSimTime(init time.Time, session time.Time) {
 	s.SessionInitTime = session
 }
 
-// always ensure the Aircraft pointer is referecing a deep copy of the original aircraft to avoid state conflicts
+// Transmit checks tuned frequencies to determine if pilot will hear transmissions. If so, then the aircraft data
+// will be sent to the broadcast channel to be processed where the appropriate comms will be determined and broadcast.
+// Always ensure the Aircraft pointer is referecing a deep copy of the original aircraft to avoid state conflicts
 func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 
 	aiFac := ac.Flight.Comms.Controller
@@ -210,7 +212,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 		if match || s.Config.ATC.ListenAllFreqs {
 			// NON-BLOCKING SEND
 			select {
-			case s.Channel <- ac:
+			case s.Broadcast <- ac:
 				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
 			default:
 				// drop the message as channel buffer is full

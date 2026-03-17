@@ -88,18 +88,20 @@ func (s *Service) startComms() {
 
 	// main loop to read from channel and process instructions
 	go func() {
-		for ac := range s.Channel {
+		for ac := range s.Broadcast {
 			// process instructions here based on aircraft phase or other criteria
-			// this process may generate a response to the communication
+			// this process may generate a new exchange between aircraft and ATC 
 
 			// log message with remaining capacity of channel buffer
-			util.LogWithLabel(ac.Registration, "transmission required (channel buffer remaining capacity: %d)", cap(s.Channel)-len(s.Channel))
+			util.LogWithLabel(ac.Registration, "transmission required (channel buffer remaining capacity: %d)", cap(s.Broadcast)-len(s.Broadcast))
 
 			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 
+			// process sector handoffs
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
 				switch ac.Flight.Comms.CruiseHandoff {
 				case HandoffEnterSector:
+					// we don't actually detect entry to sector, this is forced after sector exit is detected (see HandoffExitSector case)
 					util.LogWithLabel(ac.Registration, "Processing handoff enter sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					phrase := "{$FACILITY}, {$CALLSIGN} {$ALTITUDE}"
 					s.preparePhrase(phrase, "PILOT", ac, s.Weather.Baro)
@@ -115,9 +117,12 @@ func (s *Service) startComms() {
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
 					go func() {
+						// in twenty seconds, simulate the aircraft entering the new sector as this is not actually detected
 						time.Sleep(20 * time.Second)
 						ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
 						ac.Flight.Comms.CruiseHandoff = HandoffEnterSector
+						// calling transmit brings us back into this same switch code, but the HandoffEnterSector case will trigger.
+						// note that the user may not hear the entry exchange if they are not tuned to the same frequency
 						s.Transmit(s.UserState, ac)
 					}()
 				}
@@ -157,9 +162,11 @@ func (s *Service) startComms() {
 					}
 					// atc responds
 					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
-					// pilot reads back atc instructions, but not for shutdown phase to avoid unecessary repetition
-					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() {
-						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					// pilot reads back atc instructions, but not for shutdown to avoid unecessary repetition
+					// also check if read back is explicitly precluded
+					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() &&
+						!strings.Contains(exchange.ATC, "{NOREADBACK}") { 
+							s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 					}
 				}
 			}
@@ -175,8 +182,11 @@ func (s *Service) startComms() {
 					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				}
 				if exchange.Pilot == "" {
-					// if the selected exchange does not specify a pilot response, the pilot will read back atc instructions
-					s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					// if the selected exchange does not specify a pilot response and the ATC exchange phrase does not 
+					// explicitly preclude readback, the pilot will read back atc instructions
+					if !strings.Contains(exchange.ATC, "{NOREADBACK}") {
+						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+					}
 				} else {
 					// else the pilot responds with the specified exchange phrase
 					s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)

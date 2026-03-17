@@ -34,7 +34,7 @@
     { "initiator": "atc", "pilot": "Identing, {$CALLSIGN}.", "atc": "{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident." }
   ],
   "cruise": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {$TURBULENCE}", "atc": "{$CALLSIGN}, {$FACILITY} Center, Roger, {$BARO}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {$TURBULENCE}", "atc": "{$CALLSIGN}, {$FACILITY} Center, Roger, {$BARO}.{NOREADBACK}" },
     { "initiator": "atc", "pilot": "Heading {$HEADING}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {$FACILITY}, continue to fly heading {$HEADING}. {$TURBULENCE}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, requesting {$ALT_CLEARANCE}.", "atc": "{$CALLSIGN}, {$ALT_CLEARANCE}." },
     { "initiator": "atc", "pilot": "maintaining altitude {$ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, maintain altitude. {$TURBULENCE}" },
@@ -64,7 +64,7 @@
   "go_around": [
     { "initiator": "pilot", "pilot": "Going around, {$CALLSIGN}", "atc": "{$CALLSIGN}, climb and maintain {$MAP_ALT}, proceed to {$MAP_FIX}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, on the go, missed approach runway {$RUNWAY}.", "atc": "{$CALLSIGN}, Roger, fly {$MAP_HEADING}, climb and maintain {$MAP_ALT}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, executing missed approach, climbing.", "atc": "{$CALLSIGN}, continue climb and maintain {$MAP_ALT}, turn {$MAP_HEAD} hold at {$MAP_FIX}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, executing missed approach, climbing.", "atc": "{$CALLSIGN}, continue climb and maintain {$MAP_ALT}, turn {$MAP_HEADING} hold at {$MAP_FIX}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, missed approach runway {$RUNWAY}, requesting vectors.", "atc": "{$CALLSIGN}, climb {$MAP_ALT} fly {$MAP_HEADING} to {$MAP_FIX}" },
     { "initiator": "pilot", "pilot": "Going around, {$CALLSIGN}", "atc": "{$CALLSIGN}, Roger, fly {$MAP_HEADING}, climb and maintain {$MAP_ALT}." }
   ],

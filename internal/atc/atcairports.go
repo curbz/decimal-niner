@@ -11,8 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/curbz/decimal-niner/pkg/geometry"
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
 type Airport struct {
@@ -435,7 +439,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 			if len(p) >= 5 {
 				curICAO = p[4]
-				curName = strings.Join(p[5:], " ")
+				curName = cleanAirportName(strings.Join(p[5:], " "))
 				curLat, curLon, transAlt, region = 0, 0, 0, ""
 				airportPoints = []aptPoint{}
 
@@ -622,4 +626,53 @@ func getAirportICAObyPhaseClass(ac *Aircraft) string {
 	default:
 		return ""
 	}
+}
+
+func cleanAirportName(n string) string {
+    n = strings.ToLower(n)
+    n = n + " "
+
+	// decompose accents (é becomes e + ´)
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	n, _, _ = transform.String(t, n)
+
+    n = strings.ReplaceAll(n, " intl ", " ")
+    n = strings.ReplaceAll(n, " y ", " e ")
+    
+	// If parentheses present, prefer the value inside them
+	if i := strings.Index(n, "("); i != -1 {
+		if j := strings.Index(n[i:], ")"); j != -1 {
+			n = strings.TrimSpace(n[i+1 : i+j])
+		}
+	}
+	if i := strings.Index(n, "/"); i != -1 {
+		// take substring after first '/'
+		n = strings.TrimSpace(n[i+1:])
+	}
+
+	// remove anything in square brackets, including the square brackets
+	for {
+		start := strings.Index(n, "[")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(n[start:], "]")
+		if end == -1 {
+			// no closing bracket: trim everything from the opening bracket
+			n = strings.TrimSpace(n[:start])
+			break
+		}
+		// remove the bracketed section
+		n = n[:start] + n[start+end+1:]
+	}
+
+	// if space + dash + space is found, remove the dash and everything after it
+	if i := strings.Index(n, " - "); i != -1 {
+		n = strings.TrimSpace(n[:i])
+	}
+
+    n = strings.TrimSpace(n)
+    fmt.Println(n)
+
+    return n
 }
