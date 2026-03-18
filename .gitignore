@@ -424,3 +424,7 @@ FodyWeavers.xsd
 *.exe
 *.dll
 __debug_bin*
+
+# decimal-niner generated files
+d9log.txt
+
