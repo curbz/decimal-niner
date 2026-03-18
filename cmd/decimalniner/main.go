@@ -2,18 +2,24 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
+	"github.com/curbz/decimal-niner/pkg/util"
 )
+
+type d9config struct {
+	D9 struct {
+		LoggingLevel string `yaml:"logging_level"`
+	} `yaml:"d9"`
+}
 
 func main() {
 
@@ -31,11 +37,25 @@ func main() {
 		// If user provided a path, use it directly
 		cfgPath = *configFlag
 	} else {
-		cfgPath = "config.yaml"
+		// Check for custom config file location
+		cfgPath = os.Getenv("D9_CONFIG_PATH")
+		if cfgPath == "" {
+			cfgPath = "config.yaml"
+		} else {
+			log.Println("loading configuration from custom location", cfgPath)
+		}
 	}
 
+	cfg, err := util.LoadConfig[d9config](cfgPath)
+	if err != nil {
+		log.Fatalf("Error reading configuration file: %v\n", err)
+	}
+
+	// Initialize the logger once at start
+	logger.Init(cfg.D9.LoggingLevel)
+
 	if *mock {
-		log.Println("Starting local mock X-Plane server on :8086")
+		logger.Log.Println("Starting local mock X-Plane server on :8086")
 		srv := mockserver.Start("8086")
 		defer srv.Close()
 		// small pause to let mock server start before client attempts to connect
@@ -60,30 +80,9 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	// Keep application alive until interrupt
-	log.Println("Press Ctrl+C to shutdown.")
+	logger.Log.Println("Press Ctrl+C to shutdown.")
 	<-interrupt
 
-	log.Println("Received interrupt, shutting down...")
+	logger.Log.Println("Received interrupt, shutting down...")
 	xpc.Stop()
-}
-
-// FindConfigFile searches for the file in the current dir and moves up 2 levels if not found.
-func FindConfigFile(filename string) (string, error) {
-	currDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	// We check current, parent, and grandparent (3 attempts total)
-	for i := 0; i < 3; i++ {
-		path := filepath.Join(currDir, filename)
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-
-		// Move up one level
-		currDir = filepath.Dir(currDir)
-	}
-
-	return "", fmt.Errorf("config file %q not found in current or parent directories", filename)
 }

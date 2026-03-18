@@ -4,13 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/gorilla/websocket"
 )
 
@@ -50,9 +50,9 @@ var (
 
 		// weather
 		"sim/flightmodel/position/magnetic_variation": "float",
-		"sim/weather/region/turbulence":            "float",
-		"sim/weather/region/shear_speed_msc":            "float",
-		"sim/weather/region/wind_speed_msc":            "float",
+		"sim/weather/region/turbulence":               "float",
+		"sim/weather/region/shear_speed_msc":          "float",
+		"sim/weather/region/wind_speed_msc":           "float",
 		"sim/weather/region/wind_direction_degt":      "float",
 		"sim/weather/aircraft/barometer_current_pas":  "float",
 		"sim/weather/region/sealevel_pressure_pas":    "double",
@@ -102,9 +102,9 @@ func Start(port string) *http.Server {
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
 	go func() {
-		log.Printf("mockserver: listening on %s", srv.Addr)
+		logger.Log.Printf("mockserver: listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("mockserver: ListenAndServe error: %v", err)
+			logger.Log.Printf("mockserver: ListenAndServe error: %v", err)
 		}
 	}()
 	return srv
@@ -187,7 +187,7 @@ func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("mockserver: websocket upgrade error: %v", err)
+		logger.Log.Printf("mockserver: websocket upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
@@ -196,7 +196,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("mockserver: read error: %v", err)
+			logger.Log.Printf("mockserver: read error: %v", err)
 			return
 		}
 		if mt != websocket.TextMessage {
@@ -205,7 +205,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		var incoming map[string]json.RawMessage
 		if err := json.Unmarshal(msg, &incoming); err != nil {
-			log.Printf("mockserver: invalid JSON: %v", err)
+			logger.Log.Printf("mockserver: invalid JSON: %v", err)
 			continue
 		}
 
@@ -267,7 +267,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		default:
 			// echo unknown messages
-			log.Printf("mockserver: received unknown ws type=%q msg=%s", t, string(msg))
+			logger.Log.Printf("mockserver: received unknown ws type=%q msg=%s", t, string(msg))
 		}
 	}
 }
@@ -315,14 +315,14 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return 101325.0 + (float64(iter) * 1.0)
 	case "sim/flightmodel/position/magnetic_variation":
 		return 1.1
-	case "sim/weather/region/turbulence":      
-		return []float64 {0.2 + float64(iter / 10)}
+	case "sim/weather/region/turbulence":
+		return []float64{0.2 + float64(iter/10)}
 	case "sim/weather/region/shear_speed_msc":
-		return []float64 {1.0 + float64(iter / 2)}
+		return []float64{1.0 + float64(iter/2)}
 	case "sim/weather/region/wind_speed_msc":
-		return []float64 {5.0 + float64(iter)}
+		return []float64{5.0 + float64(iter)}
 	case "sim/weather/region/wind_direction_degt":
-		return []float64 {90.0 + float64(iter * 4)}
+		return []float64{90.0 + float64(iter*4)}
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
 	case "trafficglobal/ai/position_lat":
@@ -355,7 +355,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
 	case "trafficglobal/ai/ai_class":
-		return []int{5,2,4}
+		return []int{5, 2, 4}
 
 	case "trafficglobal/ai/airline_code":
 		s := "BAW\x00EZY\x00VIR\x00" // British Airways, EasyJet, Virgin Atlantic

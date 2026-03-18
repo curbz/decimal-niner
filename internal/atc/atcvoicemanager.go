@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -63,58 +63,58 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 func (vm *VoiceManager) loadPhrases(cfg *config) {
 
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
+		logger.Log.Fatalf("FATAL: Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
 	}
 	if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
+		logger.Log.Fatalf("FATAL: Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
 	}
 	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
+		logger.Log.Fatalf("FATAL: Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
 	}
 	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
-		log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
+		logger.Log.Fatalf("FATAL: Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
 	}
 
 	// load country voice pools
 	err := vm.initialisePools()
 	if err != nil {
-		log.Fatalf("error creating voice pools: %v", err)
+		logger.Log.Fatalf("error creating voice pools: %v", err)
 	}
 
 	// load phrases from JSON file
 	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open phrases json file %s: %v", cfg.ATC.Voices.PhrasesFile, err)
+		logger.Log.Fatalf("FATAL: Could not open phrases json file %s: %v", cfg.ATC.Voices.PhrasesFile, err)
 	}
 	defer phrasesFile.Close()
 
 	phrasesBytes, err := io.ReadAll(phrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not read phrases json file: %v", err)
+		logger.Log.Fatalf("FATAL: Could not read phrases json file: %v", err)
 	}
 
 	var phrases map[string][]Exchange
 	err = json.Unmarshal(phrasesBytes, &phrases)
 	if err != nil {
-		log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
+		logger.Log.Fatalf("FATAL: Could not unmarshal phrases json: %v", err)
 	}
 
 	// load unicom phrases from JSON file
 	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open unicom phrases json file %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
+		logger.Log.Fatalf("FATAL: Could not open unicom phrases json file %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
 	}
 	defer unicomPhrasesFile.Close()
 
 	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
+		logger.Log.Fatalf("FATAL: Could not read unicom phrases json file: %v", err)
 	}
 
 	var unicomPhrases map[string][]Exchange
 	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
 	if err != nil {
-		log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
+		logger.Log.Fatalf("FATAL: Could not unmarshal unicom phrases json: %v", err)
 	}
 
 	vm.PhraseClasses = PhraseClasses{
@@ -161,11 +161,11 @@ func (vm *VoiceManager) initialisePools() error {
 	}
 
 	if len(vm.globalPool) < 2 {
-		log.Fatalf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
+		logger.Log.Fatalf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
 	}
 
 	if len(vm.countryVoicePools) == 0 {
-		log.Fatalf("no voice files found in folder %s", vm.voiceDir)
+		logger.Log.Fatalf("no voice files found in folder %s", vm.voiceDir)
 	}
 
 	// create region voice pools
@@ -255,7 +255,7 @@ func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string
 	if msg.Role != "PILOT" {
 		countryCode = msg.ControllerICAO[:2] // For ATC, derive country from ICAO
 	}
-	
+
 	targetISO, _ := convertIcaoToIso(countryCode)
 	logLabel := fmt.Sprintf("%s_%s", msg.AircraftSnap.Registration, msg.Role)
 	util.LogWithLabel(logLabel, "voice selection started - ISO code: %s (country code %s)", targetISO, countryCode)
@@ -381,7 +381,7 @@ func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
 
 		if _, exists := vm.sessions[targetKey]; exists {
 			delete(vm.sessions, targetKey)
-			log.Printf("VoiceManager: Successfully released %s\n", targetKey)
+			logger.Log.Printf("VoiceManager: Successfully released %s\n", targetKey)
 		}
 	}(key)
 }
@@ -390,7 +390,7 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
 		vm.mu.Lock()
-		log.Printf("VoiceManager: Running cleanup, current sessions: %d", len(vm.sessions))
+		logger.Log.Printf("VoiceManager: Running cleanup, current sessions: %d", len(vm.sessions))
 		pLat, pLon := getUserPos()
 		now := time.Now()
 		evicted := 0
@@ -418,9 +418,9 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 		}
 
 		if evicted > 0 {
-			log.Println("VoiceManager: Evicted", evicted, "stale sessions")
+			logger.Log.Println("VoiceManager: Evicted", evicted, "stale sessions")
 		}
-		log.Printf("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
+		logger.Log.Printf("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
 		vm.mu.Unlock()
 	}
 }
@@ -500,4 +500,3 @@ func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
 		util.LogWithLabel(ac.Registration, "WARN: no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 	}
 }
-

@@ -4,12 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/gorilla/websocket"
 	"gopkg.in/yaml.v3"
 )
@@ -64,12 +64,12 @@ func DecodeUint32(val uint32) string {
 // SendJSON is a utility function for the WebSocket connection (not used for REST).
 func SendJSON(conn *websocket.Conn, data interface{}) {
 	msg, err := json.Marshal(data)
-	log.Printf("-> Sending: %s", string(msg))
+	logger.Log.Printf("-> Sending: %s", string(msg))
 	if err != nil {
-		log.Fatalf("Error marshaling JSON: %v", err)
+		logger.Log.Fatalf("Error marshaling JSON: %v", err)
 	}
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-		log.Fatalf("Error writing message: %v", err)
+		logger.Log.Fatalf("Error writing message: %v", err)
 	}
 }
 
@@ -89,7 +89,7 @@ func LoadConfig[T any](filepath string) (*T, error) {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	log.Printf("Configuration loaded from %s", filepath)
+	logger.Log.Printf("Configuration loaded from %s", filepath)
 
 	return &config, nil
 }
@@ -152,5 +152,5 @@ func LogWithLabel(pfx string, format string, args ...interface{}) {
 		pfx = "------"
 	}
 	format = fmt.Sprintf("[%s] %s", pfx, format)
-	log.Printf(format, args...)
+	logger.Log.Printf(format, args...)
 }

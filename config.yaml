@@ -1,3 +1,7 @@
+# D9
+d9:
+  logging_level: "info"
+
 # X-Plane Connection Settings
 xplane_api:
   web_api_http_url:       "http://127.0.0.1:8086/api/v2"
