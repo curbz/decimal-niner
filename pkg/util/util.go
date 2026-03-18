@@ -11,6 +11,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -144,13 +145,31 @@ func GetISOWeekday(t time.Time) int {
 	return (int(t.Weekday()) + 6) % 7
 }
 
-// LogWithLabel prefixes the given registration (if non-empty) to the format
-// and delegates to the standard logger. Use this when an aircraft
-// registration is available in scope to make logs easier to correlate.
-func LogWithLabel(pfx string, format string, args ...interface{}) {
-	if pfx == "" {
-		pfx = "------"
-	}
-	format = fmt.Sprintf("[%s] %s", pfx, format)
-	logger.Log.Printf(format, args...)
+// logs as debug 
+func LogDebugWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
 }
+
+// logs as info 
+func LogWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
+}
+
+// logs as warning
+func LogWarnWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.WarnLevel, msg, args...)
+}
+
+// logs as error
+func LogErrWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.ErrorLevel, msg, args...)
+}
+
+func LogWithLabelAndLevel(label string, level logrus.Level, msg string, args ...interface{}) {
+    if label == "" {
+        label = "------"
+    }
+	msg = fmt.Sprintf("[%s] %s", label, msg)
+	logger.Log.Logf(level, msg, args...)
+}
+

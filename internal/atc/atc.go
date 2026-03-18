@@ -216,7 +216,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
 			default:
 				// drop the message as channel buffer is full
-				util.LogWithLabel(ac.Registration, "WARN: voice queue full, dropping transmission")
+				util.LogWarnWithLabel(ac.Registration, "voice queue full, dropping transmission")
 			}
 			return
 		} else {

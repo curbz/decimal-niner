@@ -394,7 +394,7 @@ func queuePhrase(msg *ATCMessage) {
 	case radioQueue <- msg:
 		//success - message sent to buffer
 	default:
-		util.LogWithLabel(msg.AircraftSnap.Registration, "WARN: radio queue is full. speech generation skipped")
+		util.LogWarnWithLabel(msg.AircraftSnap.Registration, "radio queue is full. speech generation skipped")
 	}
 }
 
@@ -812,7 +812,7 @@ func (s *Service) generateValediction(factor int) string {
 	if rand.Intn(factor) == 0 {
 		currTime, err := s.DataProvider.GetSimTime()
 		if err != nil {
-			logger.Log.Printf("error: could not get local time: %s", err.Error())
+			logger.Log.Errorf("could not get local time: %s", err.Error())
 		} else {
 			localTime := currTime.LocalTimeSecs
 			currHour := localTime / 3600

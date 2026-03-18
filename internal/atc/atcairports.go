@@ -80,9 +80,9 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		if err != nil {
 			if errors.As(err, &pathErr) {
 				// if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
-				logger.Log.Println("WARN: CIFP file not found for airport", icao, ": ", err)
+				logger.Log.Warn("CIFP file not found for airport ", icao, ": ", err)
 			} else {
-				logger.Log.Println("error parsing CIFP file for airport", icao, ": ", err)
+				logger.Log.Error("error parsing CIFP file for airport ", icao, ": ", err)
 			}
 			continue
 		}
@@ -560,7 +560,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	for i := range controllers {
 		c := controllers[i]
 		if c.Lat == 0 && c.Lon == 0 {
-			logger.Log.Printf("WARN: No position found for: %s %s\n", c.ICAO, c.Name)
+			logger.Log.Warnf("no position found for: %s %s\n", c.ICAO, c.Name)
 		}
 		c.Airspaces = []Airspace{{
 			Floor: -99999, Ceiling: 99999, Area: 0,

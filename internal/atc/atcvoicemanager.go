@@ -286,7 +286,7 @@ func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string
 
 	// If Global pool only had the partnerVoice, findBestInPool returned ""
 	if voice == "" {
-		util.LogWithLabel(logLabel, "WARN: voice pools are currently drained, reluctant reuse of exchange partner voice")
+		util.LogWarnWithLabel(logLabel, "voice pools are currently drained, reluctant reuse of exchange partner voice")
 		return vm.globalPool[0]
 	}
 
@@ -497,6 +497,6 @@ func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
 	} else {
 		// we absolutely must have a country code to work with at this point
 		ac.Flight.Comms.CountryCode = defaultCode
-		util.LogWithLabel(ac.Registration, "WARN: no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
+		util.LogWarnWithLabel(ac.Registration, "no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 	}
 }

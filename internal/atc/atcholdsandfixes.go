@@ -93,7 +93,7 @@ func resolveHoldCoordinates(holds map[string]*Hold, namedFixes map[string]Fix, a
 				h.LatRad = fix.LatRad
 				h.LonRad = fix.LonRad
 			} else {
-				logger.Log.Println("WARN: hold not found in fix map for key", key)
+				logger.Log.Warn("hold not found in fix map for key ", key)
 				continue
 			}
 		}

@@ -263,7 +263,7 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 	if err != nil {
 		var returnError error
 		if errors.Is(err, syscall.Errno(10061)) {
-			logger.Log.Printf("error performing HTTP GET to %s: %v\n", fullURL, err)
+			logger.Log.Errorf("error performing HTTP GET to %s: %v\n", fullURL, err)
 			returnError = errors.New("Connection refused - ensure X-Plane is running, in an active flight situation and the traffic plugin is also running")
 		} else {
 			returnError = fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
@@ -319,7 +319,7 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 	if err != nil {
 		var returnError error
 		if errors.Is(err, syscall.Errno(10061)) {
-			logger.Log.Printf("error performing HTTP GET to %s: %v\n", fullURL, err)
+			logger.Log.Errorf("error performing HTTP GET to %s: %v\n", fullURL, err)
 			returnError = errors.New("Connection refused - ensure X-Plane is running, in an active flight situation and the traffic plugin is also running")
 		} else {
 			returnError = fmt.Errorf("error performing HTTP GET to %s: %w", fullURL, err)
@@ -380,7 +380,7 @@ func (xpc *XPConnect) sendDatarefSubscription() {
 func (xpc *XPConnect) processMessage(message []byte) {
 	var response xpapimodel.SubscriptionResponse
 	if err := json.Unmarshal(message, &response); err != nil {
-		logger.Log.Printf("Error unmarshaling top-level response: %v. Raw: %s", err, string(message))
+		logger.Log.Errorf("error unmarshaling top-level response: %v. Raw: %s", err, string(message))
 		return
 	}
 
@@ -395,7 +395,7 @@ func (xpc *XPConnect) processMessage(message []byte) {
 		}
 	default:
 		// Catch all other messages
-		logger.Log.Printf("WARN: unrecognised response type: Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
+		logger.Log.Warnf("unrecognised response type: Req ID %d, Type: %s, Payload: %s", response.RequestID, response.Type, string(message))
 	}
 }
 
@@ -407,13 +407,13 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 		// convert id from string to int
 		idInt, err := strconv.Atoi(id)
 		if err != nil {
-			logger.Log.Printf("Error converting dataref ID %s to int: %v", id, err)
+			logger.Log.Errorf("error converting dataref ID %s to int: %v", id, err)
 			continue
 		}
 
 		err = xpc.updateMemDatarefValueInMap(xpc.memSubscribeDataRefIndexMap, idInt, value)
 		if err != nil {
-			logger.Log.Printf("Error updating dataref ID %d value: %v", idInt, err)
+			logger.Log.Errorf("error updating dataref ID %d value: %v", idInt, err)
 			continue
 		}
 
@@ -529,7 +529,7 @@ func (xpc *XPConnect) updateUserData() {
 	// check we got values
 	if com1FreqVal == nil || com2FreqVal == nil ||
 		com1FacilityVal == nil || com2FacilityVal == nil {
-		logger.Log.Println("WARN: Couldn't update user state as com1 or com2 dataref values are not available")
+		logger.Log.Warn("couldn't update user state as com1 or com2 dataref values are not available")
 		return
 	}
 
@@ -560,7 +560,7 @@ func (xpc *XPConnect) updateUserData() {
 
 	// check we got values
 	if latVal == nil || lngVal == nil || altVal == nil {
-		logger.Log.Println("WARN: Couldn't update user state as positional dataref values are not available")
+		logger.Log.Warn("couldn't update user state as positional dataref values are not available")
 		return
 	}
 
@@ -593,12 +593,12 @@ func (xpc *XPConnect) updateAircraftData() {
 	// get tail numbers/registrations
 	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/tail_number")
 	if tailNumbersDR == nil {
-		logger.Log.Println("error: tail number dataref not found")
+		logger.Log.Error("error: tail number dataref not found")
 		return
 	}
 	tailNumbers, ok := tailNumbersDR.Value.([]string)
 	if !ok {
-		logger.Log.Println("error: tail number dataref has invalid type")
+		logger.Log.Error("error: tail number dataref has invalid type")
 		return
 	}
 
@@ -607,15 +607,15 @@ func (xpc *XPConnect) updateAircraftData() {
 	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/airline_code")
 	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_num")
 	if airlineCodesDR == nil || flightNumsDR == nil {
-		logger.Log.Println("error: airline code or flight number dataref not found")
+		logger.Log.Error("error: airline code or flight number dataref not found")
 	} else {
 		airlineCodes, ok = airlineCodesDR.Value.([]string)
 		if !ok {
-			logger.Log.Println("error: airline code dataref has invalid type")
+			logger.Log.Error("error: airline code dataref has invalid type")
 		}
 		flightNums, ok = flightNumsDR.Value.([]int)
 		if !ok {
-			logger.Log.Println("error: flight number dataref has invalid type")
+			logger.Log.Error("error: flight number dataref has invalid type")
 		}
 	}
 
@@ -749,7 +749,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 			callsign = airlineInfo.Callsign
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
 		} else {
-			util.LogWithLabel(aircraft.Registration, "WARN: no airline information found for code %s", airlineCode)
+			util.LogWarnWithLabel(aircraft.Registration, "no airline information found for code %s", airlineCode)
 			// if we don't have airline info, we also won't have country code, so use tail number as fallback
 			if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
 				aircraft.Flight.Comms.CountryCode = ccode

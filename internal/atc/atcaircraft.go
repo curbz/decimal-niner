@@ -348,7 +348,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 		if ph.Previous == trafficglobal.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
-				util.LogWithLabel(ac.Registration, "WARN: no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
+				util.LogWarnWithLabel(ac.Registration, "no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
 				ph.Class = Unknown
 				return
 			}
