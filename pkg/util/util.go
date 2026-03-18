@@ -4,13 +4,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -64,12 +65,12 @@ func DecodeUint32(val uint32) string {
 // SendJSON is a utility function for the WebSocket connection (not used for REST).
 func SendJSON(conn *websocket.Conn, data interface{}) {
 	msg, err := json.Marshal(data)
-	log.Printf("-> Sending: %s", string(msg))
+	logger.Log.Printf("-> Sending: %s", string(msg))
 	if err != nil {
-		log.Fatalf("Error marshaling JSON: %v", err)
+		logger.Log.Fatalf("Error marshaling JSON: %v", err)
 	}
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-		log.Fatalf("Error writing message: %v", err)
+		logger.Log.Fatalf("Error writing message: %v", err)
 	}
 }
 
@@ -89,7 +90,7 @@ func LoadConfig[T any](filepath string) (*T, error) {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	log.Printf("Configuration loaded from %s", filepath)
+	logger.Log.Printf("Configuration loaded from %s", filepath)
 
 	return &config, nil
 }
@@ -144,13 +145,31 @@ func GetISOWeekday(t time.Time) int {
 	return (int(t.Weekday()) + 6) % 7
 }
 
-// LogWithLabel prefixes the given registration (if non-empty) to the format
-// and delegates to the standard logger. Use this when an aircraft
-// registration is available in scope to make logs easier to correlate.
-func LogWithLabel(pfx string, format string, args ...interface{}) {
-	if pfx == "" {
-		pfx = "------"
-	}
-	format = fmt.Sprintf("[%s] %s", pfx, format)
-	log.Printf(format, args...)
+// logs as debug 
+func LogDebugWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
 }
+
+// logs as info 
+func LogWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
+}
+
+// logs as warning
+func LogWarnWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.WarnLevel, msg, args...)
+}
+
+// logs as error
+func LogErrWithLabel(label string, msg string, args ...interface{}) {
+	LogWithLabelAndLevel(label, logrus.ErrorLevel, msg, args...)
+}
+
+func LogWithLabelAndLevel(label string, level logrus.Level, msg string, args ...interface{}) {
+    if label == "" {
+        label = "------"
+    }
+	msg = fmt.Sprintf("[%s] %s", label, msg)
+	logger.Log.Logf(level, msg, args...)
+}
+

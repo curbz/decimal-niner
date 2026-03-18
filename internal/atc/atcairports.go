@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
@@ -20,7 +20,7 @@ import (
 )
 
 type Airport struct {
-	ICAO     string
+	ICAO        string
 	Name        string
 	Lat         float64
 	Lon         float64
@@ -28,7 +28,7 @@ type Airport struct {
 	Region      string
 	Runways     map[string]*Runway // keyed by "09L", "27R"
 	Holds       []*Hold
-    Controllers []*Controller
+	Controllers []*Controller
 }
 
 type Runway struct {
@@ -48,7 +48,7 @@ type Fix struct {
 }
 
 type aptPoint struct {
-    Lat, Lon float64
+	Lat, Lon float64
 }
 
 func (s *Service) GetClosestAirport(aiLat, aiLon float64) string {
@@ -80,9 +80,9 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		if err != nil {
 			if errors.As(err, &pathErr) {
 				// if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
-				log.Println("WARN: CIFP file not found for airport", icao, ": ", err)
+				logger.Log.Warn("CIFP file not found for airport ", icao, ": ", err)
 			} else {
-				log.Println("error parsing CIFP file for airport", icao, ": ", err)
+				logger.Log.Error("error parsing CIFP file for airport ", icao, ": ", err)
 			}
 			continue
 		}
@@ -560,7 +560,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	for i := range controllers {
 		c := controllers[i]
 		if c.Lat == 0 && c.Lon == 0 {
-			log.Printf("WARN: No position found for: %s %s\n", c.ICAO, c.Name)
+			logger.Log.Warnf("no position found for: %s %s\n", c.ICAO, c.Name)
 		}
 		c.Airspaces = []Airspace{{
 			Floor: -99999, Ceiling: 99999, Area: 0,
@@ -594,7 +594,9 @@ func finalizeAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 	// Retroactive update for any controllers created with 0,0
 	for i := len(allCtrls) - 1; i >= 0; i-- {
 		if allCtrls[i].ICAO != icao {
-			if i < len(allCtrls)-100 { break } // Optimization
+			if i < len(allCtrls)-100 {
+				break
+			} // Optimization
 			continue
 		}
 		if allCtrls[i].Lat == 0 {
@@ -629,16 +631,16 @@ func getAirportICAObyPhaseClass(ac *Aircraft) string {
 }
 
 func cleanAirportName(n string) string {
-    n = strings.ToLower(n)
-    n = n + " "
+	n = strings.ToLower(n)
+	n = n + " "
 
 	// decompose accents (é becomes e + ´)
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	n, _, _ = transform.String(t, n)
 
-    n = strings.ReplaceAll(n, " intl ", " ")
-    n = strings.ReplaceAll(n, " y ", " e ")
-    
+	n = strings.ReplaceAll(n, " intl ", " ")
+	n = strings.ReplaceAll(n, " y ", " e ")
+
 	// If parentheses present, prefer the value inside them
 	if i := strings.Index(n, "("); i != -1 {
 		if j := strings.Index(n[i:], ")"); j != -1 {
@@ -671,5 +673,5 @@ func cleanAirportName(n string) string {
 		n = strings.TrimSpace(n[:i])
 	}
 
-    return strings.TrimSpace(n)
+	return strings.TrimSpace(n)
 }

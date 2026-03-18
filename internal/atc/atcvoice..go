@@ -3,7 +3,6 @@ package atc
 import (
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"math/rand"
 	"os/exec"
@@ -20,6 +19,7 @@ import (
 
 	"golang.org/x/text/runes"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -90,7 +90,7 @@ func (s *Service) startComms() {
 	go func() {
 		for ac := range s.Broadcast {
 			// process instructions here based on aircraft phase or other criteria
-			// this process may generate a new exchange between aircraft and ATC 
+			// this process may generate a new exchange between aircraft and ATC
 
 			// log message with remaining capacity of channel buffer
 			util.LogWithLabel(ac.Registration, "transmission required (channel buffer remaining capacity: %d)", cap(s.Broadcast)-len(s.Broadcast))
@@ -165,8 +165,8 @@ func (s *Service) startComms() {
 					// pilot reads back atc instructions, but not for shutdown to avoid unecessary repetition
 					// also check if read back is explicitly precluded
 					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() &&
-						!strings.Contains(exchange.ATC, "{NOREADBACK}") { 
-							s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+						!strings.Contains(exchange.ATC, "{NOREADBACK}") {
+						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
 					}
 				}
 			}
@@ -182,7 +182,7 @@ func (s *Service) startComms() {
 					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 				}
 				if exchange.Pilot == "" {
-					// if the selected exchange does not specify a pilot response and the ATC exchange phrase does not 
+					// if the selected exchange does not specify a pilot response and the ATC exchange phrase does not
 					// explicitly preclude readback, the pilot will read back atc instructions
 					if !strings.Contains(exchange.ATC, "{NOREADBACK}") {
 						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
@@ -398,7 +398,7 @@ func queuePhrase(msg *ATCMessage) {
 	case radioQueue <- msg:
 		//success - message sent to buffer
 	default:
-		util.LogWithLabel(msg.AircraftSnap.Registration, "WARN: radio queue is full. speech generation skipped")
+		util.LogWarnWithLabel(msg.AircraftSnap.Registration, "radio queue is full. speech generation skipped")
 	}
 }
 
@@ -816,7 +816,7 @@ func (s *Service) generateValediction(factor int) string {
 	if rand.Intn(factor) == 0 {
 		currTime, err := s.DataProvider.GetSimTime()
 		if err != nil {
-			log.Printf("error: could not get local time: %s", err.Error())
+			logger.Log.Errorf("could not get local time: %s", err.Error())
 		} else {
 			localTime := currTime.LocalTimeSecs
 			currHour := localTime / 3600

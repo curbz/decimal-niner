@@ -3,11 +3,11 @@ package atc
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"os"
 	"runtime"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -72,78 +72,78 @@ type config struct {
 
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
 
-	log.Println("Starting ATC service - loading all configurations")
+	logger.Log.Println("Starting ATC service - loading all configurations")
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
-		log.Fatalf("Error reading configuration file: %v\n", err)
+		logger.Log.Fatalf("Error reading configuration file: %v\n", err)
 	}
 
 	start := time.Now()
 
 	// load hold data
-	log.Println("Loading X-Plane Holds data")
+	logger.Log.Println("Loading X-Plane Holds data")
 	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
-		log.Fatalf("Error loading hold data: %v", err)
+		logger.Log.Fatalf("Error loading hold data: %v", err)
 	}
-	log.Printf("Holds data loaded: seeded %d holds\n", len(globalHolds))
+	logger.Log.Printf("Holds data loaded: seeded %d holds\n", len(globalHolds))
 
 	// load controller data and create airports
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
-		log.Fatalf("Error parsing airports data file: %v", err)
+		logger.Log.Fatalf("Error parsing airports data file: %v", err)
 	}
 	atcControllers, err := parseATCdatFiles(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
-		log.Fatalf("Error parsing ATC data file: %v", err)
+		logger.Log.Fatalf("Error parsing ATC data file: %v", err)
 	}
 	db := append(atcControllers, arptControllers...)
 	regionControllers, err := parseATCdatFiles(cfg.ATC.AtcRegionsFile, true, requiredAirports)
 	if err != nil {
-		log.Fatalf("Error parsing ATC regions file: %v", err)
+		logger.Log.Fatalf("Error parsing ATC regions file: %v", err)
 	}
 	db = append(db, regionControllers...)
 
 	// enrich airport data
-	log.Println("Loading X-Plane airport files")
+	logger.Log.Println("Loading X-Plane airport files")
 
 	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
 	if err != nil {
-		log.Fatal("Error loading airport data from CIFP files: ", err)
+		logger.Log.Fatal("Error loading airport data from CIFP files: ", err)
 	}
-	log.Println("Airport data loaded: seeded", len(airports), "airports")
+	logger.Log.Println("Airport data loaded: seeded", len(airports), "airports")
 
-	log.Printf("ATC controller database generated: seeded %d controllers\n", len(db))
+	logger.Log.Printf("ATC controller database generated: seeded %d controllers\n", len(db))
 
-	log.Printf("ATC data loaded in %v\n", time.Since(start))
+	logger.Log.Printf("ATC data loaded in %v\n", time.Since(start))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
 	}
 	defer airlinesFile.Close()
 
 	airlinesBytes, err := io.ReadAll(airlinesFile)
 	if err != nil {
-		log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
 	}
 
 	var airlinesData map[string]AirlineInfo
 	// Unmarshal the JSON into the map
 	err = json.Unmarshal(airlinesBytes, &airlinesData)
 	if err != nil {
-		log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
 	}
-	log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
+	logger.Log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
 
 	if runtime.GOOS == "windows" {
 		if os.Getenv("AUDIODRIVER") == "" {
-			log.Println("AUDIODRIVER env var is not set, setting for sox usage...")
+			logger.Log.Println("AUDIODRIVER env var is not set, setting for sox usage...")
 			os.Setenv("AUDIODRIVER", "waveaudio")
 		}
-		log.Println("AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
+		logger.Log.Println("AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
 	}
 
 	radioQueue = make(chan *ATCMessage, cfg.ATC.MessageBufferSize)
@@ -216,7 +216,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
 			default:
 				// drop the message as channel buffer is full
-				util.LogWithLabel(ac.Registration, "WARN: voice queue full, dropping transmission")
+				util.LogWarnWithLabel(ac.Registration, "voice queue full, dropping transmission")
 			}
 			return
 		} else {

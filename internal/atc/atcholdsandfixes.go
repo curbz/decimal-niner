@@ -3,12 +3,12 @@ package atc
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
@@ -93,7 +93,7 @@ func resolveHoldCoordinates(holds map[string]*Hold, namedFixes map[string]Fix, a
 				h.LatRad = fix.LatRad
 				h.LonRad = fix.LonRad
 			} else {
-				log.Println("WARN: hold not found in fix map for key", key)
+				logger.Log.Warn("hold not found in fix map for key ", key)
 				continue
 			}
 		}
@@ -330,5 +330,3 @@ func parseFixData(path string) (map[string]Fix, error) {
 	return fixes, nil
 
 }
-
-
