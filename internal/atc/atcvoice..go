@@ -209,11 +209,11 @@ func autoReadback(phrase string) string {
 	phrase = strings.TrimPrefix(phrase, ",")
 	phrase = strings.TrimSuffix(phrase, ".")
 	phrase = phrase + " {$CALLSIGN}"
-	phrase = removeBracketedPhrases(phrase)
+	phrase = removeSquareBracketedPhrases(phrase)
 	return phrase
 }
 
-func removeBracketedPhrases(input string) string {
+func removeSquareBracketedPhrases(input string) string {
 	re := regexp.MustCompile((`\[[^\]]*\]`))
 	result := re.ReplaceAllString(input, "")
 	return result
@@ -354,6 +354,10 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		phrase = strings.ReplaceAll(phrase, replace, s.generateValediction(factor))
 	}
 
+	if strings.Contains(phrase, "{NOREADBACK}") {
+		phrase = strings.ReplaceAll(phrase, "{NOREADBACK}", "")
+	}
+	
 	phrase = translateNumerics(phrase)
 	phrase = cleanPhrase(phrase)
 
