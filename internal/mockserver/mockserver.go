@@ -169,11 +169,11 @@ func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mu.Lock()
-	name := idToName[id]
+	name, nameOk := idToName[id]
 	vt := idToValueType[id]
 	mu.Unlock()
 
-	if name == "" {
+	if !nameOk || name == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -251,14 +251,16 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 					payload := make(map[string]interface{})
 					for _, id := range idsCopy {
 						mu.Lock()
-						vt := idToValueType[id]
+						vt, vtOk := idToValueType[id]
+						name, nameOk := idToName[id]
 						mu.Unlock()
 
-						// Prefer name-specific samples when available
-						name := ""
-						mu.Lock()
-						name = idToName[id]
-						mu.Unlock()
+						if !vtOk {
+							vt = ""
+						}
+						if !nameOk {
+							name = ""
+						}
 
 						payload[strconv.FormatInt(id, 10)] = samplePayloadForName(name, vt, i)
 					}

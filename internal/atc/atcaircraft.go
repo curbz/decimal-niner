@@ -120,7 +120,12 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	// it is safer to do it here rather than in the go routine as there would be a small chance that
 	// the aircraft could get updated concurrently during the deep copy process if this statement was
 	// placed within the go routine.
-	acSnap := deepcopy.Copy(ac).(*Aircraft)
+	v := deepcopy.Copy(ac)
+	acSnap, ok := v.(*Aircraft)
+	if !ok {
+		util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot; skipping async phrase generation")
+		return
+	}
 
 	util.GoSafe(func() {
 		// +-----------------------------------------------------------------+
@@ -147,10 +152,15 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 		ac.Flight.Comms.Controller.Name != ac.Flight.Comms.NextController.Name {
 		util.LogWithLabel(ac.Registration, "Handoff from %s to %s", ac.Flight.Comms.Controller.Name, ac.Flight.Comms.NextController.Name)
 		// creat snapshot of aircraft state for phrase generation
-		acSnap := deepcopy.Copy(ac).(*Aircraft)
-		acSnap.Flight.Comms.CruiseHandoff = HandoffExitSector
-		// send to phrase generation
-		s.Transmit(s.UserState, acSnap)
+		v := deepcopy.Copy(ac)
+		acSnap, ok := v.(*Aircraft)
+		if !ok {
+			util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot for cruise handoff; skipping phrase generation")
+		} else {
+			acSnap.Flight.Comms.CruiseHandoff = HandoffExitSector
+			// send to phrase generation
+			s.Transmit(s.UserState, acSnap)
+		}
 		// update current controller
 		ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
 	}
