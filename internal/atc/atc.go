@@ -72,7 +72,7 @@ type config struct {
 
 func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
 
-	logger.Log.Println("Starting ATC service - loading all configurations")
+	logger.Log.Info("Starting ATC service - loading all configurations")
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
@@ -83,13 +83,13 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	start := time.Now()
 
 	// load hold data
-	logger.Log.Println("Loading X-Plane Holds data")
+	logger.Log.Info("Loading X-Plane Holds data")
 	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
 		logger.Log.Errorf("Error loading hold data: %v", err)
 		return nil
 	}
-	logger.Log.Printf("Holds data loaded: seeded %d holds\n", len(globalHolds))
+	logger.Log.Infof("Holds data loaded: seeded %d holds\n", len(globalHolds))
 
 	// load controller data and create airports
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
@@ -111,18 +111,18 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	db = append(db, regionControllers...)
 
 	// enrich airport data
-	logger.Log.Println("Loading X-Plane airport files")
+	logger.Log.Info("Loading X-Plane airport files")
 
 	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
 	if err != nil {
 		logger.Log.Errorf("Error loading airport data from CIFP files: %v", err)
 		return nil
 	}
-	logger.Log.Println("Airport data loaded: seeded", len(airports), "airports")
+	logger.Log.Info("Airport data loaded: seeded", len(airports), "airports")
 
-	logger.Log.Printf("ATC controller database generated: seeded %d controllers\n", len(db))
+	logger.Log.Infof("ATC controller database generated: seeded %d controllers\n", len(db))
 
-	logger.Log.Printf("ATC data loaded in %v\n", time.Since(start))
+	logger.Log.Infof("ATC data loaded in %v\n", time.Since(start))
 
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
@@ -145,14 +145,14 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		logger.Log.Errorf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
 		return nil
 	}
-	logger.Log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
+	logger.Log.Infof("Airlines loaded successfully (%d)", len(airlinesData))
 
 	if runtime.GOOS == "windows" {
 		if os.Getenv("AUDIODRIVER") == "" {
-			logger.Log.Println("AUDIODRIVER env var is not set, setting for sox usage...")
+			logger.Log.Info("AUDIODRIVER env var is not set, setting for sox usage...")
 			os.Setenv("AUDIODRIVER", "waveaudio")
 		}
-		logger.Log.Println("AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
+		logger.Log.Info("AUDIODRIVER env var is ", os.Getenv("AUDIODRIVER"))
 	}
 
 	radioQueue = make(chan *ATCMessage, cfg.ATC.MessageBufferSize)

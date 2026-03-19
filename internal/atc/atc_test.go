@@ -9,7 +9,7 @@ import (
 // This runs before any tests in this package
 func init() {
 
-	logger.Log.Println("running prerequisite atc package init function")
+	logger.Log.Info("running prerequisite atc package init function")
 
 	// Check for custom config file location
 	configPath := os.Getenv("D9_CONFIG_PATH")
@@ -19,7 +19,7 @@ func init() {
 		// Move up two levels to the root of the repo so that config.yaml and /resources is found
 		configPath = "../.."
 	} else {
-		logger.Log.Println("loading configuration from custom location", configPath)
+		logger.Log.Info("loading configuration from custom location", configPath)
 	}
 
 	err := os.Chdir(configPath)

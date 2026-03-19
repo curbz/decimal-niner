@@ -57,7 +57,7 @@ func main() {
 	var srv any
 	if *mock {
 		if logger.Log != nil {
-			logger.Log.Println("Starting local mock X-Plane server on :8086")
+			logger.Log.Info("Starting local mock X-Plane server on :8086")
 		}
 		s := mockserver.Start("8086")
 		srv = s
@@ -67,7 +67,7 @@ func main() {
 				case interface{ Close() error }:
 					if err := v.Close(); err != nil {
 						if logger.Log != nil {
-							logger.Log.Printf("error closing mock server: %v", err)
+							logger.Log.Errorf("error closing mock server: %v", err)
 						}
 					}
 				case interface{ Close() }:
@@ -89,7 +89,7 @@ func main() {
 	atcService := atc.New(cfgPath, fScheds, airports)
 	if atcService == nil {
 		if logger.Log != nil {
-			logger.Log.Println("failed to create ATC service, exiting")
+			logger.Log.Error("failed to create ATC service, exiting")
 		}
 		return
 	}
@@ -99,9 +99,10 @@ func main() {
 	xpc := xpconnect.New(cfgPath, atcService)
 	atcService.SetDataProvider(xpc)
 	if xpc == nil {
-		logger.Log.Fatal("failed to connect to X-Plane")
+		logger.Log.Error("failed to connect to X-Plane")
+		return
 	}
-	
+
 	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown
@@ -109,9 +110,9 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	// Keep application alive until interrupt
-	logger.Log.Println("Press Ctrl+C to shutdown.")
+	logger.Log.Info("Press Ctrl+C to shutdown.")
 	<-interrupt
 
-	logger.Log.Println("Received interrupt, shutting down...")
+	logger.Log.Info("Received interrupt, shutting down...")
 	xpc.Stop()
 }
