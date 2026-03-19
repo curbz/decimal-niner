@@ -560,7 +560,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	for i := range controllers {
 		c := controllers[i]
 		if c.Lat == 0 && c.Lon == 0 {
-			logger.Log.Warnf("no position found for: %s %s\n", c.ICAO, c.Name)
+			logger.Log.Warnf("no location found for ICAO:%s Name: %s Role: %d\n", c.ICAO, c.Name, c.RoleID)
 		}
 		c.Airspaces = []Airspace{{
 			Floor: -99999, Ceiling: 99999, Area: 0,

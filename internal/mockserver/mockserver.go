@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/gorilla/websocket"
 )
@@ -34,46 +35,45 @@ var (
 	// known datarefs and their canonical value types
 	datarefDefs = map[string]string{
 
-		"sim/flightmodel/position/latitude":  "double",
-		"sim/flightmodel/position/longitude": "double",
-		"sim/flightmodel/position/elevation": "double",
-		"sim/flightmodel/position/psi":       "float",
+		simdata.DRSimFlightmodelPositionLatitude:  "double",
+		simdata.DRSimFlightmodelPositionLongitude: "double",
+		simdata.DRSimFlightmodelPositionElevation: "double",
+		simdata.DRSimFlightmodelPositionPsi:       "float",
 
-		"sim/cockpit/radios/com1_freq_hz": "int",
-		"sim/cockpit/radios/com2_freq_hz": "int",
+		simdata.DRSimCockpitRadiosCom1FreqHz: "int",
+		simdata.DRSimCockpitRadiosCom2FreqHz: "int",
 
-		"sim/atc/com1_tuned_facility": "int",
-		"sim/atc/com2_tuned_facility": "int",
+		simdata.DRSimATCCom1TunedFacility: "int",
+		simdata.DRSimATCCom2TunedFacility: "int",
 
-		"sim/time/local_date_days": "int",
-		"sim/time/local_time_sec":  "float",
-		"sim/time/zulu_time_sec":   "float",
+		simdata.DRSimTimeLocalDateDays: "int",
+		simdata.DRSimTimeLocalTimeSec:  "float",
+		simdata.DRSimTimeZuluTimeSec:   "float",
 
 		// weather
-		"sim/flightmodel/position/magnetic_variation": "float",
-		"sim/weather/region/turbulence":               "float",
-		"sim/weather/region/shear_speed_msc":          "float",
-		"sim/weather/region/wind_speed_msc":           "float",
-		"sim/weather/region/wind_direction_degt":      "float",
-		"sim/weather/aircraft/barometer_current_pas":  "float",
-		"sim/weather/region/sealevel_pressure_pas":    "double",
+		simdata.DRSimFlightmodelPositionMagVariation: "float",
+		simdata.DRSimWeatherRegionTurbulence:          "float",
+		simdata.DRSimWeatherRegionShearSpeed:         "float",
+		simdata.DRSimWeatherRegionWindSpeed:          "float",
+		simdata.DRSimWeatherRegionWindDirection:      "float",
+		simdata.DRSimWeatherAircraftBarometer:        "float",
+		simdata.DRSimWeatherRegionSeaLevelPressure:   "double",
 
-		"trafficglobal/ai/position_lat":     "float[]",
-		"trafficglobal/ai/position_long":    "float[]",
-		"trafficglobal/ai/position_heading": "float[]",
-		"trafficglobal/ai/position_elev":    "float[]",
+		simdata.DRTrafficGlobalAIPositionLat:     "float[]",
+		simdata.DRTrafficGlobalAIPositionLong:    "float[]",
+		simdata.DRTrafficGlobalAIPositionHeading: "float[]",
+		simdata.DRTrafficGlobalAIPositionElev:    "float[]",
 
-		"trafficglobal/ai/aircraft_code": "binary[]",
-		"trafficglobal/ai/airline_code":  "binary[]",
-		"trafficglobal/ai/tail_number":   "binary[]",
+		simdata.DRTrafficGlobalAIAircraftCode: "binary[]",
+		simdata.DRTrafficGlobalAIAirlineCode:  "binary[]",
+		simdata.DRTrafficGlobalAITailNumber:   "binary[]",
 
-		"trafficglobal/ai/ai_type":    "int[]",
-		"trafficglobal/ai/ai_class":   "int[]",
-		"trafficglobal/ai/flight_num": "int[]",
+		simdata.DRTrafficGlobalAIClass:   "int[]",
+		simdata.DRTrafficGlobalAIFlightNum: "int[]",
 
-		"trafficglobal/ai/parking":      "binary[]",
-		"trafficglobal/ai/flight_phase": "int[]",
-		"trafficglobal/ai/runway":       "int[]",
+		simdata.DRTrafficGlobalAIParking:      "binary[]",
+		simdata.DRTrafficGlobalAIFlightPhase: "int[]",
+		simdata.DRTrafficGlobalAIRunway:       "int[]",
 	}
 )
 
@@ -116,7 +116,7 @@ func datarefsHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()["filter[name]"]
 	// If none provided, return the sim time datarefs
 	if len(q) == 0 {
-		q = []string{"sim/time/local_date_days", "sim/time/local_time_sec", "sim/time/zulu_time_sec"}
+		q = []string{simdata.DRSimTimeLocalDateDays, simdata.DRSimTimeLocalTimeSec, simdata.DRSimTimeZuluTimeSec}
 	}
 
 	data := make([]DatarefInfo, 0, len(q))
@@ -283,89 +283,89 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 func samplePayloadForName(name, vt string, iter int) interface{} {
 	switch name {
 	// --- User Position (Heathrow Center) ---
-	case "sim/flightmodel/position/latitude":
+	case simdata.DRSimFlightmodelPositionLatitude:
 		return 51.471865 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
-	case "sim/flightmodel/position/longitude":
+	case simdata.DRSimFlightmodelPositionLongitude:
 		return -0.485958 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
-	case "sim/flightmodel/position/elevation":
+	case simdata.DRSimFlightmodelPositionElevation:
 		return 25.0 //+ float64(iter) // // <-- uncommment to simulate user position changing
-	case "sim/flightmodel/position/psi":
+	case simdata.DRSimFlightmodelPositionPsi:
 		return 270.5 // Facing West towards Runway 27R
 
 	// --- User Radios (Heathrow Frequencies) ---
-	case "sim/cockpit/radios/com1_freq_hz":
+	case simdata.DRSimCockpitRadiosCom1FreqHz:
 		return int(11850) // EGLL Tower
-	case "sim/cockpit/radios/com2_freq_hz":
+	case simdata.DRSimCockpitRadiosCom2FreqHz:
 		return int(12190) // EGLL Ground
-	case "sim/atc/com1_tuned_facility":
+	case simdata.DRSimATCCom1TunedFacility:
 		return -1 //3 // Tower
-	case "sim/atc/com2_tuned_facility":
+	case simdata.DRSimATCCom2TunedFacility:
 		return -1 //2 // Ground
 
 	// --- Sim Time ---
-	case "sim/time/local_date_days":
+	case simdata.DRSimTimeLocalDateDays:
 		return 15 // Example: days since Jan 1
-	case "sim/time/local_time_sec":
+	case simdata.DRSimTimeLocalTimeSec:
 		return 39600.0 + float64(iter) // 11:00:00 am local time
-	case "sim/time/zulu_time_sec":
+	case simdata.DRSimTimeZuluTimeSec:
 		return 39600.0 + float64(iter) // 12:00:00 Zulu
 
 	// --- Weather ---
-	case "sim/weather/aircraft/barometer_current_pas":
+	case simdata.DRSimWeatherAircraftBarometer:
 		// Typical altimeter setting in Pascals
 		return 101325.0 + (float64(iter) * 0.01)
-	case "sim/weather/region/sealevel_pressure_pas":
+	case simdata.DRSimWeatherRegionSeaLevelPressure:
 		// Sea level pressure in Pascals (1013.25 hPa == 101325 Pa)
 		return 101325.0 + (float64(iter) * 1.0)
-	case "sim/flightmodel/position/magnetic_variation":
+	case simdata.DRSimFlightmodelPositionMagVariation:
 		return 1.1
-	case "sim/weather/region/turbulence":
+	case simdata.DRSimWeatherRegionTurbulence:
 		return []float64{0.2 + float64(iter/10)}
-	case "sim/weather/region/shear_speed_msc":
+	case simdata.DRSimWeatherRegionShearSpeed:
 		return []float64{1.0 + float64(iter/2)}
-	case "sim/weather/region/wind_speed_msc":
+	case simdata.DRSimWeatherRegionWindSpeed:
 		return []float64{5.0 + float64(iter)}
-	case "sim/weather/region/wind_direction_degt":
+	case simdata.DRSimWeatherRegionWindDirection:
 		return []float64{90.0 + float64(iter*4)}
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
-	case "trafficglobal/ai/position_lat":
+	case simdata.DRTrafficGlobalAIPositionLat:
 		return []float64{
 			51.4695,                           // AC1: Near Terminal 5
 			51.4710 + (float64(iter) * 0.001), // AC2: Taxiing toward 27R
 			51.4770 + (float64(iter) * 0.005), // AC3: On Final Approach
 		}
 
-	case "trafficglobal/ai/position_long":
+	case simdata.DRTrafficGlobalAIPositionLong:
 		return []float64{
 			-0.4870,
 			-0.4600 + (float64(iter) * 0.001),
 			-0.3500 + (float64(iter) * 0.005),
 		}
 
-	case "trafficglobal/ai/position_heading":
+	case simdata.DRTrafficGlobalAIPositionHeading:
 		return []float64{90.0, 270.0, 270.0}
 
-	case "trafficglobal/ai/position_elev":
+	case simdata.DRTrafficGlobalAIPositionElev:
 		return []float64{
 			25.0,  // Ground
 			25.0,  // Ground
 			300.5, // Descending on Final
 		}
 
-	case "trafficglobal/ai/aircraft_code":
+	case simdata.DRTrafficGlobalAIAircraftCode:
 		// B378, A320, A359
 		s := "B788\x00A320\x00A359\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case "trafficglobal/ai/ai_class":
+	case simdata.DRTrafficGlobalAIClass:
 		return []int{5, 2, 4}
 
-	case "trafficglobal/ai/airline_code":
+	case simdata.DRTrafficGlobalAIAirlineCode:
 		s := "BAW\x00EZY\x00VIR\x00" // British Airways, EasyJet, Virgin Atlantic
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case "trafficglobal/ai/flight_phase":
+	case simdata.DRTrafficGlobalAIFlightPhase:
 		// Provide deterministic transitions per-iteration for the three sample aircraft:
 		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 6, 7)
 		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (7, 8, 10)
@@ -380,10 +380,10 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 			return []int{7, 10, 11}
 		}
 
-	case "trafficglobal/ai/runway":
+	case simdata.DRTrafficGlobalAIRunway:
 		return []float64{4994866, 5388082, 5388082, 5388082}
 
-	case "trafficglobal/ai/tail_number":
+	case simdata.DRTrafficGlobalAITailNumber:
 		// G-AOWK,138,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
 		// G-BCOL,599,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
 		// G-ARBD,342,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
@@ -391,10 +391,10 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		s := "G-AOWK\x00G-BCOL\x00G-ARBD\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case "trafficglobal/ai/flight_num":
+	case simdata.DRTrafficGlobalAIFlightNum:
 		return []int{138, 599, 342}
 
-	case "trafficglobal/ai/parking":
+	case simdata.DRTrafficGlobalAIParking:
 		s := "22\x00RAMP 19\x00215L\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	}

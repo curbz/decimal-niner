@@ -13,82 +13,119 @@ type XPlaneTime struct {
 	ZuluTimeSecs  float64 // sim/time/zulu_time_sec
 }
 
+// Dataref name constants — use these everywhere to avoid string literals
+const (
+	DRSimWeatherAircraftBarometer        = "sim/weather/aircraft/barometer_current_pas"
+	DRSimWeatherRegionSeaLevelPressure   = "sim/weather/region/sealevel_pressure_pas"
+	DRSimFlightmodelPositionMagVariation = "sim/flightmodel/position/magnetic_variation"
+	DRSimWeatherRegionTurbulence         = "sim/weather/region/turbulence"
+	DRSimWeatherRegionShearSpeed         = "sim/weather/region/shear_speed_msc"
+	DRSimWeatherRegionWindSpeed          = "sim/weather/region/wind_speed_msc"
+	DRSimWeatherRegionWindDirection      = "sim/weather/region/wind_direction_degt"
+
+	DRSimFlightmodelPositionLatitude = "sim/flightmodel/position/latitude"
+	DRSimFlightmodelPositionLongitude = "sim/flightmodel/position/longitude"
+	DRSimFlightmodelPositionElevation = "sim/flightmodel/position/elevation"
+	DRSimFlightmodelPositionPsi = "sim/flightmodel/position/psi"
+
+	DRSimCockpitRadiosCom1FreqHz = "sim/cockpit/radios/com1_freq_hz"
+	DRSimCockpitRadiosCom2FreqHz = "sim/cockpit/radios/com2_freq_hz"
+	DRSimATCCom1TunedFacility = "sim/atc/com1_tuned_facility"
+	DRSimATCCom2TunedFacility = "sim/atc/com2_tuned_facility"
+
+	DRTrafficGlobalAIPositionLat     = "trafficglobal/ai/position_lat"
+	DRTrafficGlobalAIPositionLong    = "trafficglobal/ai/position_long"
+	DRTrafficGlobalAIPositionHeading = "trafficglobal/ai/position_heading"
+	DRTrafficGlobalAIPositionElev    = "trafficglobal/ai/position_elev"
+	DRTrafficGlobalAIAircraftCode    = "trafficglobal/ai/aircraft_code"
+	DRTrafficGlobalAIAirlineCode     = "trafficglobal/ai/airline_code"
+	DRTrafficGlobalAITailNumber      = "trafficglobal/ai/tail_number"
+	DRTrafficGlobalAIClass           = "trafficglobal/ai/ai_class"
+	DRTrafficGlobalAIFlightNum       = "trafficglobal/ai/flight_num"
+	DRTrafficGlobalAIParking         = "trafficglobal/ai/parking"
+	DRTrafficGlobalAIFlightPhase     = "trafficglobal/ai/flight_phase"
+	DRTrafficGlobalAIRunway          = "trafficglobal/ai/runway"
+
+	DRSimTimeLocalDateDays = "sim/time/local_date_days"
+	DRSimTimeLocalTimeSec  = "sim/time/local_time_sec"
+	DRSimTimeZuluTimeSec   = "sim/time/zulu_time_sec"
+)
+
 var SubscribeDatarefs = []xpapimodel.Dataref{
-	//TODO: use constants throughout application for all dataref names
 
 	//weather
-	{Name: "sim/weather/aircraft/barometer_current_pas", // float <-- 97878.51
+	{Name: DRSimWeatherAircraftBarometer, // float <-- 97878.51
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/weather/region/sealevel_pressure_pas", // float <-- 98220.164
+	{Name: DRSimWeatherRegionSeaLevelPressure, // float <-- 98220.164
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/magnetic_variation",
+	{Name: DRSimFlightmodelPositionMagVariation,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/weather/region/turbulence",
+	{Name: DRSimWeatherRegionTurbulence,
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "sim/weather/region/shear_speed_msc",
+	{Name: DRSimWeatherRegionShearSpeed,
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "sim/weather/region/wind_speed_msc",
+	{Name: DRSimWeatherRegionWindSpeed,
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "sim/weather/region/wind_direction_degt",
+	{Name: DRSimWeatherRegionWindDirection,
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
 
 	//user position datarefs
-	{Name: "sim/flightmodel/position/latitude",
+	{Name: DRSimFlightmodelPositionLatitude,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/longitude",
+	{Name: DRSimFlightmodelPositionLongitude,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/elevation",
+	{Name: DRSimFlightmodelPositionElevation,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/flightmodel/position/psi", // heading
+	{Name: DRSimFlightmodelPositionPsi, // heading
 		APIInfo: xpapimodel.DatarefInfo{}},
 
 	//user tuned atc facilities and frequencies
-	{Name: "sim/cockpit/radios/com1_freq_hz",
+	{Name: DRSimCockpitRadiosCom1FreqHz,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/cockpit/radios/com2_freq_hz",
+	{Name: DRSimCockpitRadiosCom2FreqHz,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/atc/com1_tuned_facility",
+	{Name: DRSimATCCom1TunedFacility,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/atc/com2_tuned_facility",
+	{Name: DRSimATCCom2TunedFacility,
 		APIInfo: xpapimodel.DatarefInfo{}},
 
 	//traffic global datarefs
-	{Name: "trafficglobal/ai/position_lat", // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+	{Name: DRTrafficGlobalAIPositionLat, // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_long", // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+	{Name: DRTrafficGlobalAIPositionLong, // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_heading", // Float array <-- failed to retrieve this one
+	{Name: DRTrafficGlobalAIPositionHeading, // Float array <-- failed to retrieve this one
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/position_elev", // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+	{Name: DRTrafficGlobalAIPositionElev, // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
-	{Name: "trafficglobal/ai/aircraft_code", // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+	{Name: DRTrafficGlobalAIAircraftCode, // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/airline_code", // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+	{Name: DRTrafficGlobalAIAirlineCode, // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/tail_number", // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+	{Name: DRTrafficGlobalAITailNumber, // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/ai_class", // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+	{Name: DRTrafficGlobalAIClass, // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/flight_num", // Int array of flight numbers <-- [471,471,471,471,471]
+	{Name: DRTrafficGlobalAIFlightNum, // Int array of flight numbers <-- [471,471,471,471,471]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
-	{Name: "trafficglobal/ai/parking", // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+	{Name: DRTrafficGlobalAIParking, // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
-	{Name: "trafficglobal/ai/flight_phase", // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+	{Name: DRTrafficGlobalAIFlightPhase, // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
 
 	// The runway is the designator at the source airport if the flight phase is one of:
 	//   FP_TaxiOut, FP_Depart, FP_Climbout
 	// ... and at the destination airport if the flight phase is one of:
 	//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
-	{Name: "trafficglobal/ai/runway", // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+	{Name: DRTrafficGlobalAIRunway, // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
 		APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
 }
 
 var SimTimeDatarefs = []xpapimodel.Dataref{
-	{Name: "sim/time/local_date_days",
+	{Name: DRSimTimeLocalDateDays,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/time/local_time_sec",
+	{Name: DRSimTimeLocalTimeSec,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: "sim/time/zulu_time_sec",
+	{Name: DRSimTimeZuluTimeSec,
 		APIInfo: xpapimodel.DatarefInfo{}},
 }

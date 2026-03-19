@@ -219,19 +219,19 @@ func (xpc *XPConnect) GetSimTime() (simdata.XPlaneTime, error) {
 		}
 
 		switch dr.Name {
-		case "sim/time/local_date_days":
+		case simdata.DRSimTimeLocalDateDays:
 			if v, ok := value.(float64); ok {
 				xplaneTime.LocalDateDays = int(v)
 			} else {
 				return xplaneTime, fmt.Errorf("unexpected type for %s: %T", dr.Name, value)
 			}
-		case "sim/time/local_time_sec":
+		case simdata.DRSimTimeLocalTimeSec:
 			if v, ok := value.(float64); ok {
 				xplaneTime.LocalTimeSecs = v
 			} else {
 				return xplaneTime, fmt.Errorf("unexpected type for %s: %T", dr.Name, value)
 			}
-		case "sim/time/zulu_time_sec":
+		case simdata.DRSimTimeZuluTimeSec:
 			if v, ok := value.(float64); ok {
 				xplaneTime.ZuluTimeSecs = v
 			} else {
@@ -533,15 +533,15 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 
 func (xpc *XPConnect) updateWeatherData() {
 
-	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/aircraft/barometer_current_pas", 0)
-	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/sealevel_pressure_pas", 0)
-	magVar, errMv := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/magnetic_variation", 0)
+	flightBaro, errFb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherAircraftBarometer, 0)
+	sealevelBaro, errSb := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherRegionSeaLevelPressure, 0)
+	magVar, errMv := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionMagVariation, 0)
 	// request index 0 for the following datarefs as this is surface/sea-level layer which is most applicable for flight phases
 	// where this will be utilised
-	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/turbulence", 0)
-	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/shear_speed_msc", 0)
-	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_speed_msc", 0)
-	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/weather/region/wind_direction_degt", 0)
+	turbMag, errTm := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherRegionTurbulence, 0)
+	wsMag, errWs := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherRegionShearSpeed, 0)
+	speed, errSp := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherRegionWindSpeed, 0)
+	dir, errDr := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimWeatherRegionWindDirection, 0)
 
 	if errFb != nil || errSb != nil || errMv != nil || errTm != nil || errWs != nil || errSp != nil || errDr != nil {
 		logErrors(errFb, errSb)
@@ -598,10 +598,10 @@ func (xpc *XPConnect) updateWeatherData() {
 func (xpc *XPConnect) updateUserData() {
 
 	// get updated comms
-	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com1_freq_hz", 0)
-	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/cockpit/radios/com2_freq_hz", 0)
-	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com1_tuned_facility", 0)
-	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/atc/com2_tuned_facility", 0)
+	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimCockpitRadiosCom1FreqHz, 0)
+	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimCockpitRadiosCom2FreqHz, 0)
+	com1FacilityVal, errF1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimATCCom1TunedFacility, 0)
+	com2FacilityVal, errF2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimATCCom2TunedFacility, 0)
 
 	// check for errors
 	if errC1 != nil || errC2 != nil || errF1 != nil || errF2 != nil {
@@ -639,9 +639,9 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	// get updated position
-	latVal, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/latitude", 0)
-	lngVal, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/longitude", 0)
-	altVal, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "sim/flightmodel/position/elevation", 0)
+	latVal, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionLatitude, 0)
+	lngVal, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionLongitude, 0)
+	altVal, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionElevation, 0)
 
 	// check for errors
 	if errLat != nil || errLng != nil || errAlt != nil {
@@ -689,7 +689,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/tail_number")
+	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAITailNumber)
 	if tailNumbersDR == nil {
 		logger.Log.Error("error: tail number dataref not found")
 		return
@@ -702,8 +702,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/airline_code")
-	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_num")
+	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIAirlineCode)
+	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightNum)
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		logger.Log.Error("error: airline code or flight number dataref not found")
 	} else {
@@ -735,7 +735,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
+		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightPhase, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -749,10 +749,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
-		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_long", index)
-		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_elev", index)
-		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_heading", index)
+			lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLat, index)
+			lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLong, index)
+			alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionElev, index)
+			hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionHeading, index)
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
@@ -773,7 +773,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update parking
-		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)
+		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIParking, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -785,7 +785,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update assigned runway
-		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/runway", index)
+		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIRunway, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -857,7 +857,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 	util.LogWithLabel(registration, "New aircraft detected registration %s flight number %d", registration, flightNumber)
 
 	// get aircraft class
-	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
+	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIClass, index)
 	sizeClass := class.(int)
 	if err != nil || sizeClass > 5 {
 		logger.Log.Error(err)
