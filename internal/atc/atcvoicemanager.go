@@ -400,7 +400,7 @@ func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
 
 		if _, exists := vm.sessions[target]; exists {
 			delete(vm.sessions, target)
-			logger.Log.Infof("VoiceManager: Successfully released %s\n", target)
+			logger.Log.Printf("VoiceManager: Successfully released %s\n", target)
 		}
 	})
 }

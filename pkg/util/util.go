@@ -74,18 +74,18 @@ func SendJSON(conn *websocket.Conn, data interface{}) {
 	msg, err := json.Marshal(data)
 	if err != nil {
 		if logger.Log != nil {
-			logger.Log.Infof("SendJSON: error marshaling JSON: %v", err)
+			logger.Log.Printf("SendJSON: error marshaling JSON: %v", err)
 		}
 		return
 	}
 
 	if logger.Log != nil {
-		logger.Log.Infof("-> Sending: %s", string(msg))
+		logger.Log.Printf("-> Sending: %s", string(msg))
 	}
 
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 		if logger.Log != nil {
-			logger.Log.Infof("SendJSON: error writing message: %v", err)
+			logger.Log.Printf("SendJSON: error writing message: %v", err)
 		}
 		return
 	}
@@ -108,7 +108,7 @@ func LoadConfig[T any](filepath string) (*T, error) {
 	}
 
 	if logger.Log != nil {
-		logger.Log.Infof("Configuration loaded from %s", filepath)
+		logger.Log.Printf("Configuration loaded from %s", filepath)
 	} else {
 		fmt.Printf("Configuration loaded from %s\n", filepath)
 	}

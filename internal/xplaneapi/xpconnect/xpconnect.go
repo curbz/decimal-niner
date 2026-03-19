@@ -127,7 +127,7 @@ func (xpc *XPConnect) Start() {
 	if xpc.conn != nil {
 		defer func() { _ = xpc.conn.Close() }()
 	}
-	logger.Log.Info("WebSocket connection established.")
+	logger.Log.Println("WebSocket connection established.")
 
 	done := make(chan struct{})
 
@@ -145,7 +145,7 @@ func (xpc *XPConnect) Start() {
 					logger.Log.Info("Connection closed")
 					return
 				}
-				logger.Log.Error("Read error from X-Plane websocket:", err)
+				logger.Log.Println("Read error from X-Plane websocket:", err)
 				return
 			}
 			xpc.processMessage(message)

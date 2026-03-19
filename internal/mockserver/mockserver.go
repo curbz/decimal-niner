@@ -103,7 +103,7 @@ func Start(port string) *http.Server {
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
 	util.GoSafe(func() {
-		logger.Log.Infof("mockserver: listening on %s", srv.Addr)
+		logger.Log.Printf("mockserver: listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log.Infof("mockserver: ListenAndServe error: %v", err)
 		}
