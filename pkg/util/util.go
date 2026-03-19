@@ -122,7 +122,7 @@ func GoSafe(fn func()) {
 		defer func() {
 			if r := recover(); r != nil {
 				if logger.Log != nil {
-					logger.Log.Printf("panic recovered in goroutine: %v", r)
+					logger.Log.Errorf("panic recovered in goroutine: %v", r)
 				} else {
 					fmt.Printf("panic recovered in goroutine: %v\n", r)
 				}

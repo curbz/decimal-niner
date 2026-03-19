@@ -98,9 +98,11 @@ func main() {
 	// Connect to X-Plane
 	xpc := xpconnect.New(cfgPath, atcService)
 	atcService.SetDataProvider(xpc)
-	if xpc != nil {
-		xpc.Start()
+	if xpc == nil {
+		logger.Log.Fatal("failed to connect to X-Plane")
 	}
+	
+	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown
 	interrupt := make(chan os.Signal, 1)
@@ -111,7 +113,5 @@ func main() {
 	<-interrupt
 
 	logger.Log.Println("Received interrupt, shutting down...")
-	if xpc != nil {
-		xpc.Stop()
-	}
+	xpc.Stop()
 }
