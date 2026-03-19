@@ -53,4 +53,3 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 		}
 	}
 }
-

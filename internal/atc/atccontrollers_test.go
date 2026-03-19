@@ -5,6 +5,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
+
 func TestPerformSearch(t *testing.T) {
 
 	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true, "EGHI": true}

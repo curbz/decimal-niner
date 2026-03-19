@@ -151,8 +151,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	vm := NewVoiceManager(cfg)
 
-	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm)
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)
+	util.GoSafe(func() { PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) })
+	util.GoSafe(func() { RadioPlayer(cfg.ATC.Voices.Sox.Application) })
 
 	return &Service{
 		Config:          cfg,
@@ -169,9 +169,11 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 func (s *Service) Run() {
 	s.startComms()
-	go s.VoiceManager.startCleaner(30*time.Second, func() (float64, float64) {
-		us := s.GetUserState()
-		return us.Position.Lat, us.Position.Long
+	util.GoSafe(func() {
+		s.VoiceManager.startCleaner(30*time.Second, func() (float64, float64) {
+			us := s.GetUserState()
+			return us.Position.Lat, us.Position.Long
+		})
 	})
 }
 

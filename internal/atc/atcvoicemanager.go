@@ -372,18 +372,19 @@ func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
 
 	// Use a goroutine for a "Graceful Cooldown"
 	// This prevents the race condition with prepAndQueuePhrase
-	go func(targetKey string) {
+	target := key
+	util.GoSafe(func() {
 		// 15s is usually enough for the 'Engine Shutdown' audio to finish
 		time.Sleep(15 * time.Second)
 
 		vm.mu.Lock()
 		defer vm.mu.Unlock()
 
-		if _, exists := vm.sessions[targetKey]; exists {
-			delete(vm.sessions, targetKey)
-			logger.Log.Printf("VoiceManager: Successfully released %s\n", targetKey)
+		if _, exists := vm.sessions[target]; exists {
+			delete(vm.sessions, target)
+			logger.Log.Printf("VoiceManager: Successfully released %s\n", target)
 		}
-	}(key)
+	})
 }
 
 func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (float64, float64)) {

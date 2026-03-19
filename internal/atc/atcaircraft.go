@@ -122,7 +122,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	// placed within the go routine.
 	acSnap := deepcopy.Copy(ac).(*Aircraft)
 
-	go func() {
+	util.GoSafe(func() {
 		// +-----------------------------------------------------------------+
 		// | Only use acSnap to reference the aircraft within the go routine |
 		// +-----------------------------------------------------------------+
@@ -130,7 +130,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		if acSnap.Flight.Comms.Controller != nil {
 			s.Transmit(s.UserState, acSnap)
 		}
-	}()
+	})
 }
 
 func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
@@ -393,5 +393,3 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 func calculateDistance(pos1, pos2 Position) float64 {
 	return geometry.DistNM(pos1.Lat, pos1.Long, pos2.Lat, pos2.Long)
 }
-
-

@@ -32,12 +32,12 @@ func (s *Service) GetWeatherState() *Weather {
 func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 	// Standard pressure in inches of mercury
 	const standardPressure = 101325.0 // Pascals
-	
+
 	// If pressure is standard or higher, TL is usually TA + 1000ft
 	if currBaroPascals >= standardPressure {
 		return (transitionAlt / 100) + 10 // e.g., 6000ft -> FL70
 	}
-	
+
 	// If pressure is low, we need more space, so we add an extra level
 	return (transitionAlt / 100) + 20 // e.g., 6000ft -> FL80
 }
@@ -60,7 +60,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool)
 	}
 
 	// Flight Level Logic (At or above Transition Altitude)
-	if roundedAlt >= (transitionLevel * 100) || roundedAlt >= 18000 {
+	if roundedAlt >= (transitionLevel*100) || roundedAlt >= 18000 {
 		fl := roundedAlt / 100
 
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
@@ -74,4 +74,3 @@ func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool)
 
 	return roundedAlt, false
 }
-

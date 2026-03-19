@@ -87,7 +87,7 @@ type PiperConfig struct {
 func (s *Service) startComms() {
 
 	// main loop to read from channel and process instructions
-	go func() {
+	util.GoSafe(func() {
 		for ac := range s.Broadcast {
 			// process instructions here based on aircraft phase or other criteria
 			// this process may generate a new exchange between aircraft and ATC
@@ -116,7 +116,7 @@ func (s *Service) startComms() {
 					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
-					go func() {
+					util.GoSafe(func() {
 						// in twenty seconds, simulate the aircraft entering the new sector as this is not actually detected
 						time.Sleep(20 * time.Second)
 						ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
@@ -124,7 +124,7 @@ func (s *Service) startComms() {
 						// calling transmit brings us back into this same switch code, but the HandoffEnterSector case will trigger.
 						// note that the user may not hear the entry exchange if they are not tuned to the same frequency
 						s.Transmit(s.UserState, ac)
-					}()
+					})
 				}
 
 				continue
@@ -198,7 +198,7 @@ func (s *Service) startComms() {
 				s.VoiceManager.ReleaseSession(ac)
 			}
 		}
-	}()
+	})
 }
 
 // autoReadback will generate the readback phrase from the original
@@ -357,7 +357,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 	if strings.Contains(phrase, "{NOREADBACK}") {
 		phrase = strings.ReplaceAll(phrase, "{NOREADBACK}", "")
 	}
-	
+
 	phrase = translateNumerics(phrase)
 	phrase = cleanPhrase(phrase)
 
@@ -445,9 +445,11 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 
 		// Feed text immediately so Piper starts synthesizing in the background
 		// Must close stdin to signal EOF to piper
-		go func(s io.WriteCloser, t string) {
-			defer s.Close()
-			_, err := io.WriteString(s, t)
+		stdinCopy := stdin
+		textCopy := msg.Text
+		util.GoSafe(func() {
+			defer stdinCopy.Close()
+			_, err := io.WriteString(stdinCopy, textCopy)
 			if err != nil {
 				util.LogWithLabel(msg.AircraftSnap.Registration, "Error writing to piper stdin: %v", err)
 				return
@@ -455,7 +457,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			// A tiny pause ensures the C++ buffer has moved the text
 			// to the synthesis engine before the pipe 'disappears'
 			time.Sleep(10 * time.Millisecond)
-		}(stdin, msg.Text)
+		})
 
 		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
 

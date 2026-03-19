@@ -120,7 +120,7 @@ func (xpc *XPConnect) Start() {
 	done := make(chan struct{})
 
 	// Start websocket listener
-	go func() {
+	util.GoSafe(func() {
 		defer close(done)
 		for {
 			_, message, err := xpc.conn.ReadMessage()
@@ -134,7 +134,7 @@ func (xpc *XPConnect) Start() {
 			}
 			xpc.processMessage(message)
 		}
-	}()
+	})
 
 	// Send subscription requests
 	logger.Log.Println("sending dataref subscription requests")
