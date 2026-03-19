@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/gorilla/websocket"
 )
 
@@ -101,12 +102,12 @@ func Start(port string) *http.Server {
 	mux.HandleFunc("/api/v2", wsHandler)
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
-	go func() {
+	util.GoSafe(func() {
 		logger.Log.Printf("mockserver: listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log.Printf("mockserver: ListenAndServe error: %v", err)
 		}
-	}()
+	})
 	return srv
 }
 
@@ -168,11 +169,11 @@ func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mu.Lock()
-	name := idToName[id]
+	name, nameOk := idToName[id]
 	vt := idToValueType[id]
 	mu.Unlock()
 
-	if name == "" {
+	if !nameOk || name == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -243,27 +244,30 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// send a few updates asynchronously
-			go func(ids []int64) {
+			idsCopy := append([]int64(nil), ids...)
+			util.GoSafe(func() {
 				for i := 0; i < 3; i++ {
 					time.Sleep(750 * time.Millisecond)
 					payload := make(map[string]interface{})
-					for _, id := range ids {
+					for _, id := range idsCopy {
 						mu.Lock()
-						vt := idToValueType[id]
+						vt, vtOk := idToValueType[id]
+						name, nameOk := idToName[id]
 						mu.Unlock()
 
-						// Prefer name-specific samples when available
-						name := ""
-						mu.Lock()
-						name = idToName[id]
-						mu.Unlock()
+						if !vtOk {
+							vt = ""
+						}
+						if !nameOk {
+							name = ""
+						}
 
 						payload[strconv.FormatInt(id, 10)] = samplePayloadForName(name, vt, i)
 					}
 					msg := map[string]interface{}{"type": "dataref_update_values", "data": payload}
 					conn.WriteJSON(msg)
 				}
-			}(ids)
+			})
 
 		default:
 			// echo unknown messages

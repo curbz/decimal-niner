@@ -76,7 +76,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
-		logger.Log.Fatalf("Error reading configuration file: %v\n", err)
+		logger.Log.Errorf("Error reading configuration file: %v", err)
+		return nil
 	}
 
 	start := time.Now()
@@ -85,23 +86,27 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	logger.Log.Println("Loading X-Plane Holds data")
 	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
-		logger.Log.Fatalf("Error loading hold data: %v", err)
+		logger.Log.Errorf("Error loading hold data: %v", err)
+		return nil
 	}
 	logger.Log.Printf("Holds data loaded: seeded %d holds\n", len(globalHolds))
 
 	// load controller data and create airports
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
-		logger.Log.Fatalf("Error parsing airports data file: %v", err)
+		logger.Log.Errorf("Error parsing airports data file: %v", err)
+		return nil
 	}
 	atcControllers, err := parseATCdatFiles(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
-		logger.Log.Fatalf("Error parsing ATC data file: %v", err)
+		logger.Log.Errorf("Error parsing ATC data file: %v", err)
+		return nil
 	}
 	db := append(atcControllers, arptControllers...)
 	regionControllers, err := parseATCdatFiles(cfg.ATC.AtcRegionsFile, true, requiredAirports)
 	if err != nil {
-		logger.Log.Fatalf("Error parsing ATC regions file: %v", err)
+		logger.Log.Errorf("Error parsing ATC regions file: %v", err)
+		return nil
 	}
 	db = append(db, regionControllers...)
 
@@ -110,7 +115,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
 	if err != nil {
-		logger.Log.Fatal("Error loading airport data from CIFP files: ", err)
+		logger.Log.Errorf("Error loading airport data from CIFP files: %v", err)
+		return nil
 	}
 	logger.Log.Println("Airport data loaded: seeded", len(airports), "airports")
 
@@ -121,20 +127,23 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	// load airlines from JSON file
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
 	if err != nil {
-		logger.Log.Fatalf("FATAL: Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Errorf("Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		return nil
 	}
 	defer airlinesFile.Close()
 
 	airlinesBytes, err := io.ReadAll(airlinesFile)
 	if err != nil {
-		logger.Log.Fatalf("FATAL: Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Errorf("Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		return nil
 	}
 
 	var airlinesData map[string]AirlineInfo
 	// Unmarshal the JSON into the map
 	err = json.Unmarshal(airlinesBytes, &airlinesData)
 	if err != nil {
-		logger.Log.Fatalf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		logger.Log.Errorf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
+		return nil
 	}
 	logger.Log.Printf("Airlines loaded successfully (%d)", len(airlinesData))
 
@@ -151,8 +160,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	vm := NewVoiceManager(cfg)
 
-	go PrepSpeech(cfg.ATC.Voices.Piper.Application, vm)
-	go RadioPlayer(cfg.ATC.Voices.Sox.Application)
+	util.GoSafe(func() { PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) })
+	util.GoSafe(func() { RadioPlayer(cfg.ATC.Voices.Sox.Application) })
 
 	return &Service{
 		Config:          cfg,
@@ -169,9 +178,11 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 func (s *Service) Run() {
 	s.startComms()
-	go s.VoiceManager.startCleaner(30*time.Second, func() (float64, float64) {
-		us := s.GetUserState()
-		return us.Position.Lat, us.Position.Long
+	util.GoSafe(func() {
+		s.VoiceManager.startCleaner(30*time.Second, func() (float64, float64) {
+			us := s.GetUserState()
+			return us.Position.Lat, us.Position.Long
+		})
 	})
 }
 

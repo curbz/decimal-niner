@@ -2,7 +2,7 @@ package atc
 
 import "github.com/curbz/decimal-niner/internal/trafficglobal"
 
-var SizeClass = []string {
+var SizeClass = []string{
 	"A", "B", "C", "D", "E", "F",
 }
 
@@ -242,15 +242,15 @@ var icaoToIsoMap = map[string]string{
 }
 
 var registrationMap = map[string]string{
-    "G":  "EG", // UK
-    "N":  "K",  // USA
-    "XB": "MM", // Mexico
-    "XA": "MM", // Mexico
-    "D":  "ED", // Germany
-    "F":  "LF", // France
-    "EI": "EI", // Ireland
-    "VH": "YW", // Australia
-    "C":  "CY", // Canada
+	"G":  "EG", // UK
+	"N":  "K",  // USA
+	"XB": "MM", // Mexico
+	"XA": "MM", // Mexico
+	"D":  "ED", // Germany
+	"F":  "LF", // France
+	"EI": "EI", // Ireland
+	"VH": "YW", // Australia
+	"C":  "CY", // Canada
 }
 
 var phoneticMap = map[string]string{
@@ -276,104 +276,102 @@ var numericMap = map[rune]string{
 	'9': "niner",
 }
 
-var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility {
+var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility{
 	// PRE-FLIGHT & DEPARTURE
 	trafficglobal.Parked: {
 		atcPhase: "pre_flight_parked",
-		roleId: 1,
+		roleId:   1,
 	},
 	trafficglobal.Startup: {
 		atcPhase: "startup",
-		roleId: 2,
+		roleId:   2,
 	},
 	trafficglobal.TaxiOut: {
 		atcPhase: "taxi_out",
-		roleId: 2,
+		roleId:   2,
 	},
 	trafficglobal.Depart: {
 		atcPhase: "depart",
-		roleId: 3,
+		roleId:   3,
 	},
 	trafficglobal.Climbout: {
 		atcPhase: "climb_out",
-		roleId: 4,
+		roleId:   4,
 	},
 	// --- ENROUTE & ARRIVAL ---
 	trafficglobal.Cruise: {
 		atcPhase: "cruise",
-		roleId: 6,
+		roleId:   6,
 	},
 	trafficglobal.Approach: {
 		atcPhase: "approach",
-		roleId: 5,
+		roleId:   5,
 	},
 	trafficglobal.Holding: {
 		atcPhase: "holding",
-		roleId: 5,
+		roleId:   5,
 	},
 	trafficglobal.Final: {
 		atcPhase: "final",
-		roleId: 3,
+		roleId:   3,
 	},
 	trafficglobal.GoAround: {
 		atcPhase: "go_around",
-		roleId: 3,
+		roleId:   3,
 	},
 	// --- LANDING & TAXI-IN ---
 	trafficglobal.Braking: {
 		// In Traffic Global, Braking usually covers the rollout and runway exit
 		atcPhase: "braking",
-		roleId: 3,
+		roleId:   3,
 	},
 	trafficglobal.TaxiIn: {
 		atcPhase: "taxi_in",
-		roleId: 2,
+		roleId:   2,
 	},
 	trafficglobal.Shutdown: {
 		atcPhase: "post_flight_parked",
-		roleId: 2,
+		roleId:   2,
 	},
 }
 
-var roleNameMap = map[int]string {
+var roleNameMap = map[int]string{
 	-1: "None",
-    0: "Unicom",    // Mapped from 1051
-    1: "Delivery",  // Mapped from 1052
-    2: "Ground",    // Mapped from 1053
-    3: "Tower",     // Mapped from 1054
-    4: "Departure", // Mapped from 1056
-    5: "Approach",  // Mapped from 1055
-    6: "Center",    // Mapped from 1050
-    7: "FSS",
-    8: "ATIS",
+	0:  "Unicom",    // Mapped from 1051
+	1:  "Delivery",  // Mapped from 1052
+	2:  "Ground",    // Mapped from 1053
+	3:  "Tower",     // Mapped from 1054
+	4:  "Departure", // Mapped from 1056
+	5:  "Approach",  // Mapped from 1055
+	6:  "Center",    // Mapped from 1050
+	7:  "FSS",
+	8:  "ATIS",
 }
 
 var handoffMap = map[trafficglobal.FlightPhase]int{
-    trafficglobal.Parked: 	2, // Delivery -> Ground
-    trafficglobal.TaxiOut:  3, // Ground -> Tower
-    trafficglobal.Depart:   4, // Tower -> Departure
-    trafficglobal.Climbout: 6, // Departure -> Center
-    trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
-    trafficglobal.Approach: 3, // Approach -> Tower
-    trafficglobal.Braking:  2, // Tower -> Ground
+	trafficglobal.Parked:   2, // Delivery -> Ground
+	trafficglobal.TaxiOut:  3, // Ground -> Tower
+	trafficglobal.Depart:   4, // Tower -> Departure
+	trafficglobal.Climbout: 6, // Departure -> Center
+	trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
+	trafficglobal.Approach: 3, // Approach -> Tower
+	trafficglobal.Braking:  2, // Tower -> Ground
 }
 
 var approachRank = map[string]int{
-    "I": 1, // ILS
-    "L": 2, // LOC
-    "A": 3, // RNAV
-    "V": 4, // VOR
-    "N": 5, // NDB
-    "C": 6, // Circling
+	"I": 1, // ILS
+	"L": 2, // LOC
+	"A": 3, // RNAV
+	"V": 4, // VOR
+	"N": 5, // NDB
+	"C": 6, // Circling
 }
 
 var approachString = map[string]string{
-    "I": "ILS",
-    "L": "LOC",
-    "A": "RNAV",
-    "V": "VOR",
-    "N": "NDB",
-    "C": "Circling",
+	"I": "ILS",
+	"L": "LOC",
+	"A": "RNAV",
+	"V": "VOR",
+	"N": "NDB",
+	"C": "Circling",
 }
-
-

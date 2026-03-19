@@ -57,7 +57,12 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
-		logger.Log.Fatalf("Error reading configuration file: %v\n", err)
+		logger.Log.Errorf("Error reading configuration file: %v", err)
+		return &XPConnect{
+			aircraftMap:        make(map[string]*atc.Aircraft),
+			atcService:         atcService,
+			memDataRefIndexMap: make(map[int]*xpapimodel.Dataref),
+		}
 	}
 
 	return &XPConnect{
@@ -78,7 +83,8 @@ func (xpc *XPConnect) Start() {
 	var err error
 	simInitTime, err := xpc.initSimTime()
 	if err != nil {
-		logger.Log.Fatalf("FATAL: Could not get sim time: %v", err)
+		logger.Log.Errorf("Could not get sim time: %v", err)
+		return
 	}
 	xpc.atcService.SetSimTime(simInitTime, time.Now())
 
@@ -86,7 +92,8 @@ func (xpc *XPConnect) Start() {
 	// Get dataref indices via Web API REST
 	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {
-		logger.Log.Fatalf("FATAL: Failed to retrieve Dataref Indices via REST: %v", err)
+		logger.Log.Errorf("Failed to retrieve Dataref Indices via REST: %v", err)
+		return
 	}
 
 	// Log results
@@ -97,9 +104,11 @@ func (xpc *XPConnect) Start() {
 	if len(xpc.memSubscribeDataRefIndexMap) == len(simdata.SubscribeDatarefs) {
 		logger.Log.Println("SUCCESS: All DataRef Indices received.")
 	} else if len(xpc.memSubscribeDataRefIndexMap) > 0 {
-		logger.Log.Fatalf("Only %d of %d dataref indices were received", len(xpc.memSubscribeDataRefIndexMap), len(simdata.SubscribeDatarefs))
+		logger.Log.Errorf("Only %d of %d dataref indices were received", len(xpc.memSubscribeDataRefIndexMap), len(simdata.SubscribeDatarefs))
+		// proceed but warn; some datarefs missing may limit functionality
 	} else {
-		logger.Log.Fatal("FATAL: Received no dataref indices from X-Plane web API.")
+		logger.Log.Error("Received no dataref indices from X-Plane web API.")
+		return
 	}
 
 	// connect to X-Plane WebSocket
@@ -112,16 +121,23 @@ func (xpc *XPConnect) Start() {
 
 	xpc.conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		logger.Log.Fatalf("FATAL: Could not connect to X-Plane WebSocket: %v", err)
+		logger.Log.Errorf("Could not connect to X-Plane WebSocket: %v", err)
+		return
 	}
-	defer xpc.conn.Close()
+	if xpc.conn != nil {
+		defer func() { _ = xpc.conn.Close() }()
+	}
 	logger.Log.Println("WebSocket connection established.")
 
 	done := make(chan struct{})
 
 	// Start websocket listener
-	go func() {
+	util.GoSafe(func() {
 		defer close(done)
+		if xpc.conn == nil {
+			logger.Log.Error("WebSocket connection is nil; listener exiting")
+			return
+		}
 		for {
 			_, message, err := xpc.conn.ReadMessage()
 			if err != nil {
@@ -129,12 +145,12 @@ func (xpc *XPConnect) Start() {
 					logger.Log.Println("Connection closed")
 					return
 				}
-				logger.Log.Println("Fatal read error. X-Plane may have shutdown:", err)
+				logger.Log.Println("Read error from X-Plane websocket:", err)
 				return
 			}
 			xpc.processMessage(message)
 		}
-	}()
+	})
 
 	// Send subscription requests
 	logger.Log.Println("sending dataref subscription requests")
@@ -204,11 +220,23 @@ func (xpc *XPConnect) GetSimTime() (simdata.XPlaneTime, error) {
 
 		switch dr.Name {
 		case "sim/time/local_date_days":
-			xplaneTime.LocalDateDays = int(value.(float64))
+			if v, ok := value.(float64); ok {
+				xplaneTime.LocalDateDays = int(v)
+			} else {
+				return xplaneTime, fmt.Errorf("unexpected type for %s: %T", dr.Name, value)
+			}
 		case "sim/time/local_time_sec":
-			xplaneTime.LocalTimeSecs = value.(float64)
+			if v, ok := value.(float64); ok {
+				xplaneTime.LocalTimeSecs = v
+			} else {
+				return xplaneTime, fmt.Errorf("unexpected type for %s: %T", dr.Name, value)
+			}
 		case "sim/time/zulu_time_sec":
-			xplaneTime.ZuluTimeSecs = value.(float64)
+			if v, ok := value.(float64); ok {
+				xplaneTime.ZuluTimeSecs = v
+			} else {
+				return xplaneTime, fmt.Errorf("unexpected type for %s: %T", dr.Name, value)
+			}
 		}
 	}
 
@@ -445,38 +473,58 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 	// Decode based on expected type
 	switch dr.DecodedDataType {
 	case "base64_string_array":
-		// Attempt to decode as base64-null-terminated string blob
-		if decoded, err := util.DecodeNullTerminatedString(value.(string)); err == nil && len(decoded) > 0 {
-			//logger.Log.Printf("DataRef %s id: %d decoded strings: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, decoded)
+		s, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value has wrong type: %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		}
+		if decoded, err := util.DecodeNullTerminatedString(s); err == nil && len(decoded) > 0 {
 			dr.Value = decoded
 		} else {
-			// Otherwise, print raw string
-			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value: %v error: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
+			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value: %v error: %v", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
 		}
 	case "uint32_string_array":
-		strArray := make([]string, len(value.([]any)))
-		for i, elem := range value.([]any) {
-			strArray[i] = util.DecodeUint32(uint32(elem.(float64)))
+		arr, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("dataref %s id %d expected []any for uint32_string_array, got %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		}
+		strArray := make([]string, len(arr))
+		for i, elem := range arr {
+			f, ok := elem.(float64)
+			if !ok {
+				return fmt.Errorf("dataref %s id %d element index %d expected float64, got %T", dr.APIInfo.Name, dr.APIInfo.ID, i, elem)
+			}
+			strArray[i] = util.DecodeUint32(uint32(f))
 		}
 		dr.Value = strArray
-		//logger.Log.Printf("DataRef %s id: %d uint32 decoded: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, strArray)
 	case "float_array":
-		floatArray := make([]float64, len(value.([]any)))
-		for i, elem := range value.([]any) {
-			floatArray[i] = elem.(float64)
+		arr, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("dataref %s id %d expected []any for float_array, got %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		}
+		floatArray := make([]float64, len(arr))
+		for i, elem := range arr {
+			f, ok := elem.(float64)
+			if !ok {
+				return fmt.Errorf("dataref %s id %d element index %d expected float64, got %T", dr.APIInfo.Name, dr.APIInfo.ID, i, elem)
+			}
+			floatArray[i] = f
 		}
 		dr.Value = floatArray
-		//logger.Log.Printf("DataRef %s id: %d floats: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, floatArray)
 	case "int_array":
-		intArray := make([]int, len(value.([]any)))
-		for i, elem := range value.([]any) {
-			intArray[i] = int(elem.(float64))
+		arr, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("dataref %s id %d expected []any for int_array, got %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
+		}
+		intArray := make([]int, len(arr))
+		for i, elem := range arr {
+			f, ok := elem.(float64)
+			if !ok {
+				return fmt.Errorf("dataref %s id %d element index %d expected float64, got %T", dr.APIInfo.Name, dr.APIInfo.ID, i, elem)
+			}
+			intArray[i] = int(f)
 		}
 		dr.Value = intArray
-		//logger.Log.Printf("DataRef %s id: %d ints: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, intArray)
 	default:
-		// Unknown or unspecified type — print raw
-		//logger.Log.Printf("DataRef %s id: %d raw payload: %v\n", dr.APIInfo.Name, dr.APIInfo.ID, value)
 		dr.Value = value
 	}
 
@@ -501,13 +549,48 @@ func (xpc *XPConnect) updateWeatherData() {
 	}
 
 	w := xpc.atcService.GetWeatherState()
-	w.Baro.Flight = flightBaro.(float64)
-	w.Baro.Sealevel = sealevelBaro.(float64)
-	w.MagVar = magVar.(float64)
-	w.Turbulence = turbMag.(float64)
-	w.Wind.Shear = wsMag.(float64)
-	w.Wind.Speed = speed.(float64)
-	w.Wind.Direction = dir.(float64)
+	if v, ok := flightBaro.(float64); ok {
+		w.Baro.Flight = v
+	} else {
+		logger.Log.Error("weather flight baro has unexpected type", flightBaro)
+		return
+	}
+	if v, ok := sealevelBaro.(float64); ok {
+		w.Baro.Sealevel = v
+	} else {
+		logger.Log.Error("weather sealevel baro has unexpected type", sealevelBaro)
+		return
+	}
+	if v, ok := magVar.(float64); ok {
+		w.MagVar = v
+	} else {
+		logger.Log.Error("weather magVar has unexpected type", magVar)
+		return
+	}
+	if v, ok := turbMag.(float64); ok {
+		w.Turbulence = v
+	} else {
+		logger.Log.Error("weather turbulence has unexpected type", turbMag)
+		return
+	}
+	if v, ok := wsMag.(float64); ok {
+		w.Wind.Shear = v
+	} else {
+		logger.Log.Error("weather shear has unexpected type", wsMag)
+		return
+	}
+	if v, ok := speed.(float64); ok {
+		w.Wind.Speed = v
+	} else {
+		logger.Log.Error("weather speed has unexpected type", speed)
+		return
+	}
+	if v, ok := dir.(float64); ok {
+		w.Wind.Direction = v
+	} else {
+		logger.Log.Error("weather direction has unexpected type", dir)
+		return
+	}
 
 }
 
@@ -534,10 +617,18 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	// convert to target types
-	com1Freq := int(com1FreqVal.(float64))
-	com2Freq := int(com2FreqVal.(float64))
-	com1Facility := int(com1FacilityVal.(float64))
-	com2Facility := int(com2FacilityVal.(float64))
+	cf1, ok1 := com1FreqVal.(float64)
+	cf2, ok2 := com2FreqVal.(float64)
+	cfac1, ok3 := com1FacilityVal.(float64)
+	cfac2, ok4 := com2FacilityVal.(float64)
+	if !ok1 || !ok2 || !ok3 || !ok4 {
+		logger.Log.Error("unexpected types for coms/facility datarefs")
+		return
+	}
+	com1Freq := int(cf1)
+	com2Freq := int(cf2)
+	com1Facility := int(cfac1)
+	com2Facility := int(cfac2)
 
 	userState := xpc.atcService.GetUserState()
 	// check for changes
@@ -565,9 +656,16 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	// convert to target value types
-	lat := latVal.(float64)
-	lng := lngVal.(float64)
-	alt := altVal.(float64) * 3.28084
+	latF, lok := latVal.(float64)
+	lngF, lok2 := lngVal.(float64)
+	altF, aok := altVal.(float64)
+	if !lok || !lok2 || !aok {
+		logger.Log.Error("unexpected types for position datarefs")
+		return
+	}
+	lat := latF
+	lng := lngF
+	alt := altF * 3.28084
 
 	// check for changes
 	posChanged := false
@@ -621,14 +719,19 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	// for each tail number and flight number combination, get or create aircraft object
 	for index, tailNumber := range tailNumbers {
-		acKey := fmt.Sprintf("%s_%d", tailNumber, flightNums[index])
+		// safe flight number access
+		flightNum := 0
+		if index < len(flightNums) {
+			flightNum = flightNums[index]
+		}
+		acKey := fmt.Sprintf("%s_%d", tailNumber, flightNum)
 		aircraft, exists := xpc.aircraftMap[acKey]
 		if !exists {
 			airlineCode := "unknown"
 			if index < len(airlineCodes) {
 				airlineCode = airlineCodes[index]
 			}
-			aircraft = xpc.createNewAircraft(index, flightNums[index], acKey, tailNumber, airlineCode)
+			aircraft = xpc.createNewAircraft(index, flightNum, acKey, tailNumber, airlineCode)
 		}
 
 		// Update aircraft flight phase
@@ -637,8 +740,13 @@ func (xpc *XPConnect) updateAircraftData() {
 			logger.Log.Println(err)
 			return
 		}
-		// Update ONLY current fllight phase - this creates the 'delta' that the next loop will look for.
-		aircraft.Flight.Phase.Current = flightPhase.(int)
+		if v, ok := flightPhase.(int); ok {
+			aircraft.Flight.Phase.Current = v
+		} else if vf, okf := flightPhase.(float64); okf {
+			aircraft.Flight.Phase.Current = int(vf)
+		} else {
+			logger.Log.Errorf("unexpected type for flight_phase at index %d: %T", index, flightPhase)
+		}
 
 		// Update position
 		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/position_lat", index)
@@ -649,11 +757,19 @@ func (xpc *XPConnect) updateAircraftData() {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
 		}
+		latF, lok := lat.(float64)
+		lngF, lok2 := lng.(float64)
+		altF, aok := alt.(float64)
+		hdgF, hok := hdg.(float64)
+		if !lok || !lok2 || !aok || !hok {
+			logger.Log.Errorf("unexpected position data types for aircraft %s at index %d", tailNumber, index)
+			continue
+		}
 		aircraft.Flight.Position = atc.Position{
-			Lat:      lat.(float64),
-			Long:     lng.(float64),
-			Altitude: alt.(float64) * 3.28084, // Ensure AI altitude is also in feet
-			Heading:  hdg.(float64),
+			Lat:      latF,
+			Long:     lngF,
+			Altitude: altF * 3.28084, // Ensure AI altitude is also in feet
+			Heading:  hdgF,
 		}
 
 		// update parking
@@ -662,7 +778,11 @@ func (xpc *XPConnect) updateAircraftData() {
 			logger.Log.Println(err)
 			return
 		}
-		aircraft.Flight.AssignedParking = parking.(string)
+		if p, ok := parking.(string); ok {
+			aircraft.Flight.AssignedParking = p
+		} else {
+			logger.Log.Errorf("unexpected parking type for aircraft %s at index %d: %T", tailNumber, index, parking)
+		}
 
 		// update assigned runway
 		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/runway", index)
@@ -670,7 +790,11 @@ func (xpc *XPConnect) updateAircraftData() {
 			logger.Log.Println(err)
 			return
 		}
-		aircraft.Flight.AssignedRunway = runway.(string)
+		if r, ok := runway.(string); ok {
+			aircraft.Flight.AssignedRunway = r
+		} else {
+			logger.Log.Errorf("unexpected runway type for aircraft %s at index %d: %T", tailNumber, index, runway)
+		}
 
 	}
 

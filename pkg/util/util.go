@@ -64,13 +64,30 @@ func DecodeUint32(val uint32) string {
 
 // SendJSON is a utility function for the WebSocket connection (not used for REST).
 func SendJSON(conn *websocket.Conn, data interface{}) {
-	msg, err := json.Marshal(data)
-	logger.Log.Printf("-> Sending: %s", string(msg))
-	if err != nil {
-		logger.Log.Fatalf("Error marshaling JSON: %v", err)
+	if conn == nil {
+		if logger.Log != nil {
+			logger.Log.Print("SendJSON: websocket conn is nil, skipping send")
+		}
+		return
 	}
+
+	msg, err := json.Marshal(data)
+	if err != nil {
+		if logger.Log != nil {
+			logger.Log.Printf("SendJSON: error marshaling JSON: %v", err)
+		}
+		return
+	}
+
+	if logger.Log != nil {
+		logger.Log.Printf("-> Sending: %s", string(msg))
+	}
+
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-		logger.Log.Fatalf("Error writing message: %v", err)
+		if logger.Log != nil {
+			logger.Log.Printf("SendJSON: error writing message: %v", err)
+		}
+		return
 	}
 }
 
@@ -90,9 +107,29 @@ func LoadConfig[T any](filepath string) (*T, error) {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	logger.Log.Printf("Configuration loaded from %s", filepath)
+	if logger.Log != nil {
+		logger.Log.Printf("Configuration loaded from %s", filepath)
+	} else {
+		fmt.Printf("Configuration loaded from %s\n", filepath)
+	}
 
 	return &config, nil
+}
+
+// GoSafe starts a goroutine and recovers from any panic, logging it.
+func GoSafe(fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if logger.Log != nil {
+					logger.Log.Errorf("panic recovered in goroutine: %v", r)
+				} else {
+					fmt.Printf("panic recovered in goroutine: %v\n", r)
+				}
+			}
+		}()
+		fn()
+	}()
 }
 
 // PickRandomFromMap returns a random key from the given map
@@ -145,12 +182,12 @@ func GetISOWeekday(t time.Time) int {
 	return (int(t.Weekday()) + 6) % 7
 }
 
-// logs as debug 
+// logs as debug
 func LogDebugWithLabel(label string, msg string, args ...interface{}) {
 	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
 }
 
-// logs as info 
+// logs as info
 func LogWithLabel(label string, msg string, args ...interface{}) {
 	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
 }
@@ -166,10 +203,9 @@ func LogErrWithLabel(label string, msg string, args ...interface{}) {
 }
 
 func LogWithLabelAndLevel(label string, level logrus.Level, msg string, args ...interface{}) {
-    if label == "" {
-        label = "------"
-    }
+	if label == "" {
+		label = "------"
+	}
 	msg = fmt.Sprintf("[%s] %s", label, msg)
 	logger.Log.Logf(level, msg, args...)
 }
-

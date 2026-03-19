@@ -54,10 +54,29 @@ func main() {
 	// Initialize the logger once at start
 	logger.Init(cfg.D9.LoggingLevel)
 
+	var srv any
 	if *mock {
-		logger.Log.Println("Starting local mock X-Plane server on :8086")
-		srv := mockserver.Start("8086")
-		defer srv.Close()
+		if logger.Log != nil {
+			logger.Log.Println("Starting local mock X-Plane server on :8086")
+		}
+		s := mockserver.Start("8086")
+		srv = s
+		if srv != nil {
+			defer func() {
+				switch v := srv.(type) {
+				case interface{ Close() error }:
+					if err := v.Close(); err != nil {
+						if logger.Log != nil {
+							logger.Log.Printf("error closing mock server: %v", err)
+						}
+					}
+				case interface{ Close() }:
+					v.Close()
+				default:
+					// no close available
+				}
+			}()
+		}
 		// small pause to let mock server start before client attempts to connect
 		time.Sleep(250 * time.Millisecond)
 	}
@@ -68,11 +87,21 @@ func main() {
 
 	// Create ATC service
 	atcService := atc.New(cfgPath, fScheds, airports)
+	if atcService == nil {
+		if logger.Log != nil {
+			logger.Log.Println("failed to create ATC service, exiting")
+		}
+		return
+	}
 	atcService.Run()
 
 	// Connect to X-Plane
 	xpc := xpconnect.New(cfgPath, atcService)
 	atcService.SetDataProvider(xpc)
+	if xpc == nil {
+		logger.Log.Fatal("failed to connect to X-Plane")
+	}
+	
 	xpc.Start()
 
 	// Wait for interrupt signal to gracefully shutdown

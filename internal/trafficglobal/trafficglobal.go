@@ -93,7 +93,8 @@ func LoadConfig(cfgPath string) *config {
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
-		logger.Log.Fatalf("Error reading configuration file: %v\n", err)
+		logger.Log.Errorf("Error reading configuration file: %v", err)
+		return nil
 	}
 
 	return cfg
@@ -106,12 +107,14 @@ func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) 
 	start := time.Now()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		logger.Log.Fatalf("error reading bgl file: %v\n", err)
+		logger.Log.Errorf("error reading bgl file: %v\n", err)
+		return nil, nil
 	}
 
 	legs, airportICAOlist := collectAllLegsSequential(data)
 	if len(legs) == 0 {
-		logger.Log.Fatalf("no legs extracted from bgl file %s", filePath)
+		logger.Log.Errorf("no legs extracted from bgl file %s", filePath)
+		return nil, nil
 	}
 	logger.Log.Printf("BGL traffic parser extracted %d legs and %d airports in %v\n", len(legs), len(airportICAOlist), time.Since(start))
 
