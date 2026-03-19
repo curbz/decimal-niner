@@ -89,7 +89,7 @@ type config struct {
 
 func LoadConfig(cfgPath string) *config {
 
-	logger.Log.Println("Loading Traffic Global configurations")
+	logger.Log.Info("Loading Traffic Global configurations")
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
@@ -102,7 +102,7 @@ func LoadConfig(cfgPath string) *config {
 
 func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) {
 
-	logger.Log.Printf("Loading Traffic Global BGL file: %s\n", filePath)
+	logger.Log.Infof("Loading Traffic Global BGL file: %s\n", filePath)
 
 	start := time.Now()
 	data, err := os.ReadFile(filePath)
@@ -116,7 +116,7 @@ func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) 
 		logger.Log.Errorf("no legs extracted from bgl file %s", filePath)
 		return nil, nil
 	}
-	logger.Log.Printf("BGL traffic parser extracted %d legs and %d airports in %v\n", len(legs), len(airportICAOlist), time.Since(start))
+	logger.Log.Infof("BGL traffic parser extracted %d legs and %d airports in %v\n", len(legs), len(airportICAOlist), time.Since(start))
 
 	schedules := make(map[string][]ScheduledFlight)
 	for _, l := range legs {

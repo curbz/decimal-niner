@@ -78,7 +78,7 @@ var requestCounter atomic.Int64
 
 func (xpc *XPConnect) Start() {
 
-	logger.Log.Println("get sim time from x-plane web api")
+	logger.Log.Info("get sim time from x-plane web api")
 
 	var err error
 	simInitTime, err := xpc.initSimTime()
@@ -88,7 +88,7 @@ func (xpc *XPConnect) Start() {
 	}
 	xpc.atcService.SetSimTime(simInitTime, time.Now())
 
-	logger.Log.Println("get traffic global dataref incides from x-plane web api")
+	logger.Log.Info("get traffic global dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
 	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {
@@ -97,12 +97,12 @@ func (xpc *XPConnect) Start() {
 	}
 
 	// Log results
-	logger.Log.Println("Retrieved DataRef Indices:")
+	logger.Log.Info("Retrieved DataRef Indices:")
 	for id, datarefInfo := range xpc.memSubscribeDataRefIndexMap {
-		logger.Log.Printf("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
+		logger.Log.Infof("  - %-40s -> ID: %d\n", datarefInfo.Name, id)
 	}
 	if len(xpc.memSubscribeDataRefIndexMap) == len(simdata.SubscribeDatarefs) {
-		logger.Log.Println("SUCCESS: All DataRef Indices received.")
+		logger.Log.Info("SUCCESS: All DataRef Indices received.")
 	} else if len(xpc.memSubscribeDataRefIndexMap) > 0 {
 		logger.Log.Errorf("Only %d of %d dataref indices were received", len(xpc.memSubscribeDataRefIndexMap), len(simdata.SubscribeDatarefs))
 		// proceed but warn; some datarefs missing may limit functionality
@@ -112,7 +112,7 @@ func (xpc *XPConnect) Start() {
 	}
 
 	// connect to X-Plane WebSocket
-	logger.Log.Println("connecting to x-plane websocket")
+	logger.Log.Info("connecting to x-plane websocket")
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -127,7 +127,7 @@ func (xpc *XPConnect) Start() {
 	if xpc.conn != nil {
 		defer func() { _ = xpc.conn.Close() }()
 	}
-	logger.Log.Println("WebSocket connection established.")
+	logger.Log.Info("WebSocket connection established.")
 
 	done := make(chan struct{})
 
@@ -142,10 +142,10 @@ func (xpc *XPConnect) Start() {
 			_, message, err := xpc.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					logger.Log.Println("Connection closed")
+					logger.Log.Info("Connection closed")
 					return
 				}
-				logger.Log.Println("Read error from X-Plane websocket:", err)
+				logger.Log.Info("Read error from X-Plane websocket:", err)
 				return
 			}
 			xpc.processMessage(message)
@@ -153,7 +153,7 @@ func (xpc *XPConnect) Start() {
 	})
 
 	// Send subscription requests
-	logger.Log.Println("sending dataref subscription requests")
+	logger.Log.Info("sending dataref subscription requests")
 	xpc.sendDatarefSubscription()
 
 	// Keep connection alive until interrupt
@@ -162,7 +162,7 @@ func (xpc *XPConnect) Start() {
 }
 
 func (xpc *XPConnect) Stop() {
-	logger.Log.Println("\nDisconnecting...")
+	logger.Log.Info("\nDisconnecting...")
 	xpc.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
@@ -277,7 +277,7 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 
 	var response xpapimodel.APIResponseDatarefValue
 	fullURL := fmt.Sprintf("%s/datarefs/%d/value", xpc.config.XPlane.RestBaseURL, datarefId)
-	logger.Log.Printf("Querying web api: %s", fullURL)
+	logger.Log.Infof("Querying web api: %s", fullURL)
 	// Create the HTTP Request object
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
 	if err != nil {
@@ -305,7 +305,7 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 		body, _ := io.ReadAll(resp.Body)
 		strBody := string(body)
 		if strings.Contains(strBody, "invalid_dataref_name") {
-			logger.Log.Printf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+			logger.Log.Infof("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
 			return nil, errors.New("invalid_dataref_name error - ensure X-Plane is in an active flight situation and the traffic plugin is running")
 		} else {
 			return nil, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
@@ -330,7 +330,7 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 		return response, err
 	}
 
-	logger.Log.Printf("Querying web api: %s", fullURL)
+	logger.Log.Infof("Querying web api: %s", fullURL)
 
 	// Create the HTTP Request object
 	req, err := http.NewRequest(http.MethodGet, fullURL, nil)
@@ -360,7 +360,7 @@ func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimod
 		body, _ := io.ReadAll(resp.Body)
 		strBody := string(body)
 		if strings.Contains(strBody, "invalid_dataref_name") {
-			logger.Log.Printf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
+			logger.Log.Infof("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
 			return response, errors.New("invalid_dataref_name error - ensure X-Plane is in an active flight situation and the traffic plugin is running")
 		} else {
 			return response, fmt.Errorf("received non-OK status code %d from X-Plane REST API. Response: %s", resp.StatusCode, strBody)
@@ -399,7 +399,7 @@ func (xpc *XPConnect) sendDatarefSubscription() {
 	}
 
 	util.SendJSON(xpc.conn, request)
-	logger.Log.Printf("-> Sent Request ID %d: Subscribing to datarefs", reqID)
+	logger.Log.Infof("-> Sent Request ID %d: Subscribing to datarefs", reqID)
 }
 
 // --- Message Processing ---
@@ -417,9 +417,9 @@ func (xpc *XPConnect) processMessage(message []byte) {
 		xpc.handleSubscribedDatarefUpdate(response.Data)
 	case "result":
 		if response.Success {
-			logger.Log.Printf("<- Received Response ID %d: Success", response.RequestID)
+			logger.Log.Infof("<- Received Response ID %d: Success", response.RequestID)
 		} else {
-			logger.Log.Printf("<- Received Response ID %d: Failure", response.RequestID)
+			logger.Log.Infof("<- Received Response ID %d: Failure", response.RequestID)
 		}
 	default:
 		// Catch all other messages
@@ -737,7 +737,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		// Update aircraft flight phase
 		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/flight_phase", index)
 		if err != nil {
-			logger.Log.Println(err)
+			logger.Log.Error(err)
 			return
 		}
 		if v, ok := flightPhase.(int); ok {
@@ -775,7 +775,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		// update parking
 		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/parking", index)
 		if err != nil {
-			logger.Log.Println(err)
+			logger.Log.Error(err)
 			return
 		}
 		if p, ok := parking.(string); ok {
@@ -787,7 +787,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		// update assigned runway
 		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/runway", index)
 		if err != nil {
-			logger.Log.Println(err)
+			logger.Log.Error(err)
 			return
 		}
 		if r, ok := runway.(string); ok {
@@ -832,7 +832,7 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	if !xpc.initialised {
 		xpc.initialised = true
-		logger.Log.Printf("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
+		logger.Log.Infof("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
 	}
 }
 
@@ -860,7 +860,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, "trafficglobal/ai/ai_class", index)
 	sizeClass := class.(int)
 	if err != nil || sizeClass > 5 {
-		logger.Log.Println(err)
+		logger.Log.Error(err)
 		sizeClass = 3 // size class 'D'
 	}
 	aircraft.SizeClass = atc.SizeClass[sizeClass]
@@ -1000,7 +1000,7 @@ func getZuluDateTime(xp simdata.XPlaneTime) time.Time {
 func logErrors(errors ...error) {
 	for _, e := range errors {
 		if e != nil {
-			logger.Log.Println(e)
+			logger.Log.Error(e)
 		}
 	}
 }

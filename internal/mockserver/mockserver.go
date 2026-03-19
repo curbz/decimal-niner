@@ -103,9 +103,9 @@ func Start(port string) *http.Server {
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
 	util.GoSafe(func() {
-		logger.Log.Printf("mockserver: listening on %s", srv.Addr)
+		logger.Log.Infof("mockserver: listening on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.Printf("mockserver: ListenAndServe error: %v", err)
+			logger.Log.Infof("mockserver: ListenAndServe error: %v", err)
 		}
 	})
 	return srv
@@ -188,7 +188,7 @@ func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Printf("mockserver: websocket upgrade error: %v", err)
+		logger.Log.Infof("mockserver: websocket upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
@@ -197,7 +197,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
-			logger.Log.Printf("mockserver: read error: %v", err)
+			logger.Log.Errorf("mockserver: read error: %v", err)
 			return
 		}
 		if mt != websocket.TextMessage {
@@ -206,7 +206,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		var incoming map[string]json.RawMessage
 		if err := json.Unmarshal(msg, &incoming); err != nil {
-			logger.Log.Printf("mockserver: invalid JSON: %v", err)
+			logger.Log.Errorf("mockserver: invalid JSON: %v", err)
 			continue
 		}
 
@@ -271,7 +271,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		default:
 			// echo unknown messages
-			logger.Log.Printf("mockserver: received unknown ws type=%q msg=%s", t, string(msg))
+			logger.Log.Infof("mockserver: received unknown ws type=%q msg=%s", t, string(msg))
 		}
 	}
 }

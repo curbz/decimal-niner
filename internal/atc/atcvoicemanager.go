@@ -400,7 +400,7 @@ func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
 
 		if _, exists := vm.sessions[target]; exists {
 			delete(vm.sessions, target)
-			logger.Log.Printf("VoiceManager: Successfully released %s\n", target)
+			logger.Log.Infof("VoiceManager: Successfully released %s\n", target)
 		}
 	})
 }
@@ -409,7 +409,7 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 	ticker := time.NewTicker(interval)
 	for range ticker.C {
 		vm.mu.Lock()
-		logger.Log.Printf("VoiceManager: Running cleanup, current sessions: %d", len(vm.sessions))
+		logger.Log.Infof("VoiceManager: Running cleanup, current sessions: %d", len(vm.sessions))
 		pLat, pLon := getUserPos()
 		now := time.Now()
 		evicted := 0
@@ -437,9 +437,9 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 		}
 
 		if evicted > 0 {
-			logger.Log.Println("VoiceManager: Evicted", evicted, "stale sessions")
+			logger.Log.Info("VoiceManager: Evicted", evicted, "stale sessions")
 		}
-		logger.Log.Printf("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
+		logger.Log.Infof("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
 		vm.mu.Unlock()
 	}
 }
