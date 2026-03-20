@@ -459,7 +459,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			time.Sleep(10 * time.Millisecond)
 		})
 
-		util.LogWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
+		util.LogDebugWithLabel(msg.AircraftSnap.Registration, "sending message to radio player")
 
 		// Send the running process to the player queue
 		radioPlayer <- &PreparedAudio{
@@ -496,7 +496,7 @@ func RadioPlayer(soxPath string) {
 				defer a.VoiceLock.Unlock()
 			}
 
-			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
+			util.LogDebugWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received message, processing")
 
 			args := []string{
 				"-t", "raw", "-r", strconv.Itoa(audio.SampleRate), "-e", "signed-integer", "-b", "16", "-c", "1", "-",
@@ -540,7 +540,7 @@ func RadioPlayer(soxPath string) {
 				//}
 			}
 
-			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
+			util.LogDebugWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
 
 			// force a small gap between transmissions
 			time.Sleep(time.Duration(rand.Intn(500)+500) * time.Millisecond)
