@@ -5,10 +5,70 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
+	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
 type MockAirportProvider struct {
 	MockReturn string
+}
+
+func TestInferFlightPlan(t *testing.T) {
+
+	inferTests := []struct {
+		name       string
+		mockReturn string
+		phaseClass PhaseClass
+		initOrigin string
+		initDest   string
+		wantOrigin string
+		wantDest   string
+	}{
+		{name: "departing sets origin", mockReturn: "EGLL", phaseClass: Departing, initOrigin: "", initDest: "", wantOrigin: "EGLL", wantDest: ""},
+		{name: "arriving sets destination", mockReturn: "KJFK", phaseClass: Arriving, initOrigin: "", initDest: "", wantOrigin: "", wantDest: "KJFK"},
+		{name: "does not overwrite existing origin/dest", mockReturn: "ZZZZ", phaseClass: Departing, initOrigin: "EXIST", initDest: "DEST", wantOrigin: "EXIST", wantDest: "DEST"},
+	}
+
+	for _, tt := range inferTests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{AirportService: &MockAirportProvider{MockReturn: tt.mockReturn}}
+			ac := &Aircraft{}
+			ac.Flight.Phase.Class = tt.phaseClass
+			ac.Flight.Origin = tt.initOrigin
+			ac.Flight.Destination = tt.initDest
+
+			s.inferFlightPlan(ac)
+
+			if ac.Flight.Origin != tt.wantOrigin {
+				t.Fatalf("%s: expected origin %q, got %q", tt.name, tt.wantOrigin, ac.Flight.Origin)
+			}
+			if ac.Flight.Destination != tt.wantDest {
+				t.Fatalf("%s: expected destination %q, got %q", tt.name, tt.wantDest, ac.Flight.Destination)
+			}
+		})
+	}
+}
+
+func TestCalculateDistance(t *testing.T) {
+
+	distTests := []struct {
+		name string
+		p1   Position
+		p2   Position
+		want float64
+	}{
+		{name: "zero distance", p1: Position{Lat: 51.0, Long: -0.1}, p2: Position{Lat: 51.0, Long: -0.1}, want: 0},
+		{name: "one degree lat", p1: Position{Lat: 0.0, Long: 0.0}, p2: Position{Lat: 1.0, Long: 0.0}, want: float64(geometry.DistNM(0, 0, 1, 0))},
+	}
+
+	for _, tt := range distTests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := calculateDistance(tt.p1, tt.p2)
+			const eps = 0.0001
+			if diff := d - tt.want; diff < -eps || diff > eps {
+				t.Fatalf("%s: distance mismatch: got %f want %f", tt.name, d, tt.want)
+			}
+		})
+	}
 }
 
 func (m *MockAirportProvider) GetClosestAirport(lat, long float64) string {
@@ -331,6 +391,86 @@ func TestSetFlightPhaseClass_Detailed(t *testing.T) {
 			if ac.Flight.Phase.Class != tt.expectedClass {
 				t.Errorf("%s: expected %v, got %v", tt.name, tt.expectedClass, ac.Flight.Phase.Class)
 			}
+		})
+	}
+}
+
+func TestCheckForCruiseSectorChange(t *testing.T) {
+	tests := []struct {
+		name                 string
+		setup                func() (*Service, *Aircraft)
+		wantLastCheckedDelta bool // whether LastCheckedPosition should be updated to Position
+	}{
+		{
+			name: "not cruise - no change",
+			setup: func() (*Service, *Aircraft) {
+				s := &Service{}
+				ac := &Aircraft{}
+				ac.Flight.Phase.Current = trafficglobal.Parked.Index()
+				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
+				ac.Flight.Position = Position{Lat: 51.0, Long: -0.1}
+				return s, ac
+			},
+			wantLastCheckedDelta: false,
+		},
+		{
+			name: "cruise initial checkpoint sets last checked",
+			setup: func() (*Service, *Aircraft) {
+				s := &Service{}
+				ac := &Aircraft{}
+				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
+				ac.Flight.Position = Position{Lat: 51.5, Long: -0.2}
+				return s, ac
+			},
+			wantLastCheckedDelta: true,
+		},
+		{
+			name: "cruise small movement - no update",
+			setup: func() (*Service, *Aircraft) {
+				s := &Service{}
+				ac := &Aircraft{}
+				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.LastCheckedPosition = Position{Lat: 51.0000, Long: -0.1000}
+				ac.Flight.Position = Position{Lat: 51.00005, Long: -0.10005} // ~ few meters
+				ac.Flight.Comms.Controller = &Controller{}
+				ac.Flight.Comms.CruiseHandoff = NoHandoff
+				return s, ac
+			},
+			wantLastCheckedDelta: false,
+		},
+		{
+			name: "cruise large movement - update last checked",
+			setup: func() (*Service, *Aircraft) {
+				s := &Service{}
+				ac := &Aircraft{}
+				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.LastCheckedPosition = Position{Lat: 51.0, Long: -0.1}
+				ac.Flight.Position = Position{Lat: 51.2, Long: -0.1} // ~0.2 deg lat ~= 12 NM
+				ac.Flight.Comms.Controller = &Controller{}
+				ac.Flight.Comms.CruiseHandoff = NoHandoff
+				return s, ac
+			},
+			wantLastCheckedDelta: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, ac := tc.setup()
+			before := ac.Flight.LastCheckedPosition
+			s.CheckForCruiseSectorChange(ac)
+			after := ac.Flight.LastCheckedPosition
+			if tc.wantLastCheckedDelta {
+				if before.Lat == after.Lat && before.Long == after.Long {
+					t.Fatalf("expected LastCheckedPosition to change but it did not: before=%v after=%v", before, after)
+				}
+			} else {
+				if before.Lat != after.Lat || before.Long != after.Long {
+					t.Fatalf("expected LastCheckedPosition to remain same but it changed: before=%v after=%v", before, after)
+				}
+			}
+
 		})
 	}
 }
