@@ -343,9 +343,9 @@ var roleNameMap = map[int]string{
 	3:  "Tower",     // Mapped from 1054
 	4:  "Departure", // Mapped from 1056
 	5:  "Approach",  // Mapped from 1055
-	6:  "Center",    // Mapped from 1050
-	7:  "FSS",
-	8:  "ATIS",
+	6:  "Center",    
+	7:  "Information Service", // Mapped from 1050
+	8:  "Information Service", // Mapped from 1051
 }
 
 var handoffMap = map[trafficglobal.FlightPhase]int{

@@ -420,7 +420,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	var airportPoints []aptPoint
 
 	roleMap := map[string]int{
-		"1050": 6, "1051": 0, "1052": 1, "1053": 2, "1054": 3, "1055": 5, "1056": 4,
+		"1050": 7, // Information (Weather)
+		"1051": 0, // Defaulting 1051 to Role 0 (Unicom/Radio) 
+		"1052": 1, // Delivery
+		"1053": 2, // Ground
+		"1054": 3, // Tower
+		"1056": 4, // Departure
+		"1055": 5, // Approach
 	}
 
 	for scanner.Scan() {

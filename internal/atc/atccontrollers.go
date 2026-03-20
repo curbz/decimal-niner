@@ -68,7 +68,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 		"gnd":    2,
 		"twr":    3,
 		"tracon": 4, // Approach/Departure
-		"ctr":    6, // Standardized to 6 to match Center logic in parseApt function
+		"ctr":    6, 
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -299,9 +299,9 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// --- TIER 1: SCAN POINTS (Proximity + Frequency) ---
-	for i := range s.Controllers {
-		c := s.Controllers[i]
-		if !c.IsPoint {
+	for _, c := range s.Controllers {
+
+		if !c.IsPoint || c.RoleID >= 7 {
 			continue
 		}
 
