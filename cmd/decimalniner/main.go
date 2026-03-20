@@ -99,7 +99,7 @@ func main() {
 	xpc := xpconnect.New(cfgPath, atcService)
 	atcService.SetDataProvider(xpc)
 	if xpc == nil {
-		logger.Log.Fatal("failed to connect to X-Plane")
+		logger.Log.Fatal("failed to create xpconnect")
 	}
 
 	xpc.Start()
