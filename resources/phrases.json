@@ -36,7 +36,7 @@
   "cruise": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {$TURBULENCE}", "atc": "{$CALLSIGN}, {$FACILITY} Center, Roger, {$BARO}.{NOREADBACK}" },
     { "initiator": "atc", "pilot": "Heading {$HEADING}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {$FACILITY}, continue to fly heading {$HEADING}. {$TURBULENCE}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, requesting {$ALT_CLEARANCE}.", "atc": "{$CALLSIGN}, {$ALT_CLEARANCE}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, request to {$ALT_CLEARANCE}.", "atc": "{$CALLSIGN}, {$ALT_CLEARANCE}." },
     { "initiator": "atc", "pilot": "maintaining altitude {$ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, maintain altitude. {$TURBULENCE}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, with you at {$ALTITUDE}. {$TURBULENCE}.", "atc": "{$CALLSIGN}, affirm, radar contact. {$TURBULENCE}" }
   ],
@@ -75,8 +75,8 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, exit next available, {$HANDOFF}." }
   ],
   "taxi_in": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of runway {$RUNWAY}, taxi to {$PARKING}.", "atc": "{$CALLSIGN}, taxi to {$PARKING}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of the active, taxi to the terminal.", "atc": "{$CALLSIGN}, Ground, taxi to the terminal via the main apron, hold short of company traffic." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of runway {$RUNWAY}", "atc": "{$CALLSIGN}, taxi to {$PARKING}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of the active", "atc": "{$CALLSIGN}, Ground, proceed via taxiway to ($PARKING}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to parking.", "atc": "{$CALLSIGN}, taxi to {$PARKING}." },
     { "initiator": "atc", "atc": "{$CALLSIGN}, taxi to {$PARKING}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, taxiing to stand.", "atc": "{$CALLSIGN}, [Roger, continue to] {$PARKING}." }
