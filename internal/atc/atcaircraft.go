@@ -3,6 +3,7 @@ package atc
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
@@ -400,6 +401,31 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	default:
 		ph.Class = Unknown
 	}
+}
+
+func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
+	
+	// 1. Try the Controller's ICAO first (works for Tower/Approach)
+    cIcao := ac.Flight.Comms.Controller.ICAO
+    if ap, ok := s.Airports[cIcao]; ok && ap.TransAlt > 0 {
+        transitionAlt = ap.TransAlt
+    } else {
+        // 2. FALLBACK: Look at the nearest airport under the plane
+        // This is crucial for Center controllers who don't have a TransAlt
+        nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+        if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
+            transitionAlt = nearAp.TransAlt
+        } else {
+            // 3. FINAL FALLBACK: Continental Standards
+            // If ICAO starts with E or L (Europe), use 6000, otherwise 18000
+            if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
+                transitionAlt = 6000
+            } else {
+                transitionAlt = 18000
+            }
+        }
+    }
+	return
 }
 
 func calculateDistance(pos1, pos2 Position) float64 {

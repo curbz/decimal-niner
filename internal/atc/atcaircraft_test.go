@@ -474,3 +474,66 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 		})
 	}
 }
+
+// mockAirportProvider used to return a deterministic closest airport
+type mockAirportProviderForTrans struct{ ret string }
+
+func (m *mockAirportProviderForTrans) GetClosestAirport(lat, long float64) string {
+	return m.ret
+}
+
+func TestGetTransistionAltitude_TableDriven(t *testing.T) {
+	tests := []struct {
+		name             string
+		airports         map[string]*Airport
+		airportService   *mockAirportProviderForTrans
+		controllerICAO    string
+		positionLat      float64
+		positionLong     float64
+		want             int
+	}{
+		{
+			name: "controller ICAO with TransAlt",
+			airports: map[string]*Airport{
+				"KAAA": {ICAO: "KAAA", TransAlt: 7000},
+			},
+			airportService: &mockAirportProviderForTrans{ret: ""},
+			controllerICAO: "KAAA",
+			want:           7000,
+		},
+		{
+			name: "nearest airport fallback",
+			airports: map[string]*Airport{
+				"EGLL": {ICAO: "EGLL", TransAlt: 6000},
+			},
+			airportService: &mockAirportProviderForTrans{ret: "EGLL"},
+			controllerICAO: "EGTT",
+			want:           6000,
+		},
+		{
+			name: "regional default when nearest ICAO starts with E",
+			airports: map[string]*Airport{},
+			airportService: &mockAirportProviderForTrans{ret: "EHXX"},
+			controllerICAO: "EGTT",
+			want:           6000,
+		},
+		{
+			name: "global default when nothing found",
+			airports: map[string]*Airport{},
+			airportService: &mockAirportProviderForTrans{ret: ""},
+			controllerICAO: "EGTT",
+			want:           18000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{Airports: tt.airports, AirportService: tt.airportService}
+			ac := &Aircraft{Flight: Flight{Comms: Comms{Controller: &Controller{ICAO: tt.controllerICAO}}, Position: Position{Lat: tt.positionLat, Long: tt.positionLong}}}
+			got := s.getTransistionAltitude(ac)
+			if got != tt.want {
+				t.Fatalf("%s: got %d want %d", tt.name, got, tt.want)
+			}
+		})
+	}
+}

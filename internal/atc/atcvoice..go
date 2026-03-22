@@ -288,13 +288,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		phrase = strings.ReplaceAll(phrase, "{$MAP_FIX}", sayMAfix)
 	}
 	if strings.Contains(phrase, "{$ALTITUDE}") || strings.Contains(phrase, "{$ALT_CLEARANCE}") {
-		transitionAlt := 0
-		cIcao := ac.Flight.Comms.Controller.ICAO
-		if ap, ok := s.Airports[cIcao]; ok {
-			transitionAlt = ap.TransAlt
-		} else {
-			transitionAlt = 18000
-		}
+		transitionAlt := s.getTransistionAltitude(ac)
 		transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
 
 		if strings.Contains(phrase, "{$ALT_CLEARANCE}") {
@@ -665,6 +659,39 @@ func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase 
 	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(clearance), transitionLevel, phase))
 
 	return phrase
+}
+
+// scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
+// is true when the scale is flight levels and false when the returned value is an altitude in feet
+func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool) {
+
+	var roundedAlt int
+	alt := int(rawAlt)
+
+	// Contextual Rounding Logic
+	switch phase.Current {
+	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
+		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
+		roundedAlt = ((alt + 50) / 100) * 100
+	default:
+		// Standard IFR rounding to nearest 1,000ft (e.g., 33,240 -> 33,000)
+		roundedAlt = ((alt + 500) / 1000) * 1000
+	}
+
+	// Flight Level Logic (At or above Transition Altitude)
+	if roundedAlt >= (transitionLevel*100) || roundedAlt >= 18000 {
+		fl := roundedAlt / 100
+
+		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
+		if phase.Current == trafficglobal.Cruise.Index() {
+			fl = (fl / 10) * 10
+		}
+
+		// Returns "flight level 330"
+		return fl, true
+	}
+
+	return roundedAlt, false
 }
 
 // formatParking applies logic to convert parking designations into more natural speech phrases
