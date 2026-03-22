@@ -354,7 +354,10 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	}
 
 	switch ph.Current {
-	case trafficglobal.Parked.Index():
+	// we include Shutdown here as there has been scenarios observed in the traffic global
+	// plugin whereby the aircraft has been assigned a new flight plan whilst still in
+	// the shutdown state
+	case trafficglobal.Parked.Index(), trafficglobal.Shutdown.Index():
 		if ph.Previous == trafficglobal.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
@@ -388,8 +391,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 		trafficglobal.Final.Index(),
 		trafficglobal.GoAround.Index(),
 		trafficglobal.Braking.Index(),
-		trafficglobal.TaxiIn.Index(),
-		trafficglobal.Shutdown.Index():
+		trafficglobal.TaxiIn.Index():
 		ph.Class = Arriving
 		return
 	case trafficglobal.Cruise.Index():

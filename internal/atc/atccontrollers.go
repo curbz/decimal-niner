@@ -278,22 +278,28 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 			// airport not found, resort to proximity search
 			util.LogWithLabel(label, "no airport found for target ICAO of %s - fallback to proximity search", targetICAO)
 		} else {
-			var backupMatch *Controller
-			for _, c := range ap.Controllers {
-				if c.ICAO == targetICAO && c.IsPoint {
-					if tRole != RoleNone && c.RoleID == tRole {
-						return c
-					}
-					if tRole == RoleNone {
-						return c
-					}
-					if backupMatch == nil {
-						backupMatch = c
+			// distance sanity check - is this airport within 50nm?
+			distToTarget := geometry.DistNM(uLa, uLo, ap.Lat, ap.Lon)
+			if distToTarget < 50.0 {
+				var backupMatch *Controller
+				for _, c := range ap.Controllers {
+					if c.ICAO == targetICAO && c.IsPoint {
+						if tRole != RoleNone && c.RoleID == tRole {
+							return c
+						}
+						if tRole == RoleNone {
+							return c
+						}
+						if backupMatch == nil {
+							backupMatch = c
+						}
 					}
 				}
-			}
-			if tRole == RoleNone && backupMatch != nil {
-				return backupMatch
+				if tRole == RoleNone && backupMatch != nil {
+					return backupMatch
+				}
+			} else {
+				util.LogWithLabel(label, "target ICAO %s is too far (%.2fnm) - fallback to proximity search", targetICAO, distToTarget)
 			}
 		}
 	}
