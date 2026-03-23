@@ -49,7 +49,7 @@ type ServiceInterface interface {
 
 // AirportProvider defines the behavior for finding the nearest airport
 type AirportProvider interface {
-	GetClosestAirport(lat, long float64) string
+	GetClosestAirport(lat, long, maxRangeNm float64) string
 }
 
 // --- configuration structures ---

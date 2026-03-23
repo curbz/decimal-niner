@@ -71,7 +71,7 @@ func TestCalculateDistance(t *testing.T) {
 	}
 }
 
-func (m *MockAirportProvider) GetClosestAirport(lat, long float64) string {
+func (m *MockAirportProvider) GetClosestAirport(lat, long, maxRangeNm float64) string {
 	return m.MockReturn
 }
 
@@ -316,7 +316,7 @@ func TestAddFlightPlan(t *testing.T) {
 	}
 }
 
-func TestSetFlightPhaseClass_Detailed(t *testing.T) {
+func TestSetFlightPhaseClass(t *testing.T) {
 	mockAirports := &MockAirportProvider{}
 	s := &Service{AirportService: mockAirports}
 
@@ -478,11 +478,11 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 // mockAirportProvider used to return a deterministic closest airport
 type mockAirportProviderForTrans struct{ ret string }
 
-func (m *mockAirportProviderForTrans) GetClosestAirport(lat, long float64) string {
+func (m *mockAirportProviderForTrans) GetClosestAirport(lat, long, maxRangeNm float64) string {
 	return m.ret
 }
 
-func TestGetTransistionAltitude_TableDriven(t *testing.T) {
+func TestGetTransistionAltitude(t *testing.T) {
 	tests := []struct {
 		name             string
 		airports         map[string]*Airport

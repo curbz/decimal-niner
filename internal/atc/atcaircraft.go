@@ -322,7 +322,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 		return
 	}
 
-	closestAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+	closestAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 4.0)
 
 	// infer what we can from current location
 	switch ac.Flight.Phase.Class {
@@ -366,8 +366,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 				ph.Class = Unknown
 				return
 			}
-			//currAirport := s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
-			currAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+			currAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 4.0)
 			if ac.Flight.Destination == currAirport {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
 				ph.Class = PostflightParked
@@ -412,7 +411,7 @@ func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
     } else {
         // 2. FALLBACK: Look at the nearest airport under the plane
         // This is crucial for Center controllers who don't have a TransAlt
-        nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long)
+        nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)
         if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
             transitionAlt = nearAp.TransAlt
         } else {

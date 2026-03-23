@@ -29,7 +29,7 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	s.UserState.TunedFacilityRoles = tunedFacilityRoles
 
 	for idx, freq := range tunedFreqs {
-		uFreq := normalizeFreq(int(freq))
+		uFreq := normaliseFreq(int(freq))
 		role := tunedFacilityRoles[idx]
 		if role == 0 {
 			// change role to -1 otherwise locatetController will specifically match on Unicom role

@@ -68,7 +68,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 		"gnd":    2,
 		"twr":    3,
 		"tracon": 4, // Approach/Departure
-		"ctr":    6, 
+		"ctr":    6,
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -113,7 +113,7 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 		case "FREQ", "CHAN":
 			if cur != nil && isRequired {
 				fRaw, _ := strconv.Atoi(p[1])
-				cur.Freqs = append(cur.Freqs, normalizeFreq(fRaw))
+				cur.Freqs = append(cur.Freqs, normaliseFreq(fRaw))
 			}
 		case "AIRSPACE_POLYGON_BEGIN":
 			if !isRequired {
@@ -424,7 +424,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	return bestPointMatch
 }
 
-func normalizeFreq(fRaw int) int {
+func normaliseFreq(fRaw int) int {
 	if fRaw == 0 {
 		return 0
 	}

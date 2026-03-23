@@ -6,7 +6,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
-func TestPerformSearch(t *testing.T) {
+func TestLocateController(t *testing.T) {
 
 	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true, "EGHI": true}
 	atcService := New("config.yaml", make(map[string][]trafficglobal.ScheduledFlight), requiredAirports)
@@ -61,7 +61,7 @@ func TestPerformSearch(t *testing.T) {
 	}
 }
 
-func TestPerformSearchGlobal(t *testing.T) {
+func TestLocateControllerGlobal(t *testing.T) {
 	requiredAirports := map[string]bool{
 		"EGLL": true, "KJFK": true, "RJTT": true,
 		"NZAA": true, "FACT": true,
@@ -118,63 +118,154 @@ func TestPerformSearchGlobal(t *testing.T) {
 	}
 }
 
-func TestLocateControllerLogicTiers(t *testing.T) {
-	requiredAirports := map[string]bool{"EGLL": true, "EGLC": true}
-	s := New("config.yaml", nil, requiredAirports)
 
-	// Setup coordinates: Heathrow (EGLL)
-	lat, lon := 51.47, -0.45
+// Mock Role IDs based on common ATC structures
+const (
+	RoleDEL  = 1
+	RoleGND  = 2
+	RoleTWR  = 3
+	RoleAPP  = 4
+	RoleCTR  = 6
+)
 
-	tests := []struct {
-		label      string
-		tFreq      int
-		tRole      int
-		targetICAO string
-		expected   string
-		expRole    int
-	}{
-		// --- TIER 0: ICAO SHORTCUT ---
-		// Even if we are at Heathrow, if we ask for EGLC (London City), we should get it.
-		{"ICAO Shortcut (City Airport)", 0, 3, "EGLC", "EGLC", 3},
-
-		// --- TIER 1: ROLE FILTERING ---
-		// Ask for Ground (2) specifically at Heathrow
-		{"Specific Role (Ground)", 0, 2, "EGLL", "EGLL", 2},
-		// Ask for Tower (3) specifically at Heathrow
-		{"Specific Role (Tower)", 0, 3, "EGLL", "EGLL", 3},
-
-		// --- TIER 1.5: THE "ANY" SENTINEL ---
-		// Using -1 should return the closest facility (likely Ground or Delivery at these coords)
-		{"Any Role Sentinel (-1)", 0, RoleNone, "EGLL", "EGLL", 1},
-
-		// --- TIER 2: FREQUENCY OVERRIDE ---
-		// Tune London City Tower freq (118.07) while sitting at Heathrow
-		{"Frequency Override", 118070, RoleNone, "", "EGLC", 3},
-
-		// --- TIER 3: POLYGON VS POINT ---
-		// At 35,000ft, ICAO shortcut should still work for the airport,
-		// but a Role 6 request with no ICAO should hit the Center polygon.
-		{"High Altitude Center", 0, 6, "", "EGTT", 6},
+func TestLocateControllerTierLogic(t *testing.T) {
+	s := &Service{
+		Airports:    make(map[string]*Airport),
+		Controllers: []*Controller{},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.label, func(t *testing.T) {
-			// We use a fixed altitude for these logic tests
-			alt := 2000.0
-			if tc.label == "High Altitude Center" {
-				alt = 35000.0
-			}
+	// --- SETUP MOCK DATA ---
+	
+	// Tier 1: Ground (Role 2)
+	egllGnd := &Controller{
+		Name: "London Ground", ICAO: "EGLL", RoleID: RoleGND, 
+		IsPoint: true, Lat: 51.47, Lon: -0.45, Freqs: []int{121900},
+	}
+	// Tier 1: Tower (Role 3)
+	egllTwr := &Controller{
+		Name: "London Tower", ICAO: "EGLL", RoleID: RoleTWR, 
+		IsPoint: true, Lat: 51.47, Lon: -0.45, Freqs: []int{118500},
+	}
+	// Tier 2: Center (Role 6) - Bounding box: Lat 40-60, Lon -10 to 10
+	lonCtr := &Controller{
+		Name: "London Center", ICAO: "LON_CTR", RoleID: RoleCTR, 
+		IsPoint: false, Freqs: []int{133700},
+		Airspaces: []Airspace{
+			{
+				Floor: 0, Ceiling: 60000,
+				MinLat: 40.0, MaxLat: 60.0, MinLon: -10.0, MaxLon: 10.0,
+				Area: 5000,
+				Points: [][2]float64{{40, -10}, {60, -10}, {60, 10}, {40, 10}},
+			},
+		},
+	}
 
-			m := s.locateController(tc.label, tc.tFreq, tc.tRole, lat, lon, alt, tc.targetICAO)
+	s.Airports["EGLL"] = &Airport{Lat: 51.47, Lon: -0.45, Controllers: []*Controller{egllTwr, egllGnd}}
+	s.Controllers = []*Controller{egllGnd, egllTwr, lonCtr}
 
-			if m == nil {
-				t.Fatalf("%s: Got nil, want %s", tc.label, tc.expected)
-			}
-			if m.ICAO != tc.expected {
-				t.Errorf("%s: ICAO mismatch. Got %s, want %s", tc.label, m.ICAO, tc.expected)
-			}
-			if tc.expRole != -1 && m.RoleID != tc.expRole {
-				t.Errorf("%s: Role mismatch. Got %d, want %d", tc.label, m.RoleID, tc.expRole)
+	// --- TEST CASES ---
+	tests := []struct {
+		name       string
+		tFreq      int
+		tRole      int
+		uLa, uLo   float64
+		uAl        float64
+		targetICAO string
+		wantName   string
+	}{
+		// TIER 0: TARGET ICAO SHORTCUT
+		{
+			name:       "Tier 0: Shortcut Match (Tower)",
+			tRole:      RoleTWR,
+			uLa:        51.48, uLo: -0.44, // Within 50nm
+			targetICAO: "EGLL",
+			wantName:   "London Tower",
+		},
+		{
+			name:       "Tier 0: Shortcut Fallback (Distance > 50nm)",
+			tRole:      RoleTWR,
+			uLa:        55.0, uLo: -5.0, // > 50nm from EGLL
+			targetICAO: "EGLL",
+			wantName:   "", // Should fail shortcut and find nothing in proximity
+		},
+
+		// TIER 1: POINTS (FREQ & PROXIMITY)
+		{
+			name:     "Tier 1: Freq Match (Tower)",
+			tFreq:    118500,
+			tRole:    RoleNone,
+			uLa:      51.47, uLo: -0.45,
+			uAl:      2000,
+			wantName: "London Tower",
+		},
+		{
+			name:     "Tier 1: Pure Proximity (No Freq, GND)",
+			tFreq:    0,
+			tRole:    RoleGND,
+			uLa:      51.471, uLo: -0.451,
+			uAl:      100,
+			wantName: "London Ground",
+		},
+		{
+			name:     "Tier 1: Altitude Gate (GND Hidden at 12k ft)",
+			tFreq:    121900,
+			tRole:    RoleNone,
+			uLa:      51.47, uLo: -0.45,
+			uAl:      12000, // Above 10,000ft gate
+			wantName: "",
+		},
+		{
+			name:     "Tier 1: Search Limit (No Freq, > 15nm)",
+			tFreq:    0,
+			tRole:    RoleTWR,
+			uLa:      52.0, uLo: -0.45, // ~32nm away
+			wantName: "", 
+		},
+
+		// TIER 2: POLYGONS (CENTER)
+		{
+			name:     "Tier 2: Polygon Match (Inside Center Airspace)",
+			tFreq:    133700,
+			tRole:    RoleNone,
+			uLa:      52.0, uLo: 0.0,
+			uAl:      35000,
+			wantName: "London Center",
+		},
+		{
+			name:     "Tier 2: Polygon Ceiling Check",
+			tFreq:    133700,
+			uLa:      52.0, uLo: 0.0,
+			uAl:      70000, // Above 60k ceiling
+			wantName: "",
+		},
+
+		// COMPLEX FALLBACKS
+		{
+			name:     "Fallback: High Alt Freq Match skips Points to check Polygons",
+			tFreq:    133700,
+			tRole:    RoleNone,
+			uLa:      51.47, uLo: -0.45, // Directly over the Tower point
+			uAl:      35000,            // But high altitude
+			wantName: "London Center",
+		},
+	}
+
+	// --- EXECUTION ---
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.locateController("test-label", tt.tFreq, tt.tRole, tt.uLa, tt.uLo, tt.uAl, tt.targetICAO)
+
+			if tt.wantName == "" {
+				if got != nil {
+					t.Errorf("%s: expected nil, got %s", tt.name, got.Name)
+				}
+			} else {
+				if got == nil {
+					t.Fatalf("%s: got nil, want %s", tt.name, tt.wantName)
+				}
+				if got.Name != tt.wantName {
+					t.Errorf("%s: got %s, want %s", tt.name, got.Name, tt.wantName)
+				}
 			}
 		})
 	}
@@ -196,5 +287,31 @@ func TestUnicomFallbackLogic(t *testing.T) {
 	m = s.locateController("Fairoaks Tower", 0, 3, lat, lon, 1000, "EGTF")
 	if m == nil || m.RoleID != 3 || m.ICAO != "EGTF" {
 		t.Errorf("Expected Tower (Role 3) for Fairoaks, got %v", m)
+	}
+}
+
+func TestNormaliseFreq(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{"zero", 0, 0},
+		{"already scaled", 118050, 118050},
+		{"missing trailing zero", 11805, 118050},
+		{"short code", 118, 118000},
+		{"too large then trimmed", 1180500, 118050},
+		{"one becomes 100000", 1, 100000},
+		{"exact lower bound", 100000, 100000},
+		{"exact upper trim", 1000000, 100000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normaliseFreq(tt.in)
+			if got != tt.want {
+				t.Fatalf("normaliseFreq(%d) = %d; want %d", tt.in, got, tt.want)
+			}
+		})
 	}
 }
