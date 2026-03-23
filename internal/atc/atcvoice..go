@@ -228,7 +228,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 
 	// construct message and replace all placeholder variables
 
-	phrase = strings.ReplaceAll(phrase, "{$CALLSIGN}", ac.Flight.Comms.Callsign)
+	phrase = strings.ReplaceAll(phrase, "{$CALLSIGN}", strings.ToLower(ac.Flight.Comms.Callsign))
 	phrase = strings.ReplaceAll(phrase, "{$FACILITY}", ac.Flight.Comms.Controller.Name)
 
 	if strings.Contains(phrase, "{$SQUAWK}") {
@@ -272,7 +272,9 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		if rwy != nil {
 			mAlt := rwy.MAalt
 			if mAlt > 0 {
-				sayMAlt = strconv.Itoa(mAlt)
+				transitionAlt := s.getTransistionAltitude(ac)
+				transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
+				sayMAlt = formatAltitude(float64(mAlt), transitionLevel, ac.Flight.Phase)
 			}
 		}
 		phrase = strings.ReplaceAll(phrase, "{$MAP_ALT}", sayMAlt)

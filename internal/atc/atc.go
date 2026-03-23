@@ -118,7 +118,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		logger.Log.Errorf("Error loading airport data from CIFP files: %v", err)
 		return nil
 	}
-	logger.Log.Info("Airport data loaded: seeded ", len(airports), "airports")
+	logger.Log.Info("Airport data loaded: seeded ", len(airports), " airports")
 
 	logger.Log.Infof("ATC controller database generated: seeded %d controllers\n", len(db))
 
