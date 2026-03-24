@@ -111,8 +111,7 @@ func (s *Service) startComms() {
 				case HandoffExitSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					// select next controller's first listed frequency
-					freqStr := fmt.Sprintf("%.3f", float64(ac.Flight.Comms.NextController.Freqs[0])/1000.0)
-					freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
+					freqStr := formatFrequency(ac.Flight.Comms.NextController.Freqs[0])
 					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
@@ -562,13 +561,14 @@ func translateNumerics(msg string) string {
 	var result strings.Builder
 	for _, ch := range msg {
 		if word, exists := numericMap[ch]; exists {
+			result.WriteString(" ")
 			result.WriteString(word)
 			result.WriteString(" ")
 		} else {
 			result.WriteRune(ch)
 		}
 	}
-	return result.String()
+	return strings.ReplaceAll(result.String(), "  ", " ")
 }
 
 func translateRunway(runway string) string {
@@ -824,8 +824,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	}
 
 	// select controller's first listed frequency
-	freqStr := fmt.Sprintf("%.3f", float64(nextController.Freqs[0])/1000.0)
-	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
+	freqStr := formatFrequency(nextController.Freqs[0])
 
 	// if next role is approach or cruise, include the facility name
 	facilityName := ""
@@ -835,6 +834,15 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 
 	return fmt.Sprintf(" [contact] %s %s on %s %s", facilityName, roleNameMap[nextRole], freqStr, s.generateValediction(s.Config.ATC.Voices.HandoffValedictionFactor))
 
+}
+
+func formatFrequency(freq int) string {
+	freqStr := fmt.Sprintf("%v", float64(freq)/1000.0)
+	if !strings.Contains(freqStr, ".") {
+		freqStr += ".0"
+	}
+	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
+	return freqStr
 }
 
 func (s *Service) generateValediction(factor int) string {
