@@ -217,3 +217,56 @@ func TestVoiceCollisionAvoidance(t *testing.T) {
 		t.Logf("Success: ATC assigned '%s', Pilot assigned '%s'", atcVoice, pilotVoice)
 	})
 }
+
+func TestConvertIcaoToIso(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{"full ICAO EGLL", "EGLL", "GB", false},
+		{"2-letter prefix EG", "EG", "GB", false},
+		{"1-letter prefix KJFK", "KJFK", "US", false},
+		{"empty", "", "", true},
+		{"not found", "-", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := convertIcaoToIso(tt.in)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("convertIcaoToIso(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("convertIcaoToIso(%q) = %q; want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferCommsCountryCode(t *testing.T) {
+	tests := []struct {
+		name        string
+		class       PhaseClass
+		origin      string
+		dest        string
+		defaultCode string
+		want        string
+	}{
+		{"departing uses origin", Departing, "KJFK", "EGLL", "XX", "KJ"},
+		{"arriving uses destination", Arriving, "KJFK", "EGLL", "ZZ", "EG"},
+		{"fallback to default when short origin", Departing, "US", "EGLL", "DF", "DF"},
+		{"non depart/arrive uses default", Cruising, "KJFK", "EGLL", "AA", "AA"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac := &Aircraft{Flight: Flight{Origin: tt.origin, Destination: tt.dest, Phase: Phase{Class: tt.class}, Comms: Comms{}}}
+			inferCommsCountryCode(ac, tt.defaultCode)
+			if ac.Flight.Comms.CountryCode != tt.want {
+				t.Fatalf("inferCommsCountryCode -> country = %q; want %q", ac.Flight.Comms.CountryCode, tt.want)
+			}
+		})
+	}
+}
