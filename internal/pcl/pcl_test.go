@@ -1,6 +1,7 @@
 package pcl
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -10,12 +11,28 @@ func TestPCL(t *testing.T) {
 	approach := "ILS"
 	speed := 260.0
 
-	// Dynamic Context with Providers
+	// Dynamic Context with Providers using new $ and @ prefixes
 	ctx := PCLContext{
-		"ALTITUDE": func() interface{} { return altitude },
-		"APPROACH_TYPE": func() interface{} { return approach },
-		"SPEED": func() interface{} { return speed },
-		"CALLSIGN": func() interface{} { return "Speedbird 123" },
+		// Raw Data Providers ($)
+		"$ALTITUDE":      func(args ...string) interface{} { return altitude },
+		"$APPROACH_TYPE": func(args ...string) interface{} { return approach },
+		"$SPEED":         func(args ...string) interface{} { return speed },
+		"$CALLSIGN":      func(args ...string) interface{} { return "Speedbird 123" },
+
+		// Formatting Macros (@)
+		"@ALTITUDE": func(args ...string) interface{} {
+			if altitude >= 18000 {
+				return fmt.Sprintf("Flight Level %0.0f", altitude/100)
+			}
+			return fmt.Sprintf("%0.0f feet", altitude)
+		},
+		"@VALEDICTION": func(args ...string) interface{} {
+			// Tests parameter extraction: {@VALEDICTION(5)}
+			if len(args) > 0 && args[0] == "5" {
+				return "Good day"
+			}
+			return "Goodbye"
+		},
 	}
 
 	tests := []struct {
@@ -29,38 +46,46 @@ func TestPCL(t *testing.T) {
 			"Contact tower, Speedbird 123",
 		},
 		{
-			"Basic WHEN Statement (True)",
-			"{WHEN $APPROACH_TYPE EQ 'ILS' SAY 'intercept the ILS and'} slow to 180 knots",
-			"intercept the ILS and slow to 180 knots",
+			"Braced Variable Replacement",
+			"You are at {$ALTITUDE} units",
+			"You are at 4000 units",
 		},
 		{
-			"Basic WHEN Statement (False)",
-			"{WHEN $APPROACH_TYPE EQ 'VISUAL' SAY 'report field in sight'} cleared to land",
-			"cleared to land",
+			"Formatted Macro",
+			"Climb and maintain @ALTITUDE",
+			"Climb and maintain 4000 feet",
+		},
+		{
+			"Parameterized Macro",
+			"Contact center on 133.7, {@VALEDICTION(5)}",
+			"Contact center on 133.7, Good day",
+		},
+		{
+			"SAY Shortcut with Backticks",
+			"The computer says {SAY `don't descend yet`}",
+			"The computer says don't descend yet",
+		},
+		{
+			"Complex WHEN with Contractions",
+			"{WHEN $SPEED GT 250 SAY `don't exceed 250 knots` OTHERWISE SAY `it's pilot's discretion`}",
+			"don't exceed 250 knots",
 		},
 		{
 			"Boolean AND Logic",
-			"{WHEN $ALTITUDE LT 10000 AND $SPEED GT 250 SAY 'reduce speed to 250'} $CALLSIGN",
-			"reduce speed to 250 Speedbird 123",
+			"{WHEN $ALTITUDE LT 10000 AND $SPEED GT 250 SAY `reduce speed`} $CALLSIGN",
+			"reduce speed Speedbird 123",
 		},
 		{
-			"Nested Logic (Climb/Descend/Maintain)",
-			"maintain course, {WHEN $ALTITUDE GT 5000 SAY 'descend to' OTHERWISE {WHEN $ALTITUDE GT 3000 SAY 'maintain' OTHERWISE SAY 'climb to'}} $ALTITUDE",
+			"Nested Logic",
+			"maintain course, {WHEN $ALTITUDE GT 5000 SAY `descend to` OTHERWISE {WHEN $ALTITUDE GT 3000 SAY `maintain` OTHERWISE SAY `climb to` text}} $ALTITUDE",
 			"maintain course, maintain 4000",
-		},
-		{
-			"Deeply Nested Logic (Targeting climb)",
-			"{WHEN $ALTITUDE GT 8000 SAY 'descend' OTHERWISE {WHEN $ALTITUDE GT 6000 SAY 'maintain' OTHERWISE SAY 'climb'}} to 7000",
-			"climb to 7000",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset vars for specific tests if needed
-			if tc.name == "Deeply Nested Logic (Targeting climb)" {
-				altitude = 2000.0
-			} else {
+			// Reset vars for specific tests
+			if tc.name == "Nested Logic" {
 				altitude = 4000.0
 			}
 
@@ -68,8 +93,9 @@ func TestPCL(t *testing.T) {
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 			}
+			
 			if res != tc.expected {
-				t.Errorf("Result mismatch.\nGot:  %s\nWant: %s", res, tc.expected)
+				t.Errorf("Result mismatch.\nGot:  %q\nWant: %q", res, tc.expected)
 			}
 		})
 	}

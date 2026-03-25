@@ -11,7 +11,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting pushback and start.", "atc": "{$CALLSIGN}, push and start approved, report ready for taxi." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for start-up.", "atc": "{$CALLSIGN}, engine start [is] at [y]our discretion, {@BARO}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting engine start.", "atc": "{$CALLSIGN}, start-up approved, expect runway {@RUNWAY} for departure." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, start-up complete, requesting taxi.", "atc": "{$CALLSIGN}, Roger, report ready for taxi." }
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, start-up complete, requesting taxi.", "atc": "{$CALLSIGN}, [Roger,] report ready for taxi." }
   ],
   "taxi_out": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for taxi.", "atc": "{$CALLSIGN}, taxi to runway {@RUNWAY}, hold short of runway {@RUNWAY}." },
@@ -23,7 +23,7 @@
   "depart": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading, wind {@WIND}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for takeoff for {@DESTINATION}.", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}, {@SHEAR}" },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, number one, ready for departure.", "atc": "{$CALLSIGN}, line up runway {@RUNWAY}, wind {@WIND}, cleared for take off." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure.", "atc": "{$CALLSIGN}, line up runway {@RUNWAY}, wind {@WIND}, cleared for take off." },
     { "initiator": "atc", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}. wind {@WIND}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure from runway {@RUNWAY}.", "atc": "{$CALLSIGN}, fly the designated departure, runway {@RUNWAY} cleared for takeoff, wind {@WIND}" }
   ],
@@ -82,10 +82,10 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, taxiing to stand.", "atc": "{$CALLSIGN}, [Roger, continue to] {@PARKING}." }
   ],
   "post_flight_parked": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, parked at {@PARKING}, engines shutdown, thanks for the help.", "atc": "{$CALLSIGN}, Roger, shutdown acknowledged. {@VALEDICTION}" },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, parked at {@PARKING}, engines shutdown, thanks for the help.", "atc": "{$CALLSIGN}, Roger, shutdown acknowledged. {@VALEDICTION(4)}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, on the stand, shutting down.", "atc": "{$CALLSIGN}, copy." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, engines off.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION}" },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, shutdown at the gate, see you on the return.", "atc": "{$CALLSIGN}, copy that, have a {{@VALEDICTION}}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, on stand, shutdown.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION}" }
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, engines off.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION(4)}" },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, shutdown at the gate, see you on the return.", "atc": "{$CALLSIGN}, copy that, have a {@VALEDICTION(1)}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, on stand, shutdown.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION(4)}" }
   ]
 }

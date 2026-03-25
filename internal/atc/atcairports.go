@@ -32,11 +32,11 @@ type Airport struct {
 }
 
 type Runway struct {
-	FAFalt       int    // Final approach fix altitude
-	MAalt        int    // highest missed approach altitude
-	MAHeading    int    // initial MA course (degrees)
-	MAFix        string // only if HM leg exists
-	BestApproach string // highest precision approach type
+	FAFalt                   int    // Final approach fix altitude
+	MAalt                    int    // highest missed approach altitude
+	MAHeading                int    // initial MA course (degrees)
+	MAFix                    string // only if HM leg exists
+	HighestPrecisionApproach string // highest precision approach type
 }
 
 type Fix struct {
@@ -381,7 +381,7 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 		existing := runways[currentRunway]
 
 		// Only merge if this was a real approach (FAF or approach type)
-		if rw.FAFalt > 0 || rw.BestApproach != "" {
+		if rw.FAFalt > 0 || rw.HighestPrecisionApproach != "" {
 			runways[currentRunway] = mergeRunway(existing, rw, currentAppType)
 		} else {
 			// Ensure runway entry exists, but keep it zeroed
@@ -444,7 +444,7 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 				appType := string(name[0])
 				if _, ok := approachRank[appType]; ok {
 					currentAppType = appType
-					rw.BestApproach = approachString[appType]
+					rw.HighestPrecisionApproach = approachString[appType]
 				}
 			}
 		}
@@ -536,20 +536,20 @@ func mergeRunway(existing, incoming Runway, appType string) Runway {
 	// BestApproach: keep the better-ranked one
 	if appType != "" {
 		if rankNew, ok := approachRank[appType]; ok {
-			if existing.BestApproach == "" {
-				existing.BestApproach = approachString[appType]
+			if existing.HighestPrecisionApproach == "" {
+				existing.HighestPrecisionApproach = approachString[appType]
 			} else {
 				// find rank of existing
 				var existingType string
 				for t, s := range approachString {
-					if s == existing.BestApproach {
+					if s == existing.HighestPrecisionApproach {
 						existingType = t
 						break
 					}
 				}
 				if existingType != "" {
 					if rankOld, ok2 := approachRank[existingType]; ok2 && rankNew < rankOld {
-						existing.BestApproach = approachString[appType]
+						existing.HighestPrecisionApproach = approachString[appType]
 					}
 				}
 			}

@@ -20,6 +20,7 @@ import (
 	"golang.org/x/text/runes"
 
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/pcl"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -205,6 +206,7 @@ func (s *Service) startComms() {
 // removng any text enclosed in square brackets
 func autoReadback(phrase string) string {
 	phrase = strings.TrimPrefix(phrase, "{$CALLSIGN}")
+	phrase = strings.TrimPrefix(phrase, "$CALLSIGN")
 	phrase = strings.TrimPrefix(phrase, ",")
 	phrase = strings.TrimSuffix(phrase, ".")
 	phrase = phrase + " {$CALLSIGN}"
@@ -218,135 +220,161 @@ func removeSquareBracketedPhrases(input string) string {
 	return result
 }
 
-// preparePhrase prepares the phrase and creates an ATC message
-// role is either "PILOT" or the facility type e.g "Tower"
-func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
+func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 
 	icao := getAirportICAObyPhaseClass(ac)
 	rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
 
-	// construct message and replace all placeholder variables
-
-	phrase = strings.ReplaceAll(phrase, "{$CALLSIGN}", strings.ToLower(ac.Flight.Comms.Callsign))
-	phrase = strings.ReplaceAll(phrase, "{$FACILITY}", ac.Flight.Comms.Controller.Name)
-
-	if strings.Contains(phrase, "{$SQUAWK}") {
-		phrase = strings.ReplaceAll(phrase, "{$SQUAWK}", ac.Flight.Squawk)
-	}
-
-	if strings.Contains(phrase, "{@RUNWAY}") {
-		phrase = strings.ReplaceAll(phrase, "{@RUNWAY}", translateRunway(ac.Flight.AssignedRunway))
-	}
-	if strings.Contains(phrase, "{@PARKING}") {
-		phrase = strings.ReplaceAll(phrase, "{@PARKING}", formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO))
-	}
-	if strings.Contains(phrase, "{@DESTINATION}") {
-		sayDest := ac.Flight.Destination
-		if sayDest == "" {
-			sayDest = "as filed"
-		} else {
-			sayDest = formatAirportName(sayDest, s.Airports)
-		}
-		phrase = strings.ReplaceAll(phrase, "{@DESTINATION}", sayDest)
-	}
-	if strings.Contains(phrase, "{@APPROACH_TYPE}") {
-		approachType := ""
-		if rwy != nil {
-			approachType = rwy.BestApproach
-			phrase = strings.ReplaceAll(phrase, "{@APPROACH_TYPE}", approachType)
-		}
-	}
-	if strings.Contains(phrase, "{@MA_HEADING}") {
-		sayHeading := "runway heading"
-		if rwy != nil {
-			mHeading := rwy.MAHeading
-			if mHeading > 0 {
-				sayHeading = fmt.Sprintf("heading %d", mHeading)
-			}
-		}
-		phrase = strings.ReplaceAll(phrase, "{@MA_HEADING}", sayHeading)
-	}
-	if strings.Contains(phrase, "{@MA_ALTITUDE}") {
-		sayMAlt := "missed approach altitude"
-		if rwy != nil {
-			mAlt := rwy.MAalt
-			if mAlt > 0 {
-				transitionAlt := s.getTransistionAltitude(ac)
-				transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
-				sayMAlt = formatAltitude(float64(mAlt), transitionLevel, ac.Flight.Phase)
-			}
-		}
-		phrase = strings.ReplaceAll(phrase, "{@MA_ALTITUDE}", sayMAlt)
-	}
-	if strings.Contains(phrase, "{$MA_FIX}") {
-		sayMAfix := "published hold"
-		if rwy != nil {
-			maFix := rwy.MAFix
-			if maFix != "" {
-				sayMAfix = maFix
-			}
-		}
-		phrase = strings.ReplaceAll(phrase, "{@MA_FIX}", sayMAfix)
-	}
-	if strings.Contains(phrase, "{@ALTITUDE}") || strings.Contains(phrase, "{@ALT_CLEARANCE}") {
-		transitionAlt := s.getTransistionAltitude(ac)
-		transitionLevel := getTransitionLevel(transitionAlt, baro.Sealevel)
-
-		if strings.Contains(phrase, "{@ALT_CLEARANCE}") {
-			clearance := 0
-			if ac.Flight.Phase.Class == Arriving {
-				if rwy != nil {
-					clearance = rwy.FAFalt
-				}
+	return pcl.PCLContext{
+		// --- RAW DATA ($) ---
+		"$ALTITUDE": func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
+		"$CALLSIGN": func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
+		"$FACILITY": func(args ...string) interface{} { return ac.Flight.Comms.Controller.Name },
+		"$SQUAWK":   func(args ...string) interface{} { return ac.Flight.Squawk },
+		"$HEADING":  func(args ...string) interface{} { return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))},
+		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
+		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
+		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
+		"$BARO_AIRCRAFT": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Flight)) },
+		"$WIND_SPEED":    func(args ...string) interface{} { return s.Weather.Wind.Speed },
+		"$WIND_SHEAR":    func(args ...string) interface{} { return s.Weather.Wind.Shear },
+		"$TURBULENCE":    func(args ...string) interface{} { return s.Weather.Turbulence },
+		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParking },
+		"$APPROACH_TYPE": func(args ...string) interface{} { if rwy != nil {
+				return rwy.HighestPrecisionApproach
 			} else {
-				clearance = ac.Flight.CruiseAlt
+				return ""
+			}},
+		"$HOLD_FIX_NAME": func(args ...string) interface{} { 		
+			holdfix := s.findNearestHold(ac, icao)
+			if holdfix == nil {
+				return ""
+			} else {
+				return holdfix.FullName
+			}},
+		"$HOLD_FIX_IDENT": func(args ...string) interface{} { 		
+			holdfix := s.findNearestHold(ac, icao)
+			if holdfix == nil {
+				return ""
+			} else {
+				return holdfix.Ident
+			}},
+		"$MA_HEADING": func(args ...string) interface{} { if rwy != nil {
+				return rwy.MAHeading
+			} else {
+				return 0
+			}},
+		"$MA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+				return rwy.MAalt
+			} else {
+				return 0
+			}},
+		"$MA_FIX": func(args ...string) interface{} { if rwy != nil {
+				return rwy.MAFix
+			} else {
+				return ""
+			}},
+		"$FA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+				return rwy.FAFalt
+			} else {
+				return 0
+			}},
+
+		// --- FORMATTED MACROS (@) ---
+
+		// --- RUNWAY & TAXI ---
+        "@RUNWAY": func(args ...string) interface{} {
+            return translateRunway(ac.Flight.AssignedRunway)
+        },
+        "@PARKING": func(args ...string) interface{} {
+            return formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO)
+        },
+
+        // --- DEPARTURE & ARRIVAL ---
+        "@DESTINATION": func(args ...string) interface{} {
+            if ac.Flight.Destination == "" {
+                return "as filed"
+            }
+            return formatAirportName(ac.Flight.Destination, s.Airports)
+        },
+        "@APPROACH_TYPE": func(args ...string) interface{} {
+            if rwy != nil {
+                return rwy.HighestPrecisionApproach
+            }
+            return ""
+        },
+
+        // --- MISSED APPROACH LOGIC ---
+        "@MA_HEADING": func(args ...string) interface{} {
+            if rwy != nil && rwy.MAHeading > 0 {
+                return fmt.Sprintf("heading %d", rwy.MAHeading)
+            }
+            return "runway heading"
+        },
+        "@MA_ALTITUDE": func(args ...string) interface{} {
+            if rwy != nil && rwy.MAalt > 0 {
+                transAlt := s.getTransistionAltitude(ac)
+                transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+                return formatAltitude(float64(rwy.MAalt), transLevel, ac.Flight.Phase)
+            }
+            return "missed approach altitude"
+        },
+        "@MA_FIX": func(args ...string) interface{} {
+            if rwy != nil && rwy.MAFix != "" {
+                return rwy.MAFix
+            }
+            return "published hold"
+        },
+
+        // --- ALTITUDE & BARO ---
+		"@ALTITUDE": func(args ...string) interface{} {
+			transitionAlt := s.getTransistionAltitude(ac)
+			transitionLevel := getTransitionLevel(transitionAlt, s.Weather.Baro.Sealevel)
+			return formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase)
+		},
+        "@ALT_CLEARANCE": func(args ...string) interface{} {
+            transAlt := s.getTransistionAltitude(ac)
+            transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+            clearance := ac.Flight.CruiseAlt
+            if ac.Flight.Phase.Class == Arriving && rwy != nil {
+                clearance = rwy.FAFalt
+            }
+            return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
+        },
+        "@BARO": func(args ...string) interface{} {
+            return formatBaro(ac.Flight.Comms.Controller.ICAO, s.Weather.Baro.Sealevel)
+        },
+
+        // --- WEATHER & CONTROLLER ---
+        "@WIND":       func(args ...string) interface{} { return s.formatWind() },
+        "@SHEAR":      func(args ...string) interface{} { return s.formatWindShear() },
+        "@TURBULENCE": func(args ...string) interface{} { return s.formatTurbulence(role) },
+        "@HANDOFF":    func(args ...string) interface{} { return s.generateHandoffPhrase(ac) },
+        "@VALEDICTION": func(args ...string) interface{} {
+			factor := 5 //default
+			if len(args) > 0 {
+				factor, _ = strconv.Atoi(args[0])
 			}
-			phrase = strings.ReplaceAll(phrase, "{@ALT_CLEARANCE}",
-				generateAltClearance(ac.Flight.Position.Altitude, transitionLevel, clearance, ac.Flight.Phase))
-		} else {
-			phrase = strings.ReplaceAll(phrase, "{@ALTITUDE}",
-				formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase))
-		}
+			return s.generateValediction(factor)
+		},
+        "@HOLD_FIX": func(args ...string) interface{} {
+            holdfix := s.findNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
+            if holdfix != nil && holdfix.FullName != "" {
+                return holdfix.FullName
+            }
+            return "published hold"
+        },
 	}
-	if strings.Contains(phrase, "{$HEADING}") {
-		phrase = strings.ReplaceAll(phrase, "{$HEADING}", fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading))))
-	}
-	if strings.Contains(phrase, "{@BARO}") {
-		phrase = strings.ReplaceAll(phrase, "{@BARO}", formatBaro(ac.Flight.Comms.Controller.ICAO, baro.Sealevel))
-	}
-	if strings.Contains(phrase, "{@WIND}") {
-		phrase = strings.ReplaceAll(phrase, "{@WIND}", s.formatWind())
-	}
-	if strings.Contains(phrase, "{@SHEAR}") {
-		phrase = strings.ReplaceAll(phrase, "{SHEAR}", s.formatWindShear())
-	}
-	if strings.Contains(phrase, "{@TURBULENCE}") {
-		phrase = strings.ReplaceAll(phrase, "{@TURBULENCE}", s.formatTurbulence(role))
-	}
-	if strings.Contains(phrase, "{@HANDOFF}") {
-		phrase = strings.ReplaceAll(phrase, "{@HANDOFF}", s.generateHandoffPhrase(ac))
-	}
-	if strings.Contains(phrase, "{@HOLD_FIX}") {
-		holdfix := s.findNearestHold(ac, icao)
-		repl := ""
-		if holdfix == nil {
-			repl = "published hold"
-		} else {
-			repl = holdfix.FullName
-			if repl == "" {
-				repl = "published hold"
-			}
-		}
-		phrase = strings.ReplaceAll(phrase, "{@HOLD_FIX}", repl)
-	}
-	if strings.Contains(phrase, "{@VALEDICTION}") {
-		factor := s.Config.ATC.Voices.HandoffValedictionFactor
-		replace := "{@VALEDICTION}"
-		if strings.Contains(phrase, "{{@VALEDICTION}}") {
-			factor = 1
-			replace = "{{@VALEDICTION}}"
-		}
-		phrase = strings.ReplaceAll(phrase, replace, s.generateValediction(factor))
+}
+
+// preparePhrase prepares the phrase and creates an ATC message
+// role is either "PILOT" or the facility type e.g "Tower"
+func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
+
+	// call PCL interpreter
+	phrase, err := pcl.ProcessPhrase(phrase, s.newPCLContext(ac, role))
+	if err != nil {
+		logger.Log.Errorf("Unexpected PCL error: %v", err)
 	}
 
 	// --- remove PCL statements ---
