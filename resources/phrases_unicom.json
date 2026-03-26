@@ -3,161 +3,151 @@
     {
       "id": "pre_dest",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, pre-flight for departure to {DESTINATION}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, at {@PARKING}, pre-flight for departure to {@DESTINATION}."
     },
     {
-      "id": "pre_dest",
+      "id": "pre_atis",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, at {GATE_NUMBER}, getting weather Information {ATIS_CODE}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, at {@PARKING}, receiving weather information."
     }
   ],
   "startup": [
     {
-      "id": "pre_dest",
+      "id": "startup_eng",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, engine start."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, at {@PARKING}, engine start."
     },
     {
-      "id": "pre_dest",
+      "id": "startup_ramp",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, at the ramp, starting engines for departure."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, at the ramp, starting engines for departure."
     }
   ],
   "taxi_out": [
     {
-      "id": "pre_dest",
+      "id": "taxi_out_rwy",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, at {LOCATION}, taxiing to Runway {RUNWAY} via {TAXIWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, at {@PARKING}, taxiing to Runway {@RUNWAY}."
     },
     {
-      "id": "pre_dest",
+      "id": "taxi_out_runup",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, taxiing to the run-up area for Runway {RUNWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, taxiing to the run-up area for Runway {@RUNWAY}."
     }
   ],
   "depart": [
     {
-      "id": "pre_dest",
+      "id": "depart_active",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, taking the active Runway {RUNWAY} for departure."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, taking the active Runway {@RUNWAY} for departure."
     },
     {
-      "id": "pre_dest",
+      "id": "depart_straight",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, departing Runway {RUNWAY}, straight out departure."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, departing Runway {@RUNWAY}, straight out departure."
     }
   ],
   "climb_out": [
     {
-      "id": "pre_dest",
+      "id": "climb_pattern",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, airborne Runway {RUNWAY}, climbing to {ALTITUDE}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, airborne Runway {@RUNWAY}, climbing to {@ALTITUDE}."
     },
     {
-      "id": "pre_dest",
+      "id": "climb_through",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, departing the pattern, climbing through {ALTITUDE}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, departing the pattern, climbing through {@ALTITUDE}."
     }
   ],
   "cruise": [
     {
-      "id": "pre_dest",
+      "id": "cruise_level",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, level at {ALTITUDE}, transiting the area."
-    },
-    {
-      "id": "pre_dest",
-      "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, {DISTANCE} miles {DIRECTION} of the field, level {ALTITUDE}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, level at {@ALTITUDE}, transiting the area."
     }
   ],
   "approach": [
     {
-      "id": "pre_dest",
+      "id": "approach_downwind",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, {DISTANCE} miles {DIRECTION}, entering left downwind for Runway {RUNWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, entering left downwind for Runway {@RUNWAY}."
     },
     {
-      "id": "pre_dest",
+      "id": "approach_descending",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, descending through {ALTITUDE}, entering traffic pattern for {RUNWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, descending through {@ALTITUDE}, entering traffic pattern for {@RUNWAY}."
     }
   ],
   "final": [
     {
-      "id": "pre_dest",
+      "id": "final_short",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, on short final for Runway {RUNWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, on short final for Runway {@RUNWAY}."
     },
     {
-      "id": "pre_dest",
+      "id": "final_stop",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, established on final, Runway {RUNWAY} full stop."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, established on final, Runway {@RUNWAY} full stop."
     }
   ],
   "go_around": [
     {
-      "id": "pre_dest",
+      "id": "ga_rwy",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, going around Runway {RUNWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, going around Runway {@RUNWAY}."
     },
     {
-      "id": "pre_dest",
+      "id": "ga_missed",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, executing missed approach Runway {RUNWAY}, climbing."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, executing missed approach Runway {@RUNWAY}, climbing to {@MA_ALTITUDE}."
     }
   ],
   "braking": [
     {
-      "id": "pre_dest",
+      "id": "vacating_rwy",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, clear of Runway {RUNWAY} at {TAXIWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, clear of Runway {@RUNWAY}."
     },
     {
-      "id": "pre_dest",
+      "id": "vacating_ramp",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, vacating Runway {RUNWAY}, taxiing to the ramp."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, vacating Runway {@RUNWAY}, taxiing to the ramp."
     }
   ],
   "taxi_in": [
     {
-      "id": "pre_dest",
+      "id": "taxi_in_term",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, clear of the active, taxiing to the terminal."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, clear of the active, taxiing to the terminal."
     },
     {
-      "id": "pre_dest",
+      "id": "taxi_in_parking",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, taxiing to parking via {TAXIWAY}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, taxiing to parking at {@PARKING}."
     }
   ],
   "holding": [
     {
-      "id": "pre_dest",
+      "id": "hold_descending",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, descending to holding altitude {ALTITUDE}."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, descending to holding altitude {@ALTITUDE}."
     },
     {
-      "id": "pre_dest",
+      "id": "hold_established",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, established in the holding pattern at {WAYPOINT}."
-    },
-    {
-      "id": "pre_dest",
-      "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, holding at {WAYPOINT}, request update."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, established in the holding pattern at {@HOLD_FIX}."
     }
   ],
   "post_flight_parked": [
     {
-      "id": "pre_dest",
+      "id": "shutdown_clear",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, clear of all taxiways, engine shutdown."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, clear of all taxiways, engine shutdown."
     },
     {
-      "id": "pre_dest",
+      "id": "shutdown_parked",
       "initiator": "pilot",
-      "pilot": "{FACILITY} Traffic, {CALLSIGN}, safely parked at {GATE_NUMBER}, shutting down."
+      "pilot": "{$FACILITY} Traffic, {$CALLSIGN}, safely parked at {@PARKING}, shutting down."
     }
   ]
 }

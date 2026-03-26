@@ -2,6 +2,7 @@ package atc
 
 import (
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 )
@@ -266,6 +267,86 @@ func TestInferCommsCountryCode(t *testing.T) {
 			inferCommsCountryCode(ac, tt.defaultCode)
 			if ac.Flight.Comms.CountryCode != tt.want {
 				t.Fatalf("inferCommsCountryCode -> country = %q; want %q", ac.Flight.Comms.CountryCode, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidatePhrase(t *testing.T) {
+	tests := []struct {
+		name    string
+		phrase  string
+		wantErr bool
+		errSub  string
+	}{
+		{
+			name:    "Valid Simple Tags",
+			phrase:  "{$CALLSIGN}, ready at {@PARKING}.",
+			wantErr: false,
+		},
+		{
+			name:    "Valid Space-Separated Logic",
+			phrase:  "{WHEN $SPEED GT 250 SAY `Slow down` OTHERWISE SAY `Proceed`}",
+			wantErr: false,
+		},
+		{
+			name:    "Valid Nested Logic",
+			phrase:  "{WHEN $IS_NA SAY {WHEN $SPEED GT 250 SAY `Slow`} OTHERWISE SAY `Normal`}",
+			wantErr: false,
+		},
+		{
+			name:    "Valid Complex Nested in OTHERWISE",
+			phrase:  "{WHEN $IS_NA SAY `Altimeter` OTHERWISE SAY {WHEN $METRIC SAY `hPa` OTHERWISE SAY `mb` }}",
+			wantErr: false,
+		},
+		{
+			name:    "Invalid: Unclosed Brace",
+			phrase:  "Hello {$CALLSIGN",
+			wantErr: true,
+			errSub:  "unclosed opening brace",
+		},
+		{
+			name:    "Invalid: Unknown Tag",
+			phrase:  "Report at {FAKE_TAG}.",
+			wantErr: true,
+			errSub:  "unknown PCL tag",
+		},
+		{
+			name:    "Invalid Logic: Missing SAY",
+			phrase:  "{WHEN $TRUE `missing say keyword`}",
+			wantErr: true,
+			errSub:  "missing mandatory SAY",
+		},
+		{
+			name:    "Invalid Logic: Empty Condition",
+			phrase:  "{WHEN SAY `nothing`}",
+			wantErr: true,
+			errSub:  "condition is empty",
+		},
+		{
+			name:    "Invalid Logic: Nested Error Recovery",
+			// Parent is valid, but child is missing SAY
+			phrase:  "{WHEN $TRUE SAY {WHEN $FALSE `broken child`} OTHERWISE SAY `ok`}",
+			wantErr: true,
+			errSub:  "missing mandatory SAY",
+		},
+		{
+			name:    "Invalid Logic: Improper OTHERWISE",
+			phrase:  "{WHEN $TRUE SAY `hi` OTHERWISE `no say`}",
+			wantErr: true,
+			errSub:  "missing follow-up SAY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePhrase(tt.phrase)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePhrase() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if err != nil && tt.errSub != "" && !strings.Contains(err.Error(), tt.errSub) {
+				t.Errorf("validatePhrase() error = %v, must contain %q", err, tt.errSub)
 			}
 		})
 	}

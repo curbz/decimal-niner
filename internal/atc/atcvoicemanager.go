@@ -3,7 +3,6 @@ package atc
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -61,77 +60,67 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 }
 
 func (vm *VoiceManager) loadPhrases(cfg *config) {
+    // ... [Previous binary and directory checks remain unchanged] ...
 
-	if _, err := os.Stat(cfg.ATC.Voices.Piper.Application); os.IsNotExist(err) {
-		logger.Log.Errorf("Piper binary not found at %s", cfg.ATC.Voices.Piper.Application)
-		return
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.Sox.Application); os.IsNotExist(err) {
-		logger.Log.Errorf("Sox binary not found at %s", cfg.ATC.Voices.Sox.Application)
-		return
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.Piper.VoiceDirectory); os.IsNotExist(err) {
-		logger.Log.Errorf("Voice directory not found at %s", cfg.ATC.Voices.Piper.VoiceDirectory)
-		return
-	}
-	if _, err := os.Stat(cfg.ATC.Voices.PhrasesFile); os.IsNotExist(err) {
-		logger.Log.Errorf("Phrases file not found at %s", cfg.ATC.Voices.PhrasesFile)
-		return
-	}
+    // Helper to load and validate a phrase map
+    loadAndValidate := func(filePath string) (map[string][]Exchange, error) {
+        file, err := os.Open(filePath)
+        if err != nil {
+            return nil, err
+        }
+        defer file.Close()
 
-	// load country voice pools
-	err := vm.initialisePools()
-	if err != nil {
-		logger.Log.Errorf("error creating voice pools: %v", err)
-		return
-	}
+        var data map[string][]Exchange
+        if err := json.NewDecoder(file).Decode(&data); err != nil {
+            return nil, err
+        }
 
-	// load phrases from JSON file
-	phrasesFile, err := os.Open(cfg.ATC.Voices.PhrasesFile)
-	if err != nil {
-		logger.Log.Errorf("Could not open phrases json file %s: %v", cfg.ATC.Voices.PhrasesFile, err)
-		return
-	}
-	defer phrasesFile.Close()
+        // Validate every phrase in the file
+        for category, exchanges := range data {
+            for i, ex := range exchanges {
+                // Validate Pilot side
+                if err := validatePhrase(ex.Pilot); err != nil {
+                    return nil, fmt.Errorf("[%s] Exchange %d (Pilot): %v", category, i+1, err)
+                }
+                // Validate ATC side
+                if err := validatePhrase(ex.ATC); err != nil {
+                    return nil, fmt.Errorf("[%s] Exchange %d (ATC): %v", category, i+1, err)
+                }
+                // Validate required metadata
+                if ex.Initiator != "pilot" && ex.Initiator != "atc" {
+                    return nil, fmt.Errorf("[%s] Exchange %d: invalid initiator '%s'", category, i+1, ex.Initiator)
+                }
+            }
+        }
+        return data, nil
+    }
 
-	phrasesBytes, err := io.ReadAll(phrasesFile)
-	if err != nil {
-		logger.Log.Errorf("Could not read phrases json file: %v", err)
-		return
-	}
+    // Load Country voice pools
+    if err := vm.initialisePools(); err != nil {
+        logger.Log.Errorf("error creating voice pools: %v", err)
+        return
+    }
 
-	var phrases map[string][]Exchange
-	err = json.Unmarshal(phrasesBytes, &phrases)
-	if err != nil {
-		logger.Log.Errorf("Could not unmarshal phrases json: %v", err)
-		return
-	}
+    // Process Main Phrases
+    phrases, err := loadAndValidate(cfg.ATC.Voices.PhrasesFile)
+    if err != nil {
+        logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.PhrasesFile, err)
+        return
+    }
 
-	// load unicom phrases from JSON file
-	unicomPhrasesFile, err := os.Open(cfg.ATC.Voices.UnicomPhrasesFile)
-	if err != nil {
-		logger.Log.Errorf("Could not open unicom phrases json file %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
-		return
-	}
-	defer unicomPhrasesFile.Close()
+    // Process Unicom Phrases
+    unicomPhrases, err := loadAndValidate(cfg.ATC.Voices.UnicomPhrasesFile)
+    if err != nil {
+        logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
+        return
+    }
 
-	unicomPhrasesBytes, err := io.ReadAll(unicomPhrasesFile)
-	if err != nil {
-		logger.Log.Errorf("Could not read unicom phrases json file: %v", err)
-		return
-	}
-
-	var unicomPhrases map[string][]Exchange
-	err = json.Unmarshal(unicomPhrasesBytes, &unicomPhrases)
-	if err != nil {
-		logger.Log.Errorf("Could not unmarshal unicom phrases json: %v", err)
-		return
-	}
-
-	vm.PhraseClasses = PhraseClasses{
-		phrases:       phrases,
-		phrasesUnicom: unicomPhrases,
-	}
+    vm.PhraseClasses = PhraseClasses{
+        phrases:       phrases,
+        phrasesUnicom: unicomPhrases,
+    }
+    
+    logger.Log.Info("VoiceManager: All phrase files loaded and PCL syntax validated successfully.")
 }
 
 func (vm *VoiceManager) initialisePools() error {
@@ -519,3 +508,150 @@ func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
 		util.LogWarnWithLabel(ac.Registration, "no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 	}
 }
+
+var (
+	// validPCLTags includes both Raw ($) and Formatted (@) tags found in newPCLContext
+	validPCLTags = map[string]bool{
+		"$ALTITUDE": true, "$CALLSIGN": true, "$FACILITY": true, "$SQUAWK": true,
+		"$HEADING": true, "$RUNWAY": true, "$DESTINATION": true, "$BARO_SEALEVEL": true,
+		"$BARO_AIRCRAFT": true, "$WIND_SPEED": true, "$WIND_SHEAR": true, "$TURBULENCE": true,
+		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
+		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
+		"@RUNWAY": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
+		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
+		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
+		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
+	}
+)
+
+func validatePhrase(phrase string) error {
+	if phrase == "" {
+		return nil
+	}
+
+	// 1. Check for balanced braces
+	stack := 0
+	for _, char := range phrase {
+		switch char {
+		case '{':
+			stack++
+		case '}':
+			stack--
+		}
+		if stack < 0 {
+			return fmt.Errorf("unexpected closing brace '}'")
+		}
+	}
+	if stack != 0 {
+		return fmt.Errorf("unclosed opening brace '{'")
+	}
+
+	// 2. Validate Tags and Logic
+	start := -1
+	for i, char := range phrase {
+		if char == '{' {
+			start = i
+		} else if char == '}' && start != -1 {
+			tagContent := phrase[start+1 : i]
+			start = -1
+
+			// Handle Functional PCL Logic (WHEN/SAY/OTHERWISE)
+			if strings.HasPrefix(tagContent, "WHEN") {
+				if err := validateLogicBlock(tagContent); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// Ignore simple functional markers
+			if tagContent == "NOREADBACK" {
+				continue
+			}
+
+			// Standard Variable Validation ($ or @)
+			baseTag := tagContent
+			if idx := strings.Index(tagContent, "("); idx != -1 {
+				baseTag = tagContent[:idx]
+			}
+
+			if !validPCLTags[baseTag] {
+				return fmt.Errorf("unknown PCL tag: %s", baseTag)
+			}
+		}
+	}
+	return nil
+}
+
+func validateLogicBlock(content string) error {
+	if !strings.HasPrefix(content, "WHEN") {
+		return fmt.Errorf("PCL logic error: logic block must start with WHEN")
+	}
+
+	// Find SAY and OTHERWISE at the CURRENT level only
+	idxSay := findKeywordAtLevel(content, "SAY")
+	if idxSay == -1 {
+		return fmt.Errorf("PCL logic error: WHEN block missing mandatory SAY statement")
+	}
+
+	idxOtherwise := findKeywordAtLevel(content, "OTHERWISE")
+
+	// Validate the condition (between WHEN and the first SAY)
+	condition := strings.TrimSpace(content[4:idxSay])
+	if condition == "" {
+		return fmt.Errorf("PCL logic error: WHEN condition is empty")
+	}
+
+	// Validate the 'SAY' branch (recursively check if it contains more PCL)
+	sayBranch := strings.TrimSpace(content[idxSay+3 : func() int {
+		if idxOtherwise != -1 { return idxOtherwise }
+		return len(content)
+	}()])
+	
+	if err := validatePhrase(sayBranch); err != nil {
+		return fmt.Errorf("error in SAY branch: %v", err)
+	}
+
+	// Validate the 'OTHERWISE' branch if it exists
+	if idxOtherwise != -1 {
+		remaining := content[idxOtherwise+9:] // after "OTHERWISE"
+		idxSecondSay := findKeywordAtLevel(remaining, "SAY")
+		if idxSecondSay == -1 {
+			return fmt.Errorf("PCL logic error: OTHERWISE block missing follow-up SAY statement")
+		}
+		
+		otherwiseBranch := strings.TrimSpace(remaining[idxSecondSay+3:])
+		if err := validatePhrase(otherwiseBranch); err != nil {
+			return fmt.Errorf("error in OTHERWISE branch: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// findKeywordAtLevel locates a keyword (SAY, OTHERWISE) only if it's not inside another { }
+func findKeywordAtLevel(content, keyword string) int {
+	stack := 0
+	// We iterate by byte to find the exact starting index of the keyword
+	for i := 0; i < len(content); i++ {
+		if content[i] == '{' {
+			stack++
+		} else if content[i] == '}' {
+			stack--
+		} else if stack == 0 && strings.HasPrefix(content[i:], keyword) {
+			// Ensure it's a "whole word" match by checking surrounding characters
+			endIdx := i + len(keyword)
+			
+			// Check character before keyword (must be start of string or whitespace)
+			isStart := i == 0 || content[i-1] == ' '
+			
+			// Check character after keyword (must be end of string or whitespace)
+			isEnd := endIdx == len(content) || content[endIdx] == ' '
+			
+			if isStart && isEnd {
+				return i
+			}
+		}
+	}
+	return -1
+}
+

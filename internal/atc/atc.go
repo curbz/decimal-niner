@@ -85,6 +85,8 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		cfg.ATC.Voices.SayAgainFactor = 30
 	}
 
+	vm := NewVoiceManager(cfg)
+
 	start := time.Now()
 
 	// load hold data
@@ -162,8 +164,6 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 
 	radioQueue = make(chan *ATCMessage, cfg.ATC.MessageBufferSize)
 	radioPlayer = make(chan *PreparedAudio, 1) // Buffer for pre-warmed audio
-
-	vm := NewVoiceManager(cfg)
 
 	util.GoSafe(func() { PrepSpeech(cfg.ATC.Voices.Piper.Application, vm) })
 	util.GoSafe(func() { RadioPlayer(cfg.ATC.Voices.Sox.Application) })
