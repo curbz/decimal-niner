@@ -1,8 +1,8 @@
 package atc
 
 type Weather struct {
-	Wind       Wind
-	Baro       Baro
+	Wind       *Wind
+	Baro       *Baro
 	Temp       float64
 	Vis        float64
 	Humidity   float64

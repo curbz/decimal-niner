@@ -112,14 +112,14 @@ func TestTranslateRunway(t *testing.T) {
 }
 
 func TestFormatBaro(t *testing.T) {
-	// K prefix -> altimeter inHg without dot
-	got := formatBaro("KJFK", 101325.0)
+	// North America -> altimeter inHg without dot
+	got := formatBaro(101325.0, true)
 	if got != "altimeter 2992" {
 		t.Fatalf("formatBaro(K...) = %q; want prefix altimeter", got)
 	}
 
-	// non-K -> QNH hPa
-	got2 := formatBaro("EGLL", 101325.0)
+	// non-North America -> QNH hPa
+	got2 := formatBaro(101325.0, false)
 	if got2 != "QNH 1013" {
 		t.Fatalf("formatBaro(E...) = %q; want QNH 1013", got2)
 	}
@@ -216,14 +216,20 @@ func TestGenerateAltClearance(t *testing.T) {
 
 func TestFormatParkingAndPhoneticise(t *testing.T) {
 	// empty
-	if p := formatParking("", ""); p != "parking" {
+	if p := formatParking("", false); p != "parking" {
 		t.Fatalf("formatParking empty = %q; want parking", p)
 	}
 
-	// numeric with suffix for K airports
-	p := formatParking("201R", "KABC")
+	// numeric with suffix for North American airports
+	p := formatParking("201R", true)
 	if !strings.HasPrefix(p, "gate 201") {
 		t.Fatalf("formatParking(K) = %q; want prefix gate 201", p)
+	}
+
+	// numeric with suffix for non-North American airports
+	p = formatParking("201R", false)
+	if !strings.HasPrefix(p, "stand 201") {
+		t.Fatalf("formatParking(K) = %q; want prefix stand 201", p)
 	}
 
 	// phoneticise single alphas
@@ -310,17 +316,17 @@ func TestFormatWindVariants(t *testing.T) {
 	}{
 		{
 			name:      "calm",
-			weather:   &Weather{Wind: Wind{Direction: 10, Speed: 1.0}, Turbulence: 0},
+			weather:   &Weather{Wind: &Wind{Direction: 10, Speed: 1.0}, Turbulence: 0},
 			wantExact: "calm",
 		},
 		{
 			name:         "gusting",
-			weather:      &Weather{Wind: Wind{Direction: 350, Speed: 20.0}, Turbulence: 0.5, MagVar: 0},
+			weather:      &Weather{Wind: &Wind{Direction: 350, Speed: 20.0}, Turbulence: 0.5, MagVar: 0},
 			wantContains: "gusting",
 		},
 		{
 			name:      "direction rounds to 360 and reports knots",
-			weather:   &Weather{Wind: Wind{Direction: 2, Speed: 6.2}, Turbulence: 0, MagVar: 0},
+			weather:   &Weather{Wind: &Wind{Direction: 2, Speed: 6.2}, Turbulence: 0, MagVar: 0},
 			wantExact: "360 at 12 knots",
 		},
 	}
@@ -356,7 +362,7 @@ func TestFormatWindShear(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{Weather: &Weather{Wind: Wind{Shear: tt.shear}}}
+			s := &Service{Weather: &Weather{Wind: &Wind{Shear: tt.shear}}}
 			got := s.formatWindShear()
 
 			if tt.wantMention {
@@ -485,4 +491,66 @@ func TestFormatFrequency(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPCL_StressFallbacks(t *testing.T) {
+	s := &Service{
+		// Mock weather initialized as per your start-up logic
+		Weather: &Weather{
+			Baro: &Baro{Sealevel: 101325, Flight: 101325},
+			Wind: &Wind{Speed: 0, Direction: 0},
+		},
+	}
+
+	// Case 1: The "Ghost" Aircraft (No Controller, No Runway)
+	acGhost := &Aircraft{
+		Registration: "G-HOST",
+		Flight: Flight{
+			Comms: Comms{
+				Callsign: "GHOST1",
+				Controller: nil, // This is the primary panic risk
+			},
+			Position: Position{Lat: 51.47, Long: -0.45, Altitude: 2000, Heading: 270},
+			Phase:    Phase{Current: 0}, // Pre-flight/Shutdown
+		},
+	}
+
+	t.Run("Controller Nil Safety", func(t *testing.T) {
+		// Ensure this doesn't panic
+		ctx := s.newPCLContext(acGhost, "PILOT")
+
+		// Test @BARO fallback logic
+		baroFunc := ctx["@BARO"]
+		res := baroFunc().(string)
+		if res == "" {
+			t.Error("@BARO returned empty string; expected formatted default")
+		}
+
+		// Test @HOLD_FIX fallback logic
+		holdFunc := ctx["@HOLD_FIX"]
+		if holdFunc() != "published hold" {
+			t.Errorf("Expected 'published hold' for nil controller, got %v", holdFunc())
+		}
+	})
+
+	// Case 2: The "Handoff" Aircraft (Next Controller set, current is nil)
+	acHandoff := &Aircraft{
+		Registration: "N123",
+		Flight: Flight{
+			Comms: Comms{
+				Controller: nil,
+				NextController: &Controller{ICAO: "EGLL", Name: "London"},
+			},
+		},
+	}
+
+	t.Run("Handoff Logic Safety", func(t *testing.T) {
+		ctx := s.newPCLContext(acHandoff, "PILOT")
+		
+		// Ensure $FACILITY handles nil Current Controller
+		facilityFunc := ctx["$FACILITY"]
+		if facilityFunc() != "" {
+			t.Errorf("Expected empty facility name, got %v", facilityFunc())
+		}
+	})
 }

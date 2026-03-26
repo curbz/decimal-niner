@@ -405,10 +405,13 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
 	
 	// 1. Try the Controller's ICAO first (works for Tower/Approach)
-    cIcao := ac.Flight.Comms.Controller.ICAO
-    if ap, ok := s.Airports[cIcao]; ok && ap.TransAlt > 0 {
-        transitionAlt = ap.TransAlt
-    } else {
+
+	if ac.Flight.Comms.Controller != nil {
+		cIcao := ac.Flight.Comms.Controller.ICAO
+		if ap, ok := s.Airports[cIcao]; ok && ap.TransAlt > 0 {
+			transitionAlt = ap.TransAlt
+		}		
+	} else {
         // 2. FALLBACK: Look at the nearest airport under the plane
         // This is crucial for Center controllers who don't have a TransAlt
         nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)

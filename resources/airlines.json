@@ -414,6 +414,11 @@
     "callsign": "Eagle Flight",
     "icao_country_code": "K"
   },
+  "EIN": {
+    "airline_name": "Aer Lingus",
+    "callsign": "Shamrock",
+    "icao_country_code": "EI"
+  },
   "ELY": {
     "airline_name": "El Al",
     "callsign": "El Al",
@@ -704,6 +709,11 @@
     "callsign": "Lao",
     "icao_country_code": "RD"
   },
+  "LAN": {
+    "airline_name": "LATAM Airlines",
+    "callsign": "Latam",
+    "icao_country_code": "SC"
+  },
   "LDM": {
     "airline_name": "Lauda",
     "callsign": "Beaujolais",
@@ -978,6 +988,11 @@
     "airline_name": "Swiss",
     "callsign": "Swiss",
     "icao_country_code": "LS"
+  },
+  "SXS": {
+    "airline_name": "SunExpress",
+    "callsign": "Sunexpress",
+    "icao_country_code": "TU"
   },
   "TAM": {
     "airline_name": "LATAM Brasil",

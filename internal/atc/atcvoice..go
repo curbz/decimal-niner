@@ -96,7 +96,17 @@ func (s *Service) startComms() {
 			// log message with remaining capacity of channel buffer
 			util.LogWithLabel(ac.Registration, "transmission required (channel buffer remaining capacity: %d)", cap(s.Broadcast)-len(s.Broadcast))
 
-			phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+			// first validate we have a controller assigned as we shoud not be receiving updates for flights without controllers, but this is a safeguard against potential nil pointer panics
+			if ac.Flight.Comms.Controller == nil {
+				util.LogErrWithLabel(ac.Registration, "error: no controller assigned")
+				continue
+			}
+
+			phaseFacility, exists := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+			if !exists {
+				util.LogErrWithLabel(ac.Registration,"error: phase facility not found for flight phase %d", ac.Flight.Phase.Current)
+				continue
+			}
 
 			// process sector handoffs
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
@@ -105,17 +115,21 @@ func (s *Service) startComms() {
 					// we don't actually detect entry to sector, this is forced after sector exit is detected (see HandoffExitSector case)
 					util.LogWithLabel(ac.Registration, "Processing handoff enter sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					phrase := "{$FACILITY}, {$CALLSIGN} {$ALTITUDE}"
-					s.preparePhrase(phrase, "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(phrase, "PILOT", ac)
 					phrase = "{$CALLSIGN} , {$FACILITY} identified"
-					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac)
 					ac.Flight.Comms.CruiseHandoff = NoHandoff
 				case HandoffExitSector:
 					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					// select next controller's first listed frequency
+					if len(ac.Flight.Comms.NextController.Freqs) == 0 {
+    					util.LogErrWithLabel(ac.Registration, "No frequencies for next controller")
+    					continue 
+					}
 					freqStr := formatFrequency(ac.Flight.Comms.NextController.Freqs[0])
 					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
-					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
-					s.preparePhrase(autoReadback(phrase), "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac)
+					s.preparePhrase(autoReadback(phrase), "PILOT", ac)
 					util.GoSafe(func() {
 						// in twenty seconds, simulate the aircraft entering the new sector as this is not actually detected
 						time.Sleep(20 * time.Second)
@@ -150,46 +164,46 @@ func (s *Service) startComms() {
 			didSayAgain := false
 			if exchange.Initiator == "pilot" {
 				// pilot's initial phrase
-				s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+				s.preparePhrase(exchange.Pilot, "PILOT", ac)
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
 					// randomised 'say again'
-					if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
+					if isAirborne(ac.Flight.Phase.Current) &&rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
-						s.preparePhrase("{$CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+						s.preparePhrase("{$CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac)
 						// pilot repeats phrase
-						s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+						s.preparePhrase(exchange.Pilot, "PILOT", ac)
 					}
 					// atc responds
-					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac)
 					// pilot reads back atc instructions, but not for shutdown to avoid unecessary repetition
 					// also check if read back is explicitly precluded
 					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() &&
 						!strings.Contains(exchange.ATC, "{NOREADBACK}") {
-						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac)
 					}
 				}
 			}
 
 			if exchange.Initiator == "atc" {
 				// atc initiates call to pilot
-				s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+				s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac)
 				// randomised 'say again'
 				if rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 					// pilot asks atc to repeat request
-					s.preparePhrase("{$FACILITY} say again", "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase("{$FACILITY} say again", "PILOT", ac)
 					// atc repeats instructions
-					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac, s.Weather.Baro)
+					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac)
 				}
 				if exchange.Pilot == "" {
 					// if the selected exchange does not specify a pilot response and the ATC exchange phrase does not
 					// explicitly preclude readback, the pilot will read back atc instructions
 					if !strings.Contains(exchange.ATC, "{NOREADBACK}") {
-						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac, s.Weather.Baro)
+						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac)
 					}
 				} else {
 					// else the pilot responds with the specified exchange phrase
-					s.preparePhrase(exchange.Pilot, "PILOT", ac, s.Weather.Baro)
+					s.preparePhrase(exchange.Pilot, "PILOT", ac)
 				}
 			}
 
@@ -220,156 +234,9 @@ func removeSquareBracketedPhrases(input string) string {
 	return result
 }
 
-func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
-
-	icao := getAirportICAObyPhaseClass(ac)
-	rwy := s.getAirportRunway(icao, ac.Flight.AssignedRunway)
-
-	return pcl.PCLContext{
-		// --- RAW DATA ($) ---
-		"$ALTITUDE": func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
-		"$CALLSIGN": func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
-		"$FACILITY": func(args ...string) interface{} { return ac.Flight.Comms.Controller.Name },
-		"$SQUAWK":   func(args ...string) interface{} { return ac.Flight.Squawk },
-		"$HEADING":  func(args ...string) interface{} { return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))},
-		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
-		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
-		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
-		"$BARO_AIRCRAFT": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Flight)) },
-		"$WIND_SPEED":    func(args ...string) interface{} { return s.Weather.Wind.Speed },
-		"$WIND_SHEAR":    func(args ...string) interface{} { return s.Weather.Wind.Shear },
-		"$TURBULENCE":    func(args ...string) interface{} { return s.Weather.Turbulence },
-		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParking },
-		"$APPROACH_TYPE": func(args ...string) interface{} { if rwy != nil {
-				return rwy.HighestPrecisionApproach
-			} else {
-				return ""
-			}},
-		"$HOLD_FIX_NAME": func(args ...string) interface{} { 		
-			holdfix := s.findNearestHold(ac, icao)
-			if holdfix == nil {
-				return ""
-			} else {
-				return holdfix.FullName
-			}},
-		"$HOLD_FIX_IDENT": func(args ...string) interface{} { 		
-			holdfix := s.findNearestHold(ac, icao)
-			if holdfix == nil {
-				return ""
-			} else {
-				return holdfix.Ident
-			}},
-		"$MA_HEADING": func(args ...string) interface{} { if rwy != nil {
-				return rwy.MAHeading
-			} else {
-				return 0
-			}},
-		"$MA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
-				return rwy.MAalt
-			} else {
-				return 0
-			}},
-		"$MA_FIX": func(args ...string) interface{} { if rwy != nil {
-				return rwy.MAFix
-			} else {
-				return ""
-			}},
-		"$FA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
-				return rwy.FAFalt
-			} else {
-				return 0
-			}},
-
-		// --- FORMATTED MACROS (@) ---
-
-		// --- RUNWAY & TAXI ---
-        "@RUNWAY": func(args ...string) interface{} {
-            return translateRunway(ac.Flight.AssignedRunway)
-        },
-        "@PARKING": func(args ...string) interface{} {
-            return formatParking(ac.Flight.AssignedParking, ac.Flight.Comms.Controller.ICAO)
-        },
-
-        // --- DEPARTURE & ARRIVAL ---
-        "@DESTINATION": func(args ...string) interface{} {
-            if ac.Flight.Destination == "" {
-                return "as filed"
-            }
-            return formatAirportName(ac.Flight.Destination, s.Airports)
-        },
-        "@APPROACH_TYPE": func(args ...string) interface{} {
-            if rwy != nil {
-                return rwy.HighestPrecisionApproach
-            }
-            return ""
-        },
-
-        // --- MISSED APPROACH LOGIC ---
-        "@MA_HEADING": func(args ...string) interface{} {
-            if rwy != nil && rwy.MAHeading > 0 {
-                return fmt.Sprintf("heading %d", rwy.MAHeading)
-            }
-            return "runway heading"
-        },
-        "@MA_ALTITUDE": func(args ...string) interface{} {
-            if rwy != nil && rwy.MAalt > 0 {
-                transAlt := s.getTransistionAltitude(ac)
-                transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
-                return formatAltitude(float64(rwy.MAalt), transLevel, ac.Flight.Phase)
-            }
-            return "missed approach altitude"
-        },
-        "@MA_FIX": func(args ...string) interface{} {
-            if rwy != nil && rwy.MAFix != "" {
-                return rwy.MAFix
-            }
-            return "published hold"
-        },
-
-        // --- ALTITUDE & BARO ---
-		"@ALTITUDE": func(args ...string) interface{} {
-			transitionAlt := s.getTransistionAltitude(ac)
-			transitionLevel := getTransitionLevel(transitionAlt, s.Weather.Baro.Sealevel)
-			return formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase)
-		},
-        "@ALT_CLEARANCE": func(args ...string) interface{} {
-            transAlt := s.getTransistionAltitude(ac)
-            transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
-            clearance := ac.Flight.CruiseAlt
-            if ac.Flight.Phase.Class == Arriving && rwy != nil {
-                clearance = rwy.FAFalt
-            }
-            return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
-        },
-        "@BARO": func(args ...string) interface{} {
-            return formatBaro(ac.Flight.Comms.Controller.ICAO, s.Weather.Baro.Sealevel)
-        },
-
-        // --- WEATHER & CONTROLLER ---
-        "@WIND":       func(args ...string) interface{} { return s.formatWind() },
-        "@SHEAR":      func(args ...string) interface{} { return s.formatWindShear() },
-        "@TURBULENCE": func(args ...string) interface{} { return s.formatTurbulence(role) },
-        "@HANDOFF":    func(args ...string) interface{} { return s.generateHandoffPhrase(ac) },
-        "@VALEDICTION": func(args ...string) interface{} {
-			factor := 5 //default
-			if len(args) > 0 {
-				factor, _ = strconv.Atoi(args[0])
-			}
-			return s.generateValediction(factor)
-		},
-        "@HOLD_FIX": func(args ...string) interface{} {
-            holdfix := s.findNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
-            if holdfix != nil && holdfix.FullName != "" {
-                return holdfix.FullName
-            }
-            return "published hold"
-        },
-	}
-}
-
 // preparePhrase prepares the phrase and creates an ATC message
 // role is either "PILOT" or the facility type e.g "Tower"
-func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
+func (s *Service) preparePhrase(phrase, role string, ac *Aircraft) {
 
 	// call PCL interpreter
 	phrase, err := pcl.ProcessPhrase(phrase, s.newPCLContext(ac, role))
@@ -397,6 +264,193 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft, baro Baro) {
 		//success - message sent to buffer
 	default:
 		util.LogWarnWithLabel(msg.AircraftSnap.Registration, "radio queue is full. speech generation skipped")
+	}
+}
+
+func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
+
+	phaseICAO := getAirportICAObyPhaseClass(ac)
+	rwy := s.getAirportRunway(phaseICAO, ac.Flight.AssignedRunway)
+
+	return pcl.PCLContext{
+		// --- RAW DATA ($) ---
+		"$ALTITUDE": func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
+		"$CALLSIGN": func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
+		"$FACILITY": func(args ...string) interface{} { 
+			if ac.Flight.Comms.Controller != nil {
+				return ac.Flight.Comms.Controller.Name 
+			} else {
+				util.LogWarnWithLabel(ac.Registration, "no controller assigned for facility resolution")
+				return ""
+			}
+		},
+		"$SQUAWK":   func(args ...string) interface{} { return ac.Flight.Squawk },
+		"$HEADING":  func(args ...string) interface{} { return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))},
+		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
+		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
+		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
+		"$BARO_AIRCRAFT": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Flight)) },
+		"$WIND_SPEED":    func(args ...string) interface{} { return s.Weather.Wind.Speed },
+		"$WIND_SHEAR":    func(args ...string) interface{} { return s.Weather.Wind.Shear },
+		"$TURBULENCE":    func(args ...string) interface{} { return s.Weather.Turbulence },
+		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParking },
+		"$APPROACH_TYPE": func(args ...string) interface{} { 
+			if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says highest precision approach is %s", rwy.HighestPrecisionApproach)
+				return rwy.HighestPrecisionApproach
+			} else {
+				return ""
+			}},
+		"$HOLD_FIX_NAME": func(args ...string) interface{} { 		
+			holdfix := s.findNearestHold(ac, phaseICAO)
+			if holdfix == nil {
+				return ""
+			} else {
+				util.LogDebugWithLabel(ac.Registration, "controller says nearest hold is %s", holdfix.FullName)
+				return holdfix.FullName
+			}},
+		"$HOLD_FIX_IDENT": func(args ...string) interface{} { 		
+			holdfix := s.findNearestHold(ac, phaseICAO)
+			if holdfix == nil {
+				return ""
+			} else {
+				util.LogDebugWithLabel(ac.Registration, "controller says nearest hold identifier is %s", holdfix.Ident)
+				return holdfix.Ident
+			}},
+		"$MA_HEADING": func(args ...string) interface{} { if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach heading is %d", rwy.MAHeading)
+				return rwy.MAHeading
+			} else {
+				return 0
+			}},
+		"$MA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach altitude is %d", rwy.MAalt)
+				return rwy.MAalt
+			} else {
+				return 0
+			}},
+		"$MA_FIX": func(args ...string) interface{} { if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach fix is %s", rwy.MAFix)
+				return rwy.MAFix
+			} else {
+				return ""
+			}},
+		"$FA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says final fix approach altitude is %d", rwy.FAFalt)
+				return rwy.FAFalt
+			} else {
+				return 0
+			}},
+
+		// --- FORMATTED MACROS (@) ---
+		// --- RUNWAY & TAXI ---
+        "@RUNWAY": func(args ...string) interface{} {
+            return translateRunway(ac.Flight.AssignedRunway)
+        },
+        "@PARKING": func(args ...string) interface{} {
+			var icao string
+			if ac.Flight.Comms.Controller == nil {
+				icao = s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 10000)
+			} else {
+				icao = ac.Flight.Comms.Controller.ICAO
+			}
+            return formatParking(ac.Flight.AssignedParking, isNorthAmerica(icao))
+        },
+
+        // --- DEPARTURE & ARRIVAL ---
+        "@DESTINATION": func(args ...string) interface{} {
+            if ac.Flight.Destination == "" {
+                return "as filed"
+            }
+            return formatAirportName(ac.Flight.Destination, s.Airports)
+        },
+        // --- MISSED APPROACH LOGIC ---
+        "@MA_HEADING": func(args ...string) interface{} {
+            if rwy != nil && rwy.MAHeading > 0 {
+                r := fmt.Sprintf("heading %d", rwy.MAHeading)
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach heading is %s", r)
+				return r
+            }
+            return "runway heading"
+        },
+        "@MA_ALTITUDE": func(args ...string) interface{} {
+            if rwy != nil && rwy.MAalt > 0 {
+                transAlt := s.getTransistionAltitude(ac)
+                transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+                r := formatAltitude(float64(rwy.MAalt), transLevel, ac.Flight.Phase)
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach altitude is %s", r)
+				return r
+            }
+            return "missed approach altitude"
+        },
+        "@MA_FIX": func(args ...string) interface{} {
+			var r string
+            if rwy != nil && rwy.MAFix != "" {
+                r = rwy.MAFix
+				util.LogDebugWithLabel(ac.Registration, "controller says missed approach fix/hold is %s", r)
+            } else {
+            	r = "published hold"
+			}
+			return r
+        },
+
+        // --- ALTITUDE & BARO ---
+		"@ALTITUDE": func(args ...string) interface{} {
+			transitionAlt := s.getTransistionAltitude(ac)
+			transitionLevel := getTransitionLevel(transitionAlt, s.Weather.Baro.Sealevel)
+			return formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase)
+		},
+        "@ALT_CLEARANCE": func(args ...string) interface{} {
+            transAlt := s.getTransistionAltitude(ac)
+            transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+            clearance := ac.Flight.CruiseAlt
+            if ac.Flight.Phase.Class == Arriving && rwy != nil {
+                clearance = rwy.FAFalt
+				util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
+            }
+            return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
+        },
+        "@BARO": func(args ...string) interface{} {
+			var icao string
+			pascals := s.Weather.Baro.Sealevel
+			if ac.Flight.Comms.Controller == nil {
+				pascals = 101325 // standard pressure as default if no controller assigned to avoid errors in baro formatting
+				icao = s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 10000)
+			} else {
+				icao = ac.Flight.Comms.Controller.ICAO
+			}
+            r := formatBaro(pascals , isNorthAmerica(icao))
+            util.LogDebugWithLabel(ac.Registration, "controller says barometric pressure is %s", r)
+            return r
+        },
+
+        // --- WEATHER & CONTROLLER ---
+        "@WIND":       func(args ...string) interface{} { return s.formatWind() },
+        "@SHEAR":      func(args ...string) interface{} { return s.formatWindShear() },
+        "@TURBULENCE": func(args ...string) interface{} { return s.formatTurbulence(role) },
+        "@HANDOFF":    func(args ...string) interface{} { return s.generateHandoffPhrase(ac) },
+        "@VALEDICTION": func(args ...string) interface{} {
+			factor := 5 //default
+			if len(args) > 0 {
+				factor, _ = strconv.Atoi(args[0])
+			}
+			return s.generateValediction(factor)
+		},
+        "@HOLD_FIX": func(args ...string) interface{} {
+			var r string
+			if ac.Flight.Comms.Controller == nil {
+				r = "published hold"
+			} else {
+				holdfix := s.findNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
+				if holdfix != nil && holdfix.FullName != "" {
+					r = holdfix.FullName
+					util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)
+				} else {
+					r = "published hold"
+				}
+			}
+            return r
+        },
 	}
 }
 
@@ -605,13 +659,13 @@ func translateRunway(runway string) string {
 	return runway
 }
 
-func formatBaro(icao string, pascals float64) string {
+func formatBaro(pascals float64, isNorthAmerica bool) string {
 
 	digits := ""
 
 	// Determine the regional "Keyword"
 	prefix := "QNH"
-	if strings.HasPrefix(icao, "K") || strings.HasPrefix(icao, "C") {
+	if isNorthAmerica {
 		prefix = "altimeter"
 		inHg := pascals * 0.0002953                                     // Convert Pascals to inches of mercury
 		digits = strings.ReplaceAll(fmt.Sprintf("%.2f", inHg), ".", "") // "2992"
@@ -721,7 +775,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool)
 }
 
 // formatParking applies logic to convert parking designations into more natural speech phrases
-func formatParking(parking string, icao string) string {
+func formatParking(parking string, isNorthAmerica bool) string {
 	parking = strings.ToUpper(strings.TrimSpace(parking))
 	if parking == "" {
 		return "parking"
@@ -736,7 +790,7 @@ func formatParking(parking string, icao string) string {
 
 	// 2. Default to Gate/Stand logic
 	prefix := "stand"
-	if len(icao) > 0 && icao[0] == 'K' {
+	if isNorthAmerica {
 		prefix = "gate"
 	}
 

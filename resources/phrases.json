@@ -14,30 +14,30 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, start-up complete, requesting taxi.", "atc": "{$CALLSIGN}, [Roger,] report ready for taxi." }
   ],
   "taxi_out": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for taxi.", "atc": "{$CALLSIGN}, taxi to runway {@RUNWAY}, hold short of runway {@RUNWAY}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi to runway {@RUNWAY}, hold short of runway {@RUNWAY}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, ready to taxi for departure to {@DESTINATION}.", "atc": "{$CALLSIGN}, follow traffic, taxi to runway {@RUNWAY}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for taxi.", "atc": "{$CALLSIGN}, taxi to runway {@RUNWAY} [and] hold short of runway." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi and hold short [of] runway {@RUNWAY}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, ready to taxi for departure to {@DESTINATION}.", "atc": "{$CALLSIGN} taxi to runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting taxi.", "atc": "{$CALLSIGN}, taxi [to runway] {@RUNWAY} [and] hold short." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi", "atc": "{$CALLSIGN}, [taxi request approved,] depart[ing] runway {@RUNWAY}" }
   ],
   "depart": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading, wind {@WIND}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading[, wind {@WIND}]." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for takeoff for {@DESTINATION}.", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}, {@SHEAR}" },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure.", "atc": "{$CALLSIGN}, line up runway {@RUNWAY}, wind {@WIND}, cleared for take off." },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}. wind {@WIND}" },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure.", "atc": "{$CALLSIGN}, [line up runway {@RUNWAY}, wind {@WIND},] cleared for take off." },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}. [wind {@WIND}]" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure from runway {@RUNWAY}.", "atc": "{$CALLSIGN}, fly the designated departure, runway {@RUNWAY} cleared for takeoff, wind {@WIND}" }
   ],
   "climb_out": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Departure, {$CALLSIGN}, passing {@ALTITUDE} for assigned altitude.", "atc": "{$CALLSIGN}, {$FACILITY} Departure, radar contact, {@ALT_CLEARANCE}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Departure, {$CALLSIGN}, passing {@ALTITUDE} for assigned altitude.", "atc": "{$CALLSIGN}, {$FACILITY} Departure,[ radar contact,] {@ALT_CLEARANCE}." },
     { "initiator": "atc", "pilot": "Heading {$HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, fly heading {$HEADING}" },
     { "initiator": "atc", "pilot": "{@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "pilot": "Identing, {$CALLSIGN}.", "atc": "{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident." }
+    { "initiator": "atc", "pilot": "squawk {$SQUAWK}. Identing, {$CALLSIGN}.", "atc": "{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident." }
   ],
   "cruise": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {@TURBULENCE}", "atc": "{$CALLSIGN}, {$FACILITY} Center, Roger, {@BARO}.{NOREADBACK}" },
     { "initiator": "atc", "pilot": "Heading {$HEADING}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {$FACILITY}, continue to fly heading {$HEADING}. {@TURBULENCE}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, request to {@ALT_CLEARANCE}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "pilot": "maintaining altitude {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, maintain altitude. {@TURBULENCE}" },
+    { "initiator": "atc", "pilot": "maintaining altitude {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, maintain current altitude. {@TURBULENCE}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, with you at {@ALTITUDE}. {@TURBULENCE}.", "atc": "{$CALLSIGN}, affirm, radar contact. {@TURBULENCE}" }
   ],
   "holding": [
@@ -48,22 +48,22 @@
     { "initiator": "atc", "pilot": "Cleared to {@HOLD_FIX}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, resume approach, cleared to {@HOLD_FIX}, descend and maintain {@ALTITUDE}." }
   ],
   "approach": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE} approach, {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {@APPROACH_TYPE}, runway {@RUNWAY}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {@APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
-    { "initiator": "atc", "pilot": "Heading {$HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, fly heading {$HEADING}, descend and maintain {@ALTITUDE}, cleared for the {@APPROACH_TYPE} approach." }
+    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {$APPROACH_TYPE} approach, {@ALT_CLEARANCE}." },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {$APPROACH_TYPE}, runway {@RUNWAY}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {$APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
+    { "initiator": "atc", "pilot": "Heading {$HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, fly heading {$HEADING}, descend and maintain {@ALTITUDE}, cleared for the {$APPROACH_TYPE} approach." }
   ],
   "final": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared to land, wind {@WIND}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared to land[, wind {@WIND}]." },
     { "initiator": "atc", "pilot": "Stabilised on final approach, {$CALLSIGN}.", "atc": "{$CALLSIGN}, continue approach runway {@RUNWAY}. {@SHEAR}." },
     { "initiator": "atc", "atc": "{$CALLSIGN}, cleared runway {@RUNWAY}. {@SHEAR}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on short final runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY} cleared to land. {@SHEAR}." },
-    { "initiator": "atc", "pilot": "Gear down, runway {@RUNWAY} cleared to land, {$CALLSIGN}.", "atc": "{$CALLSIGN}, runway {@RUNWAY} cleared to land, wind {@WIND}." }
+    { "initiator": "atc", "pilot": "Gear down, runway {@RUNWAY} cleared to land, {$CALLSIGN}.", "atc": "{$CALLSIGN}, runway {@RUNWAY} cleared to land[, wind {@WIND}]." } 
   ],
   "go_around": [
     { "initiator": "pilot", "pilot": "Going around, {$CALLSIGN}", "atc": "{$CALLSIGN}, climb and maintain {@MA_ALTITUDE}, proceed to {@MA_FIX}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, on the go, missed approach runway {@RUNWAY}.", "atc": "{$CALLSIGN}, Roger, fly {@MA_HEADING}, climb and maintain {@MA_ALTITUDE}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, executing missed approach, climbing.", "atc": "{$CALLSIGN}, continue climb and maintain {@MA_ALTITUDE}, turn {@MA_HEADING} hold at {@MA_FIX}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, executing missed approach, climbing.", "atc": "{$CALLSIGN}, continue climb and maintain {@MA_ALTITUDE}, turn {@MA_HEADING} and hold at {@MA_FIX}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, missed approach runway {@RUNWAY}, requesting vectors.", "atc": "{$CALLSIGN}, climb {@MA_ALTITUDE} fly {@MA_HEADING} to {@MA_FIX}" },
     { "initiator": "pilot", "pilot": "Going around, {$CALLSIGN}", "atc": "{$CALLSIGN}, Roger, fly {@MA_HEADING}, climb and maintain {@MA_ALTITUDE}." }
   ],

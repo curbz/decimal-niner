@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -121,10 +122,11 @@ func GoSafe(fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
+				stack := debug.Stack()
 				if logger.Log != nil {
-					logger.Log.Errorf("panic recovered in goroutine: %v", r)
+					logger.Log.Errorf("panic recovered in goroutine: %v\nStack Trace:\n%s", r, string(stack))
 				} else {
-					fmt.Printf("panic recovered in goroutine: %v\n", r)
+					fmt.Printf("panic recovered in goroutine: %v\nStack Trace:\n%s", r, string(stack))
 				}
 			}
 		}()

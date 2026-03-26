@@ -57,3 +57,81 @@ func TestGetCountryFromRegistration(t *testing.T) {
 		}
 	}
 }
+
+func TestIsNorthAmerica(t *testing.T) {
+	tests := []struct {
+		icao string
+		want bool
+	}{
+		// Empty string
+		{"", false},
+		// USA (K prefix)
+		{"KJFK", true},   // New York
+		{"KIND", true},   // Indianapolis
+		{"KORD", true},   // Chicago
+		{"KLAS", true},   // Las Vegas
+		{"K", true},      // single K
+		{"KABC", true},   // any K prefix
+		// Canada (C prefix)
+		{"CYYZ", true},   // Toronto
+		{"CYUL", true},   // Montreal
+		{"CYVRX", true},  // Vancouver
+		{"C", true},      // single C
+		// Alaska (PA prefix)
+		{"PANC", true},   // Anchorage
+		{"PAFB", true},   // Fairbanks
+		// Hawaii (PH prefix)
+		{"PHNL", true},   // Honolulu
+		{"PHOG", true},   // any PH prefix
+		// Mexico (M prefix)
+		{"MMMX", true},   // Mexico City
+		{"MMUN", true},   // Monterrey
+		{"M", true},      // single M
+		// Non-North American ICAO codes
+		{"LFPG", false},  // Paris, France
+		{"EGLL", false},  // London, UK
+		{"RJTT", false},  // Tokyo, Japan
+		{"UUWW", false},  // Moscow, Russia
+		{"SBGR", false},  // São Paulo, Brazil
+		{"FAOR", false},  // Johannesburg, South Africa
+		// Other prefixes
+		{"A", false},
+		{"Z", false},
+		{"P", false},     // P alone (not PA or PH)
+		{"XB-ABC", false},// Mexico prefix in registration style but as ICAO
+	}
+
+	for _, tc := range tests {
+		got := isNorthAmerica(tc.icao)
+		if got != tc.want {
+			t.Errorf("isNorthAmerica(%q) = %v; want %v", tc.icao, got, tc.want)
+		}
+	}
+}
+
+func TestIsAirborne(t *testing.T) {
+	tests := []struct {
+		phase int
+		want  bool
+	}{
+		{phase: 0, want: true},
+		{phase: 1, want: true},
+		{phase: 2, want: true},
+		{phase: 9, want: true},
+		{phase: 10, want: true},
+		{phase: 12, want: true},
+		{phase: 3, want: false},
+		{phase: 4, want: false},
+		{phase: 5, want: false},
+		{phase: 11, want: false},
+		{phase: -1, want: false},
+		{phase: 99, want: false},
+	}
+
+	for _, tc := range tests {
+		got := isAirborne(tc.phase)
+		if got != tc.want {
+			t.Errorf("isAirborne(%d) = %v; want %v", tc.phase, got, tc.want)
+		}
+	}
+}

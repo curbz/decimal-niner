@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/logger"
@@ -78,6 +79,10 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 	if err != nil {
 		logger.Log.Errorf("Error reading configuration file: %v", err)
 		return nil
+	}
+
+	if cfg.ATC.Voices.SayAgainFactor <= 0 {
+		cfg.ATC.Voices.SayAgainFactor = 30
 	}
 
 	start := time.Now()
@@ -171,7 +176,7 @@ func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, req
 		Airlines:        airlinesData,
 		Airports:        airports,
 		FlightSchedules: fScheds,
-		Weather:         &Weather{Wind: Wind{}, Baro: Baro{}},
+		Weather:         &Weather{Wind: &Wind{}, Baro: &Baro{ Sealevel: 101325, Flight: 101325 }},
 		VoiceManager:    vm,
 	}
 }
@@ -236,6 +241,15 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 	}
 }
 
+func isAirborne(phase int) bool {
+	switch phase {
+	case 0,1,2,9,10,12:
+		return true
+	default:
+		return false
+	}
+}
+
 func GetCountryFromRegistration(reg string) string {
 	// Standard registration format is Prefix-Suffix or Prefix1234
 	// We check the first 1 or 2 characters
@@ -258,5 +272,19 @@ func GetCountryFromRegistration(reg string) string {
 	return ""
 }
 
-
+func isNorthAmerica(icao string) bool {
+    if len(icao) == 0 {
+        return false // Default to International/ICAO standard
+    }
+    prefix := icao[0]
+    // K = USA, C = Canada
+    if prefix == 'K' || prefix == 'C' {
+        return true
+    }
+    // Also treat Alaska/Hawaii/Mexico as North American conventions 
+    if strings.HasPrefix(icao, "PA") || strings.HasPrefix(icao, "PH") || prefix == 'M' {
+        return true
+    }
+    return false
+}
 
