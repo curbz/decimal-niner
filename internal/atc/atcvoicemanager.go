@@ -308,13 +308,20 @@ func (vm *VoiceManager) getSessionType(role string) int {
 
 func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string {
 
+	var logLabel string
+
 	countryCode := msg.CountryCode
 	if msg.Role != "PILOT" {
 		countryCode = msg.ControllerICAO[:2] // For ATC, derive country from ICAO
+		logLabel = fmt.Sprintf("%s_%s_%s", msg.ControllerICAO, 
+					strings.ReplaceAll(msg.ControllerName, " ", ""), msg.Role)
+	} else {
+		logLabel = fmt.Sprintf("%s_%s_%s", msg.AircraftSnap.Registration, msg.Role,
+					strings.ReplaceAll(msg.AircraftSnap.Flight.Comms.Callsign, " ", ""))
 	}
 
 	targetISO, _ := convertIcaoToIso(countryCode)
-	logLabel := fmt.Sprintf("%s_%s", msg.AircraftSnap.Registration, msg.Role)
+	
 	util.LogWithLabel(logLabel, "voice selection started - ISO code: %s (country code %s)", targetISO, countryCode)
 
 	// 1. TIER 1: Primary Country Match

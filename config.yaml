@@ -31,7 +31,7 @@ atc:
       voice_directory:    "/home/dmorris/piper-voices"
       speakers:
         - voice_file: "en_GB-vctk-medium.onnx"
-          ids: [34,72,77,89]
+          ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 27, 106]
     handoff_valediction_factor: 5  
     say_again_factor: 30
     comms_country_code_default: "GB"
