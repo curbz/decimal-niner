@@ -1,6 +1,7 @@
 package atc
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -57,6 +58,12 @@ type Exchange struct {
 type Piper struct {
 	Application    string `yaml:"application"`
 	VoiceDirectory string `yaml:"voice_directory"`
+	Speakers []Speaker `yaml:"speakers"`
+}
+
+type Speaker struct {
+	FileName string `yaml:"voice_file"`
+	IDs []int `yaml:"ids"`
 }
 
 type Sox struct {
@@ -70,8 +77,8 @@ type PreparedAudio struct {
 	SampleRate int
 	NoiseType  string
 	Msg        ATCMessage
-	Voice      string
-	VoiceLock  *sync.Mutex
+	Voice      string      // This should be the filename (baseName)
+	VoiceLock  *sync.Mutex // The lock associated with that filename
 }
 
 var radioQueue chan *ATCMessage
@@ -104,7 +111,7 @@ func (s *Service) startComms() {
 
 			phaseFacility, exists := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
 			if !exists {
-				util.LogErrWithLabel(ac.Registration,"error: phase facility not found for flight phase %d", ac.Flight.Phase.Current)
+				util.LogErrWithLabel(ac.Registration, "error: phase facility not found for flight phase %d", ac.Flight.Phase.Current)
 				continue
 			}
 
@@ -123,8 +130,8 @@ func (s *Service) startComms() {
 					util.LogWithLabel(ac.Registration, "Processing handoff exit sector scenario for controller %s", ac.Flight.Comms.Controller.Name)
 					// select next controller's first listed frequency
 					if len(ac.Flight.Comms.NextController.Freqs) == 0 {
-    					util.LogErrWithLabel(ac.Registration, "No frequencies for next controller")
-    					continue 
+						util.LogErrWithLabel(ac.Registration, "No frequencies for next controller")
+						continue
 					}
 					freqStr := formatFrequency(ac.Flight.Comms.NextController.Freqs[0])
 					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
@@ -168,7 +175,7 @@ func (s *Service) startComms() {
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
 					// randomised 'say again'
-					if isAirborne(ac.Flight.Phase.Current) &&rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
+					if isAirborne(ac.Flight.Phase.Current) && rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
 						s.preparePhrase("{$CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac)
 						// pilot repeats phrase
@@ -276,16 +283,18 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		// --- RAW DATA ($) ---
 		"$ALTITUDE": func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
 		"$CALLSIGN": func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
-		"$FACILITY": func(args ...string) interface{} { 
+		"$FACILITY": func(args ...string) interface{} {
 			if ac.Flight.Comms.Controller != nil {
-				return ac.Flight.Comms.Controller.Name 
+				return ac.Flight.Comms.Controller.Name
 			} else {
 				util.LogWarnWithLabel(ac.Registration, "no controller assigned for facility resolution")
 				return ""
 			}
 		},
-		"$SQUAWK":   func(args ...string) interface{} { return ac.Flight.Squawk },
-		"$HEADING":  func(args ...string) interface{} { return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))},
+		"$SQUAWK": func(args ...string) interface{} { return ac.Flight.Squawk },
+		"$HEADING": func(args ...string) interface{} {
+			return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))
+		},
 		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
 		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
 		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
@@ -294,123 +303,134 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"$WIND_SHEAR":    func(args ...string) interface{} { return s.Weather.Wind.Shear },
 		"$TURBULENCE":    func(args ...string) interface{} { return s.Weather.Turbulence },
 		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParking },
-		"$APPROACH_TYPE": func(args ...string) interface{} { 
+		"$APPROACH_TYPE": func(args ...string) interface{} {
 			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says highest precision approach is %s", rwy.HighestPrecisionApproach)
 				return rwy.HighestPrecisionApproach
 			} else {
 				return ""
-			}},
-		"$HOLD_FIX_NAME": func(args ...string) interface{} { 		
+			}
+		},
+		"$HOLD_FIX_NAME": func(args ...string) interface{} {
 			holdfix := s.findNearestHold(ac, phaseICAO)
 			if holdfix == nil {
 				return ""
 			} else {
 				util.LogDebugWithLabel(ac.Registration, "controller says nearest hold is %s", holdfix.FullName)
 				return holdfix.FullName
-			}},
-		"$HOLD_FIX_IDENT": func(args ...string) interface{} { 		
+			}
+		},
+		"$HOLD_FIX_IDENT": func(args ...string) interface{} {
 			holdfix := s.findNearestHold(ac, phaseICAO)
 			if holdfix == nil {
 				return ""
 			} else {
 				util.LogDebugWithLabel(ac.Registration, "controller says nearest hold identifier is %s", holdfix.Ident)
 				return holdfix.Ident
-			}},
-		"$MA_HEADING": func(args ...string) interface{} { if rwy != nil {
+			}
+		},
+		"$MA_HEADING": func(args ...string) interface{} {
+			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach heading is %d", rwy.MAHeading)
 				return rwy.MAHeading
 			} else {
 				return 0
-			}},
-		"$MA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+			}
+		},
+		"$MA_ALTITUDE": func(args ...string) interface{} {
+			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach altitude is %d", rwy.MAalt)
 				return rwy.MAalt
 			} else {
 				return 0
-			}},
-		"$MA_FIX": func(args ...string) interface{} { if rwy != nil {
+			}
+		},
+		"$MA_FIX": func(args ...string) interface{} {
+			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach fix is %s", rwy.MAFix)
 				return rwy.MAFix
 			} else {
 				return ""
-			}},
-		"$FA_ALTITUDE": func(args ...string) interface{} { if rwy != nil {
+			}
+		},
+		"$FA_ALTITUDE": func(args ...string) interface{} {
+			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says final fix approach altitude is %d", rwy.FAFalt)
 				return rwy.FAFalt
 			} else {
 				return 0
-			}},
+			}
+		},
 
 		// --- FORMATTED MACROS (@) ---
 		// --- RUNWAY & TAXI ---
-        "@RUNWAY": func(args ...string) interface{} {
-            return translateRunway(ac.Flight.AssignedRunway)
-        },
-        "@PARKING": func(args ...string) interface{} {
+		"@RUNWAY": func(args ...string) interface{} {
+			return translateRunway(ac.Flight.AssignedRunway)
+		},
+		"@PARKING": func(args ...string) interface{} {
 			var icao string
 			if ac.Flight.Comms.Controller == nil {
 				icao = s.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 10000)
 			} else {
 				icao = ac.Flight.Comms.Controller.ICAO
 			}
-            return formatParking(ac.Flight.AssignedParking, isNorthAmerica(icao))
-        },
+			return formatParking(ac.Flight.AssignedParking, isNorthAmerica(icao))
+		},
 
-        // --- DEPARTURE & ARRIVAL ---
-        "@DESTINATION": func(args ...string) interface{} {
-            if ac.Flight.Destination == "" {
-                return "as filed"
-            }
-            return formatAirportName(ac.Flight.Destination, s.Airports)
-        },
-        // --- MISSED APPROACH LOGIC ---
-        "@MA_HEADING": func(args ...string) interface{} {
-            if rwy != nil && rwy.MAHeading > 0 {
-                r := fmt.Sprintf("heading %d", rwy.MAHeading)
+		// --- DEPARTURE & ARRIVAL ---
+		"@DESTINATION": func(args ...string) interface{} {
+			if ac.Flight.Destination == "" {
+				return "as filed"
+			}
+			return formatAirportName(ac.Flight.Destination, s.Airports)
+		},
+		// --- MISSED APPROACH LOGIC ---
+		"@MA_HEADING": func(args ...string) interface{} {
+			if rwy != nil && rwy.MAHeading > 0 {
+				r := fmt.Sprintf("heading %d", rwy.MAHeading)
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach heading is %s", r)
 				return r
-            }
-            return "runway heading"
-        },
-        "@MA_ALTITUDE": func(args ...string) interface{} {
-            if rwy != nil && rwy.MAalt > 0 {
-                transAlt := s.getTransistionAltitude(ac)
-                transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
-                r := formatAltitude(float64(rwy.MAalt), transLevel, ac.Flight.Phase)
+			}
+			return "runway heading"
+		},
+		"@MA_ALTITUDE": func(args ...string) interface{} {
+			if rwy != nil && rwy.MAalt > 0 {
+				transAlt := s.getTransistionAltitude(ac)
+				transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+				r := formatAltitude(float64(rwy.MAalt), transLevel, ac.Flight.Phase)
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach altitude is %s", r)
 				return r
-            }
-            return "missed approach altitude"
-        },
-        "@MA_FIX": func(args ...string) interface{} {
+			}
+			return "missed approach altitude"
+		},
+		"@MA_FIX": func(args ...string) interface{} {
 			var r string
-            if rwy != nil && rwy.MAFix != "" {
-                r = rwy.MAFix
+			if rwy != nil && rwy.MAFix != "" {
+				r = rwy.MAFix
 				util.LogDebugWithLabel(ac.Registration, "controller says missed approach fix/hold is %s", r)
-            } else {
-            	r = "published hold"
+			} else {
+				r = "published hold"
 			}
 			return r
-        },
+		},
 
-        // --- ALTITUDE & BARO ---
+		// --- ALTITUDE & BARO ---
 		"@ALTITUDE": func(args ...string) interface{} {
 			transitionAlt := s.getTransistionAltitude(ac)
 			transitionLevel := getTransitionLevel(transitionAlt, s.Weather.Baro.Sealevel)
 			return formatAltitude(ac.Flight.Position.Altitude, transitionLevel, ac.Flight.Phase)
 		},
-        "@ALT_CLEARANCE": func(args ...string) interface{} {
-            transAlt := s.getTransistionAltitude(ac)
-            transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
-            clearance := ac.Flight.CruiseAlt
-            if ac.Flight.Phase.Class == Arriving && rwy != nil {
-                clearance = rwy.FAFalt
+		"@ALT_CLEARANCE": func(args ...string) interface{} {
+			transAlt := s.getTransistionAltitude(ac)
+			transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
+			clearance := ac.Flight.CruiseAlt
+			if ac.Flight.Phase.Class == Arriving && rwy != nil {
+				clearance = rwy.FAFalt
 				util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
-            }
-            return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
-        },
-        "@BARO": func(args ...string) interface{} {
+			}
+			return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
+		},
+		"@BARO": func(args ...string) interface{} {
 			var icao string
 			pascals := s.Weather.Baro.Sealevel
 			if ac.Flight.Comms.Controller == nil {
@@ -419,24 +439,24 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			} else {
 				icao = ac.Flight.Comms.Controller.ICAO
 			}
-            r := formatBaro(pascals , isNorthAmerica(icao))
-            util.LogDebugWithLabel(ac.Registration, "controller says barometric pressure is %s", r)
-            return r
-        },
+			r := formatBaro(pascals, isNorthAmerica(icao))
+			util.LogDebugWithLabel(ac.Registration, "controller says barometric pressure is %s", r)
+			return r
+		},
 
-        // --- WEATHER & CONTROLLER ---
-        "@WIND":       func(args ...string) interface{} { return s.formatWind() },
-        "@SHEAR":      func(args ...string) interface{} { return s.formatWindShear() },
-        "@TURBULENCE": func(args ...string) interface{} { return s.formatTurbulence(role) },
-        "@HANDOFF":    func(args ...string) interface{} { return s.generateHandoffPhrase(ac) },
-        "@VALEDICTION": func(args ...string) interface{} {
+		// --- WEATHER & CONTROLLER ---
+		"@WIND":       func(args ...string) interface{} { return s.formatWind() },
+		"@SHEAR":      func(args ...string) interface{} { return s.formatWindShear() },
+		"@TURBULENCE": func(args ...string) interface{} { return s.formatTurbulence(role) },
+		"@HANDOFF":    func(args ...string) interface{} { return s.generateHandoffPhrase(ac) },
+		"@VALEDICTION": func(args ...string) interface{} {
 			factor := 5 //default
 			if len(args) > 0 {
 				factor, _ = strconv.Atoi(args[0])
 			}
 			return s.generateValediction(factor)
 		},
-        "@HOLD_FIX": func(args ...string) interface{} {
+		"@HOLD_FIX": func(args ...string) interface{} {
 			var r string
 			if ac.Flight.Comms.Controller == nil {
 				r = "published hold"
@@ -449,8 +469,8 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 					r = "published hold"
 				}
 			}
-            return r
-        },
+			return r
+		},
 	}
 }
 
@@ -482,53 +502,60 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 	for msg := range radioQueue {
 
 		util.LogWithLabel(msg.AircraftSnap.Registration, "radio queue received phrase (channel buffer remaining capacity: %d)", cap(radioQueue)-len(radioQueue))
-		voice, onnx, rate, noise := vm.resolveVoice(msg)
+
+		voice, onnx, rate, noise, speakerID := vm.resolveVoice(msg)
 
 		// PROTECT: If voice name is empty, we can't speak
 		if voice == "" {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech generation to prevent Piper error")
+			util.LogErrWithLabel(msg.AircraftSnap.Registration, "error: voice key is empty, skipping speech generation")
 			continue
 		}
 
-		// Lock this specific voice so no other Piper process touches this .onnx file
-		// CRITICAL: You must pass this lock to the Player to unlock it
+		// Lock remains based on 'voice' (the .onnx filename) to prevent concurrent
+		// access to the same model file/memory by different Piper instances.
 		vLock := vm.getVoiceLock(voice)
 		if vLock == nil {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "ERROR: Could not retrieve lock for voice: %s", voice)
+			util.LogErrWithLabel(msg.AircraftSnap.Registration, "error: Could not retrieve lock for voice: %s", voice)
 			continue
 		}
 		vLock.Lock()
 
-		cmd := exec.Command(piperPath, "--model", onnx, "--output-raw", "--length_scale", "0.7")
+		cmd := exec.Command(piperPath,
+			"--model", onnx,
+			"--speaker", speakerID,
+			"--output-raw",
+			"--length_scale", "0.8",
+		)
+
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "Error obtaining piper stdin pipe: %v", err)
+			util.LogErrWithLabel(msg.AircraftSnap.Registration, "error obtaining piper stdin pipe: %v", err)
+			vLock.Unlock() // CRITICAL: Unlock if we fail before passing to radioPlayer
 			continue
 		}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "Error obtaining piper stdout pipe: %v", err)
+			util.LogErrWithLabel(msg.AircraftSnap.Registration, "error obtaining piper stdout pipe: %v", err)
+			vLock.Unlock()
 			continue
 		}
 
 		if err := cmd.Start(); err != nil {
-			util.LogWithLabel(msg.AircraftSnap.Registration, "Error starting piper: %v", err)
+			util.LogErrWithLabel(msg.AircraftSnap.Registration, "error starting piper: %v", err)
+			vLock.Unlock()
 			continue
 		}
 
-		// Feed text immediately so Piper starts synthesizing in the background
-		// Must close stdin to signal EOF to piper
+		// Feed text immediately
 		stdinCopy := stdin
 		textCopy := msg.Text
 		util.GoSafe(func() {
 			defer stdinCopy.Close()
 			_, err := io.WriteString(stdinCopy, textCopy)
 			if err != nil {
-				util.LogWithLabel(msg.AircraftSnap.Registration, "Error writing to piper stdin: %v", err)
+				util.LogErrWithLabel(msg.AircraftSnap.Registration, "error writing to piper stdin: %v", err)
 				return
 			}
-			// A tiny pause ensures the C++ buffer has moved the text
-			// to the synthesis engine before the pipe 'disappears'
 			time.Sleep(10 * time.Millisecond)
 		})
 
@@ -542,7 +569,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 			NoiseType:  noise,
 			Msg:        *msg,
 			Voice:      voice,
-			VoiceLock:  vLock,
+			VoiceLock:  vLock, // Player will unlock this after audio finishes
 		}
 	}
 }
@@ -557,7 +584,11 @@ func RadioPlayer(soxPath string) {
 
 		// PROTECT: If voice name is empty, we can't speak
 		if audio.Voice == "" {
-			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
+			util.LogWarnWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
+			// If there's a lock even without a name (unlikely), release it
+			if audio.VoiceLock != nil {	
+				audio.VoiceLock.Unlock()
+			}
 			continue
 		}
 
@@ -579,8 +610,8 @@ func RadioPlayer(soxPath string) {
 			}
 			args = append(args,
 				// SoX effects chain
-				"bandpass", "1200", "1500", "overdrive", "20", "tremolo", "5", "40",
-				"pad", "0.3", "0.3", "synth", audio.NoiseType, "mix", "pad", "0", "0.2",
+				"bandpass", "1200", "1500", "overdrive", "20",
+				"pad", "0.3", "0.4", "synth", audio.NoiseType, "mix", "pad", "0.3", "0.4",
 			)
 
 			playCmd := exec.Command(soxPath, args...)
@@ -589,6 +620,17 @@ func RadioPlayer(soxPath string) {
 			util.LogWithLabel(fmt.Sprintf("%s_%s_%s", audio.Msg.AircraftSnap.Registration, strings.ToUpper(audio.Msg.Role),
 				strings.ReplaceAll(audio.Msg.ControllerName, " ", "")),
 				"%s (%s)", audio.Msg.Text, audio.Voice)
+
+			// Wait for Piper to actually have data ready ---
+            // We use a small buffer to "catch" the first byte.
+            firstByte := make([]byte, 1)
+            n, _ := a.PiperOut.Read(firstByte)            
+            if n > 0 {
+                // We have data! Combine that first byte with the rest of the stream
+                playCmd.Stdin = io.MultiReader(bytes.NewReader(firstByte), a.PiperOut)
+            } else {
+                playCmd.Stdin = a.PiperOut
+            }
 
 			if err := playCmd.Start(); err != nil {
 				util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Error starting sox: %v", err)
@@ -609,15 +651,11 @@ func RadioPlayer(soxPath string) {
 			if err != nil {
 				// Log if it's not a standard exit, but 0xc0000409 should be gone
 				//if !strings.Contains(err.Error(), "exit status 1") {
-				util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
+				util.LogWarnWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
 				//}
 			}
 
 			util.LogDebugWithLabel(audio.Msg.AircraftSnap.Registration, "radio player finished")
-
-			// force a small gap between transmissions
-			time.Sleep(time.Duration(rand.Intn(500)+500) * time.Millisecond)
-
 		}(audio)
 	}
 }

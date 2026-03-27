@@ -184,6 +184,14 @@ func GetISOWeekday(t time.Time) int {
 	return (int(t.Weekday()) + 6) % 7
 }
 
+// In pkg/util/util.go
+func Max(a, b int) int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
 // logs as debug
 func LogDebugWithLabel(label string, msg string, args ...interface{}) {
 	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)

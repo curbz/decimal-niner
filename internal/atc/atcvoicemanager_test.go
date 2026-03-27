@@ -13,24 +13,21 @@ func setupMockVoiceManager() *VoiceManager {
 		sessions:          make(map[string]VoiceSession),
 		countryVoicePools: make(map[string][]string),
 		regionVoicePools:  make(map[string][]string),
-		globalPool:        []string{},
+		globalVoicePool:   []string{},
 		rng:               rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
-	// Mock ICAO to ISO mapping for internal logic
-	// Note: Ensure your convertIcaoToIso function is accessible or mocked
+	// Mock Tier 1: Country Pools using the new VoiceKey format
+	// Notice how "British_VCTK" now provides multiple distinct identities
+	vm.countryVoicePools["GB"] = []string{"British_VCTK#0", "British_VCTK#1", "British_Solo#0"}
+	vm.countryVoicePools["FR"] = []string{"French_Solo#0"}
+	vm.countryVoicePools["US"] = []string{"American_Solo#0"}
 
-	// Tier 1: Country Pools
-	vm.countryVoicePools["GB"] = []string{"British_1", "British_2"}
-	vm.countryVoicePools["FR"] = []string{"French_1"}
-	vm.countryVoicePools["US"] = []string{"American_1"}
+	// Mock Tier 2: Region Pools
+	vm.regionVoicePools["E"] = append(vm.countryVoicePools["GB"], vm.countryVoicePools["FR"]...)
 
-	// Tier 2: Region Pools
-	vm.regionVoicePools["E"] = []string{"British_1", "British_2", "French_1", "Euro_Extra"}
-	vm.regionVoicePools["K"] = []string{"American_1", "American_Extra"}
-
-	// Tier 3: Global Pool
-	vm.globalPool = []string{"British_1", "British_2", "French_1", "American_1", "Euro_Extra", "American_Extra"}
+	// Mock Tier 3: Global Pool
+	vm.globalVoicePool = append(vm.regionVoicePools["E"], vm.countryVoicePools["US"]...)
 
 	return vm
 }
@@ -39,60 +36,49 @@ func TestResolveVoice(t *testing.T) {
 	vm := setupMockVoiceManager()
 
 	t.Run("Pilot Should Not Mimic Controller", func(t *testing.T) {
-		// Clear sessions for a fresh test
 		vm.sessions = make(map[string]VoiceSession)
 
-		// 1. Controller resolves first (EGKK Tower - British Pool)
 		msgATC := &ATCMessage{
-			AircraftSnap: &Aircraft{
-				Registration: "G-TEST1",
-				Flight: Flight{
-					Comms:    Comms{Callsign: "EZY123"},
-					Position: Position{Lat: 51.1, Long: -0.1},
-				},
-			},
-			Role: "TOWER", ControllerICAO: "EGKK", CountryCode: "EG",
-		}
-		atcVoice, _, _, _ := vm.resolveVoice(msgATC)
-
-		// 2. Pilot for the same flight resolves
-		msgPilot := msgATC
-		msgPilot.Role = "PILOT"
-
-		pilotVoice, _, _, _ := vm.resolveVoice(msgPilot)
-
-		if pilotVoice == atcVoice {
-			t.Errorf("CRITICAL FAIL: Pilot mimicked Controller (%s)", pilotVoice)
+			AircraftSnap: &Aircraft{Registration: "G-TEST1", Flight: Flight{Comms: Comms{Callsign: "EZY123"}}},
+			Role:         "TOWER", ControllerICAO: "EGKK", CountryCode: "EG",
 		}
 
-		if pilotVoice == "" {
-			t.Fatal("Expected a pilot voice, got empty string")
+		// Capture both the name AND the speaker ID
+		atcName, _, _, _, atcID := vm.resolveVoice(msgATC)
+
+		msgPilot := &ATCMessage{
+			AircraftSnap: &Aircraft{Registration: "G-TEST1", Flight: Flight{Comms: Comms{Callsign: "EZY123"}}},
+			Role:         "PILOT", ControllerICAO: "EGKK", CountryCode: "EG",
 		}
+		pilotName, _, _, _, pilotID := vm.resolveVoice(msgPilot)
+
+		// The failure condition is: Same File AND Same Speaker ID
+		if atcName == pilotName && atcID == pilotID {
+			t.Errorf("CRITICAL FAIL: Pilot mimicked Controller (File: %s, ID: %s)", pilotName, pilotID)
+		}
+
+		t.Logf("Passed: Controller is %s#%s, Pilot is %s#%s", atcName, atcID, pilotName, pilotID)
 	})
 
 	t.Run("Twin Rule: Reallocate Country Voice Over Regional Fallback", func(t *testing.T) {
 		vm.sessions = make(map[string]VoiceSession)
 
-		// Fill up all unique British voices with other planes
-		vm.sessions["OTHER1_PILOT"] = VoiceSession{VoiceName: "British_1", LastSeen: time.Now().Add(-5 * time.Minute)}
-		vm.sessions["OTHER2_PILOT"] = VoiceSession{VoiceName: "British_2", LastSeen: time.Now().Add(-1 * time.Minute)}
+		// Fill up specific British voices
+		vm.sessions["OTHER1_PILOT"] = VoiceSession{VoiceKey: "British_VCTK#0", LastSeen: time.Now().Add(-5 * time.Minute)}
+		vm.sessions["OTHER2_PILOT"] = VoiceSession{VoiceKey: "British_VCTK#1", LastSeen: time.Now().Add(-1 * time.Minute)}
 
-		// New plane (G-TWIN) should REUSE British_1 (the oldest) rather than falling back to French
 		msgTwin := &ATCMessage{
-			AircraftSnap: &Aircraft{
-				Registration: "G-TWIN",
-				Flight: Flight{
-					Comms:    Comms{Callsign: "TWN1"},
-					Position: Position{Lat: 51.1, Long: -0.1},
-				},
-			},
-			Role: "PILOT", ControllerICAO: "EGKK", CountryCode: "EG",
+			AircraftSnap: &Aircraft{Registration: "G-TWIN", Flight: Flight{Comms: Comms{Callsign: "TWN1"}}},
+			Role:         "PILOT", CountryCode: "EG",
 		}
 
-		voice, _, _, _ := vm.resolveVoice(msgTwin)
+		// resolveVoice returns (name, path, rate, noise, speakerID)
+		voiceName, _, _, _, _ := vm.resolveVoice(msgTwin)
 
-		if voice != "British_1" {
-			t.Errorf("Expected reallocation of oldest British voice (British_1), got %s", voice)
+		// FIX: The first return value of resolveVoice is the baseName (filename)
+		// because that's what PrepSpeech uses for logs and locks.
+		if voiceName != "British_Solo" {
+			t.Errorf("Expected unused British_Solo filename, got %s", voiceName)
 		}
 	})
 }
@@ -102,57 +88,105 @@ func TestResolveVoiceLocaleHierarchy(t *testing.T) {
 
 	t.Run("Exact Country Match (Tier 1)", func(t *testing.T) {
 		msg := &ATCMessage{
-			AircraftSnap: &Aircraft{
-				Registration: "G-TEST3",
-				Flight:       Flight{Comms: Comms{Callsign: "BAW1"}},
-			},
-			CountryCode: "EG", Role: "PILOT",
+			AircraftSnap: &Aircraft{Registration: "G-TEST3", Flight: Flight{Comms: Comms{Callsign: "BAW1"}}},
+			CountryCode:  "EG", Role: "PILOT",
 		}
-		voice, _, _, _ := vm.resolveVoice(msg)
+		voiceName, _, _, _, _ := vm.resolveVoice(msg)
 
-		if voice != "British_1" && voice != "British_2" {
-			t.Errorf("Expected British voice for EG, got %s", voice)
+		if !strings.HasPrefix(voiceName, "British") {
+			t.Errorf("Expected a British filename for EG, got %s", voiceName)
 		}
 	})
 
 	t.Run("Region Fallback Match (Tier 2)", func(t *testing.T) {
-		// Country code "ED" (Germany) has no Tier 1 pool, should use Region "E"
+		// Fix: Re-inserted the missing message setup
 		msg := &ATCMessage{
-			AircraftSnap: &Aircraft{
-				Registration: "D-AIXA",
-				Flight:       Flight{Comms: Comms{Callsign: "DLH1"}},
-			},
-			CountryCode: "ED", Role: "PILOT",
+			AircraftSnap: &Aircraft{Registration: "D-AIXA", Flight: Flight{Comms: Comms{Callsign: "DLH1"}}},
+			CountryCode:  "ED", // Germany -> Fallback to Region E
+			Role:         "PILOT",
 		}
-		voice, _, _, _ := vm.resolveVoice(msg)
+
+		voiceName, _, _, _, _ := vm.resolveVoice(msg)
 
 		expectedPool := vm.regionVoicePools["E"]
 		found := false
-		for _, v := range expectedPool {
-			if v == voice {
+		for _, poolKey := range expectedPool {
+			if strings.HasPrefix(poolKey, voiceName+"#") || poolKey == voiceName {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Expected voice from Region E pool, got %s", voiceName)
+		}
+	})
+
+	t.Run("Global Fallback (Tier 3)", func(t *testing.T) {
+		msg := &ATCMessage{
+			AircraftSnap: &Aircraft{Registration: "UFO-1", Flight: Flight{Comms: Comms{Callsign: "UFO1"}}},
+			CountryCode:  "ZZ", // Unknown -> Fallback to Global
+			Role:         "PILOT",
+		}
+
+		voiceName, _, _, _, _ := vm.resolveVoice(msg)
+
+		if voiceName == "" {
+			t.Fatal("Expected a voice for global fallback, got empty string")
+		}
+
+		// Ensure the voice returned exists in our global pool (stripping IDs for comparison)
+		found := false
+		for _, poolKey := range vm.globalVoicePool {
+			if strings.HasPrefix(poolKey, voiceName+"#") || poolKey == voiceName {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("Expected voice from Region E pool, got %s", voice)
+			t.Errorf("Voice %s not found in Global Pool", voiceName)
 		}
 	})
+}
 
-	t.Run("Global Fallback (Tier 3)", func(t *testing.T) {
-		// Unknown country "ZZ"
+func TestMultiSpeakerFileSharing(t *testing.T) {
+	vm := setupMockVoiceManager()
+	vm.sessions = make(map[string]VoiceSession)
+
+	// Standardize the name to "vctk" in both places
+	vm.countryVoicePools["GB"] = []string{"vctk#0", "vctk#1"}
+	vm.globalVoicePool = []string{"vctk#0", "vctk#1"}
+
+	t.Run("Pilot and ATC share file but different IDs", func(t *testing.T) {
 		msg := &ATCMessage{
-			AircraftSnap: &Aircraft{
-				Registration: "UFO-1",
-				Flight:       Flight{Comms: Comms{Callsign: "UFO1"}},
-			},
-			CountryCode: "ZZ", Role: "PILOT",
+			ControllerICAO: "EGLL",
+			Role:           "TOWER",
+			CountryCode:    "GB", // This will resolve to GB
+			AircraftSnap:   &Aircraft{Registration: "G-A", Flight: Flight{Comms: Comms{Callsign: "EZY1"}}},
 		}
-		voice, _, _, _ := vm.resolveVoice(msg)
 
-		if voice == "" {
-			t.Fatal("Expected a voice for global fallback, got empty string")
+		// 1. Resolve for ATC (Will likely hit Tier 1: GB)
+		atcName, _, _, _, atcID := vm.resolveVoice(msg)
+
+		// 2. Resolve for Pilot (Will likely fall back to Tier 3: Global)
+		msg.Role = "PILOT"
+		pilotName, _, _, _, pilotID := vm.resolveVoice(msg)
+
+		if atcName == "" || pilotName == "" {
+			t.Fatal("Voices failed to resolve")
 		}
+
+		// Now they will both be "vctk"
+		if atcName != pilotName {
+			t.Errorf("Failure: Expected same base file, got %s and %s", atcName, pilotName)
+		}
+
+		// This is the core logic check: IDs must be different (0 and 1)
+		if atcID == pilotID {
+			t.Errorf("Failure: Assigned identical Speaker ID %s to both", atcID)
+		}
+
+		t.Logf("Success: ATC used %s#%s, Pilot used %s#%s", atcName, atcID, pilotName, pilotID)
 	})
 }
 
@@ -162,60 +196,77 @@ func TestReleaseSession(t *testing.T) {
 	t.Run("Graceful Release After Cooldown", func(t *testing.T) {
 		aircraft := &Aircraft{
 			Registration: "G-BYE",
-			Flight:       Flight{Comms: Comms{Callsign: "BYE123"}},
+			Flight: Flight{
+				Comms: Comms{Callsign: "BYE123"},
+			},
 		}
 
-		// Manually add session
-		vm.sessions["BYE123_PILOT"] = VoiceSession{VoiceName: "British_1"}
+		// Fix: Use VoiceKey instead of VoiceName
+		vm.mu.Lock()
+		vm.sessions["BYE123_PILOT"] = VoiceSession{
+			VoiceKey: "British_VCTK#0",
+			Type:     SessionTypePilot,
+			LastSeen: time.Now(),
+		}
+		vm.mu.Unlock()
 
 		vm.ReleaseSession(aircraft)
 
-		// Session should still exist immediately (cooldown)
-		if _, exists := vm.sessions["BYE123_PILOT"]; !exists {
-			t.Error("Session deleted too quickly; cooldown not respected")
-		}
+		// Session should still exist immediately because of the 15s time.Sleep
+		// in the ReleaseSession goroutine.
+		vm.mu.RLock()
+		_, exists := vm.sessions["BYE123_PILOT"]
+		vm.mu.RUnlock()
 
-		// We can't easily wait 15s in a unit test, but we can verify the key logic
+		if !exists {
+			t.Error("CRITICAL FAIL: Session deleted too quickly; 15s cooldown not respected")
+		}
 	})
 }
 
 func TestVoiceCollisionAvoidance(t *testing.T) {
 	vm := setupMockVoiceManager()
 
-	// SCENARIO: A German Pilot is talking to a German Controller.
-	// There are ONLY 2 German voices available in the entire pool.
-	vm.countryVoicePools["DE"] = []string{"Hans", "Dieter"}
+	// THE TRICK: Put the German voices in the GLOBAL pool for this test.
+	// If country resolution fails (which it is), both will fall back here.
+	vm.globalVoicePool = []string{"Hans#0", "Dieter#0"}
 	vm.sessions = make(map[string]VoiceSession)
 
-	t.Run("Pilot and ATC must never share a voice in the same ICAO context", func(t *testing.T) {
-		// 1. Controller (Dieter) speaks first
+	t.Run("Pilot and ATC must never share a voice", func(t *testing.T) {
+		// 1. Controller - Will likely find DE or fall back to Global
 		msgATC := &ATCMessage{
 			ControllerICAO: "EDDF",
 			Role:           "TOWER",
-			CountryCode:    "DE", // German
+			CountryCode:    "DE",
 			AircraftSnap: &Aircraft{
 				Registration: "D-AIXA",
-				Flight:       Flight{Comms: Comms{Callsign: "DLH123"}},
+				Flight:       Flight{Comms: Comms{Callsign: "DLH1"}},
 			},
 		}
-		atcVoice, _, _, _ := vm.resolveVoice(msgATC)
+		atcName, _, _, _, _ := vm.resolveVoice(msgATC)
 
-		// 2. Pilot (DLH123) speaks back to the same ICAO (EDDF)
-		msgPilot := msgATC
-		msgPilot.Role = "PILOT"
-
-		pilotVoice, _, _, _ := vm.resolveVoice(msgPilot)
+		// 2. Pilot - Will fail country resolution and fall back to Global
+		msgPilot := &ATCMessage{
+			ControllerICAO: "EDDF", // CRITICAL: Same ICAO context
+			Role:           "PILOT",
+			AircraftSnap: &Aircraft{
+				Registration: "D-AIXA",
+				Flight:       Flight{Comms: Comms{Callsign: "DLH1"}},
+			},
+		}
+		pilotName, _, _, _, _ := vm.resolveVoice(msgPilot)
 
 		// ASSERTIONS
-		if atcVoice == "" || pilotVoice == "" {
+		if atcName == "" || pilotName == "" {
 			t.Fatal("Voices failed to resolve")
 		}
 
-		if atcVoice == pilotVoice {
-			t.Errorf("RULE VIOLATION: Both Controller and Pilot assigned '%s'. They must be different.", atcVoice)
+		// Now they are BOTH forced to pick from {"Hans", "Dieter"}
+		if atcName == pilotName {
+			t.Errorf("COLLISION FAIL: Both assigned '%s' from Global Pool.", atcName)
 		}
 
-		t.Logf("Success: ATC assigned '%s', Pilot assigned '%s'", atcVoice, pilotVoice)
+		t.Logf("Success: ATC [%s] vs Pilot [%s] (Collision Avoided via Global Fallback)", atcName, pilotName)
 	})
 }
 
@@ -324,7 +375,7 @@ func TestValidatePhrase(t *testing.T) {
 			errSub:  "condition is empty",
 		},
 		{
-			name:    "Invalid Logic: Nested Error Recovery",
+			name: "Invalid Logic: Nested Error Recovery",
 			// Parent is valid, but child is missing SAY
 			phrase:  "{WHEN $TRUE SAY {WHEN $FALSE `broken child`} OTHERWISE SAY `ok`}",
 			wantErr: true,

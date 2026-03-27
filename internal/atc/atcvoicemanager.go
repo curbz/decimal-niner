@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,11 +17,12 @@ import (
 )
 
 // VoiceSession stores the metadata for an active assignment
+// VoiceSession now stores the specific speaker key
 type VoiceSession struct {
-	VoiceName string
-	LastSeen  time.Time
-	Lat, Lon  float64
-	Type      int
+	VoiceKey string // Combined "filename#speakerID"
+	LastSeen time.Time
+	Lat, Lon float64
+	Type     int
 }
 
 const (
@@ -36,8 +38,9 @@ type VoiceManager struct {
 	rng               *rand.Rand
 	countryVoicePools map[string][]string
 	regionVoicePools  map[string][]string
-	globalPool        []string
+	globalVoicePool   []string
 	voiceLocks        sync.Map // Map of string -> *sync.Mutex
+	allowedSpeakerIDs map[string][]int
 }
 
 type PhraseClasses struct {
@@ -55,79 +58,78 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 	}
 
 	vm.loadPhrases(cfg)
+	vm.loadSpeakerConfig(cfg.ATC.Voices.Piper)
+
+	// loadvoice pools
+	if err := vm.initialisePools(); err != nil {
+		logger.Log.Fatalf("error creating voice pools: %v", err)
+	}
 
 	return vm
 }
 
 func (vm *VoiceManager) loadPhrases(cfg *config) {
-    // ... [Previous binary and directory checks remain unchanged] ...
+	// ... [Previous binary and directory checks remain unchanged] ...
 
-    // Helper to load and validate a phrase map
-    loadAndValidate := func(filePath string) (map[string][]Exchange, error) {
-        file, err := os.Open(filePath)
-        if err != nil {
-            return nil, err
-        }
-        defer file.Close()
+	// Helper to load and validate a phrase map
+	loadAndValidate := func(filePath string) (map[string][]Exchange, error) {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
 
-        var data map[string][]Exchange
-        if err := json.NewDecoder(file).Decode(&data); err != nil {
-            return nil, err
-        }
+		var data map[string][]Exchange
+		if err := json.NewDecoder(file).Decode(&data); err != nil {
+			return nil, err
+		}
 
-        // Validate every phrase in the file
-        for category, exchanges := range data {
-            for i, ex := range exchanges {
-                // Validate Pilot side
-                if err := validatePhrase(ex.Pilot); err != nil {
-                    return nil, fmt.Errorf("[%s] Exchange %d (Pilot): %v", category, i+1, err)
-                }
-                // Validate ATC side
-                if err := validatePhrase(ex.ATC); err != nil {
-                    return nil, fmt.Errorf("[%s] Exchange %d (ATC): %v", category, i+1, err)
-                }
-                // Validate required metadata
-                if ex.Initiator != "pilot" && ex.Initiator != "atc" {
-                    return nil, fmt.Errorf("[%s] Exchange %d: invalid initiator '%s'", category, i+1, ex.Initiator)
-                }
-            }
-        }
-        return data, nil
-    }
+		// Validate every phrase in the file
+		for category, exchanges := range data {
+			for i, ex := range exchanges {
+				// Validate Pilot side
+				if err := validatePhrase(ex.Pilot); err != nil {
+					return nil, fmt.Errorf("[%s] Exchange %d (Pilot): %v", category, i+1, err)
+				}
+				// Validate ATC side
+				if err := validatePhrase(ex.ATC); err != nil {
+					return nil, fmt.Errorf("[%s] Exchange %d (ATC): %v", category, i+1, err)
+				}
+				// Validate required metadata
+				if ex.Initiator != "pilot" && ex.Initiator != "atc" {
+					return nil, fmt.Errorf("[%s] Exchange %d: invalid initiator '%s'", category, i+1, ex.Initiator)
+				}
+			}
+		}
+		return data, nil
+	}
 
-    // Load Country voice pools
-    if err := vm.initialisePools(); err != nil {
-        logger.Log.Errorf("error creating voice pools: %v", err)
-        return
-    }
+	// Process Main Phrases
+	phrases, err := loadAndValidate(cfg.ATC.Voices.PhrasesFile)
+	if err != nil {
+		logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.PhrasesFile, err)
+		return
+	}
 
-    // Process Main Phrases
-    phrases, err := loadAndValidate(cfg.ATC.Voices.PhrasesFile)
-    if err != nil {
-        logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.PhrasesFile, err)
-        return
-    }
+	// Process Unicom Phrases
+	unicomPhrases, err := loadAndValidate(cfg.ATC.Voices.UnicomPhrasesFile)
+	if err != nil {
+		logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
+		return
+	}
 
-    // Process Unicom Phrases
-    unicomPhrases, err := loadAndValidate(cfg.ATC.Voices.UnicomPhrasesFile)
-    if err != nil {
-        logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
-        return
-    }
+	vm.PhraseClasses = PhraseClasses{
+		phrases:       phrases,
+		phrasesUnicom: unicomPhrases,
+	}
 
-    vm.PhraseClasses = PhraseClasses{
-        phrases:       phrases,
-        phrasesUnicom: unicomPhrases,
-    }
-    
-    logger.Log.Info("VoiceManager: All phrase files loaded and PCL syntax validated successfully.")
+	logger.Log.Info("VoiceManager: All phrase files loaded and PCL syntax validated successfully.")
 }
 
 func (vm *VoiceManager) initialisePools() error {
-
-	// Initialize the map
 	vm.countryVoicePools = make(map[string][]string)
 	vm.regionVoicePools = make(map[string][]string)
+	vm.globalVoicePool = []string{}
 
 	files, err := os.ReadDir(vm.voiceDir)
 	if err != nil {
@@ -135,85 +137,137 @@ func (vm *VoiceManager) initialisePools() error {
 	}
 
 	for _, file := range files {
-		if file.IsDir() {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".onnx") {
 			continue
 		}
 
 		fileName := file.Name()
+		baseName := strings.TrimSuffix(fileName, ".onnx")
 
-		// Only process .onnx files
-		if strings.HasSuffix(fileName, ".onnx") {
-			// Extract the country for the key
-			if len(fileName) >= 5 {
-				code := strings.ToUpper(fileName[3:5])
+		// 1. Get Speaker Count from onnx.json
+		numSpeakers := vm.getSpeakerCount(filepath.Join(vm.voiceDir, fileName+".json"))
 
-				// Remove the extension for the value
-				// filepath.Ext(fileName) returns ".onnx"
-				cleanName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		// 2. Extract country (e.g., "US" from "en_US...")
+		var code string
+		if len(baseName) >= 5 {
+			code = strings.ToUpper(baseName[3:5])
+		}
 
-				// populate global pool
-				vm.globalPool = append(vm.globalPool, cleanName)
-
-				// Populate map
-				vm.countryVoicePools[code] = append(vm.countryVoicePools[code], cleanName)
+		// 3. Register every speaker as a unique person in our pools
+		for i := range numSpeakers {
+			// Unique VoiceKey format: "filename#id"
+			voiceKey := fmt.Sprintf("%s#%d", baseName, i)
+			if code != "" {
+				vm.countryVoicePools[code] = append(vm.countryVoicePools[code], voiceKey)
 			}
 		}
-	}
 
-	if len(vm.globalPool) < 2 {
-		return fmt.Errorf("a minimum of 2 voice files are required in folder %s", vm.voiceDir)
-	}
+		// filter pools based on config include list (if provided)
+		for country, pool := range vm.countryVoicePools {
+			vm.countryVoicePools[country] = vm.filterByIncludeList(pool)
 
-	if len(vm.countryVoicePools) == 0 {
-		return fmt.Errorf("no voice files found in folder %s", vm.voiceDir)
-	}
-
-	// create region voice pools
-	for k, v := range icaoToIsoMap {
-		cvp, cvpfound := vm.countryVoicePools[v]
-		if !cvpfound {
-			continue
+			// Safety Check: Did we filter the pool into non-existence?
+			if len(vm.countryVoicePools[country]) == 0 {
+				logger.Log.Warnf("Pool for %s is empty after filtering", country)
+			}
 		}
-		regionCode := k[:1]
-		vm.regionVoicePools[regionCode] = append(vm.regionVoicePools[regionCode], cvp...)
+
+		for region, pool := range vm.regionVoicePools {
+			vm.regionVoicePools[region] = vm.filterByIncludeList(pool)
+
+			// Safety Check: Did we filter the pool into non-existence?
+			if len(vm.regionVoicePools[region]) == 0 {
+				logger.Log.Warnf("Pool for %s is empty after filtering", region)
+			}
+		}
+
+		// We use a map to track unique keys so we don't add the same
+		// voice twice if it exists in both a Country and Region pool.
+		seen := make(map[string]bool)
+
+		// Add from Country pools
+		for _, pool := range vm.countryVoicePools {
+			for _, key := range pool {
+				if !seen[key] {
+					vm.globalVoicePool = append(vm.globalVoicePool, key)
+					seen[key] = true
+				}
+			}
+		}
+
+		if len(vm.globalVoicePool) == 0 {
+			logger.Log.Warn("global voice pool for is empty after filtering")
+		}
+
 	}
 
 	return nil
 }
 
-// resolveVoice is the main entry point
-func (vm *VoiceManager) resolveVoice(msg *ATCMessage) (string, string, int, string) {
+func (vm *VoiceManager) loadSpeakerConfig(cfg Piper) {
+	// Initialize the map
+	vm.allowedSpeakerIDs = make(map[string][]int)
 
+	for _, s := range cfg.Speakers {
+		// Clean the filename (e.g., remove .onnx if the user included it)
+		cleanName := strings.TrimSuffix(s.FileName, ".onnx")
+
+		// Store the allowed IDs for this specific file
+		vm.allowedSpeakerIDs[cleanName] = s.IDs
+
+		logger.Log.Infof("filtering %s to speaker IDs: %v", cleanName, s.IDs)
+	}
+}
+
+// Helper to check for multi-speaker models
+func (vm *VoiceManager) getSpeakerCount(jsonPath string) int {
+	f, err := os.Open(jsonPath)
+	if err != nil {
+		return 1 // Assume 1 voice if no JSON exists
+	}
+	defer f.Close()
+
+	var cfg struct {
+		NumSpeakers int `json:"num_speakers"`
+	}
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return 1
+	}
+	return util.Max(1, cfg.NumSpeakers)
+}
+
+// resolveVoice is the main entry point
+func (vm *VoiceManager) resolveVoice(msg *ATCMessage) (string, string, int, string, string) {
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
 
 	key, partnerKey := vm.getSymmetricKeys(msg)
 
-	// 1. Check for existing session
+	// check for existing session
 	if s, exists := vm.sessions[key]; exists {
 		s.LastSeen = time.Now()
 		s.Lat, s.Lon = msg.AircraftSnap.Flight.Position.Lat, msg.AircraftSnap.Flight.Position.Long
 		vm.sessions[key] = s
-		return vm.getVoiceMetadata(s.VoiceName, msg)
+		return vm.getVoiceMetadata(s.VoiceKey, msg)
 	}
 
-	// 2. Assign New Voice
-	partnerVoice := ""
+	partnerVoiceKey := ""
 	if ps, ok := vm.sessions[partnerKey]; ok {
-		partnerVoice = ps.VoiceName
+		partnerVoiceKey = ps.VoiceKey
 	}
-	selectedVoice := vm.selectVoice(msg, partnerVoice)
 
-	// 3. Save Session
+	selectedVoiceKey := vm.selectVoice(msg, partnerVoiceKey)
+
+	// save session
 	vm.sessions[key] = VoiceSession{
-		VoiceName: selectedVoice,
-		LastSeen:  time.Now(),
-		Lat:       msg.AircraftSnap.Flight.Position.Lat,
-		Lon:       msg.AircraftSnap.Flight.Position.Long,
-		Type:      vm.getSessionType(msg.Role),
+		VoiceKey: selectedVoiceKey,
+		LastSeen: time.Now(),
+		Lat:      msg.AircraftSnap.Flight.Position.Lat,
+		Lon:      msg.AircraftSnap.Flight.Position.Long,
+		Type:     vm.getSessionType(msg.Role),
 	}
 
-	return vm.getVoiceMetadata(selectedVoice, msg)
+	return vm.getVoiceMetadata(selectedVoiceKey, msg)
 }
 
 // --- Internal Logic Helpers ---
@@ -289,12 +343,12 @@ func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string
 
 	// 3. TIER 3: Global Fallback
 	// Uses the pre-calculated pool to find ANY voice that isn't the partner.
-	voice := vm.findBestInPool(vm.globalPool, partnerVoice)
+	voice := vm.findBestInPool(vm.globalVoicePool, partnerVoice)
 
 	// If Global pool only had the partnerVoice, findBestInPool returned ""
 	if voice == "" {
 		util.LogWarnWithLabel(logLabel, "voice pools are currently drained, reluctant reuse of exchange partner voice")
-		return vm.globalPool[0]
+		return vm.globalVoicePool[0]
 	}
 
 	return voice
@@ -343,11 +397,52 @@ func (vm *VoiceManager) findBestInPool(pool []string, partnerVoice string) strin
 	return bestDuplicate
 }
 
-func (vm *VoiceManager) getVoiceMetadata(name string, msg *ATCMessage) (string, string, int, string) {
-	path := filepath.Join(vm.voiceDir, name+".onnx")
-	rate := 22050 // Default
+func (vm *VoiceManager) filterByIncludeList(keys []string) []string {
+	if len(vm.allowedSpeakerIDs) == 0 {
+		return keys // No restrictions
+	}
 
-	// Try to get sample rate from Piper JSON
+	var filtered []string
+	for _, key := range keys {
+		baseName, id := splitVoiceKey(key)
+
+		allowedIDs, exists := vm.allowedSpeakerIDs[baseName]
+		if !exists {
+			filtered = append(filtered, key)
+			continue
+		}
+
+		// Check if this specific ID is in the include list
+		for _, allowedID := range allowedIDs {
+			if id == allowedID {
+				filtered = append(filtered, key)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
+func splitVoiceKey(key string) (string, int) {
+	parts := strings.Split(key, "#")
+	if len(parts) < 2 {
+		return key, 0 // Default for solo voice files
+	}
+	id, _ := strconv.Atoi(parts[1])
+	return parts[0], id
+}
+
+func (vm *VoiceManager) getVoiceMetadata(voiceKey string, msg *ATCMessage) (string, string, int, string, string) {
+	parts := strings.Split(voiceKey, "#")
+	baseName := parts[0]
+	speakerID := "0"
+	if len(parts) > 1 {
+		speakerID = parts[1]
+	}
+
+	path := filepath.Join(vm.voiceDir, baseName+".onnx")
+	rate := 22050
+
 	if f, err := os.Open(path + ".json"); err == nil {
 		var cfg struct {
 			Audio struct {
@@ -360,7 +455,10 @@ func (vm *VoiceManager) getVoiceMetadata(name string, msg *ATCMessage) (string, 
 		f.Close()
 	}
 
-	return name, path, rate, noiseType(msg.Role, msg.AircraftSnap.Flight.Phase.Current)
+	envNoise := noiseType(msg.Role, msg.AircraftSnap.Flight.Phase.Current)
+
+	// Returns: Name, Path, Rate, Noise, SpeakerID
+	return baseName, path, rate, envNoise, speakerID
 }
 
 func (vm *VoiceManager) ReleaseSession(aircraftSnap *Aircraft) {
@@ -433,25 +531,28 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 	}
 }
 
-func (vm *VoiceManager) isVoiceGloballyUsed(voiceName string) bool {
+func (vm *VoiceManager) isVoiceGloballyUsed(voiceKey string) bool {
+	// We check every active session to see if this specific
+	// Speaker ID + File combo is already "on the radio"
 	for _, s := range vm.sessions {
-		if s.VoiceName == voiceName {
+		if s.VoiceKey == voiceKey {
 			return true
 		}
 	}
 	return false
 }
 
-func (vm *VoiceManager) getLastUsedTime(voiceName string) time.Time {
+func (vm *VoiceManager) getLastUsedTime(voiceKey string) time.Time {
 	var latest time.Time
 	for _, s := range vm.sessions {
-		if s.VoiceName == voiceName {
+		if s.VoiceKey == voiceKey {
 			if s.LastSeen.After(latest) {
 				latest = s.LastSeen
 			}
 		}
 	}
-	// If never seen (shouldn't happen), return ancient time so it's picked first
+	// If never seen (ideal for selection), return an empty time.Time (0001-01-01)
+	// findBestInPool will see this as the "oldest" and pick it first.
 	return latest
 }
 
@@ -603,10 +704,12 @@ func validateLogicBlock(content string) error {
 
 	// Validate the 'SAY' branch (recursively check if it contains more PCL)
 	sayBranch := strings.TrimSpace(content[idxSay+3 : func() int {
-		if idxOtherwise != -1 { return idxOtherwise }
+		if idxOtherwise != -1 {
+			return idxOtherwise
+		}
 		return len(content)
 	}()])
-	
+
 	if err := validatePhrase(sayBranch); err != nil {
 		return fmt.Errorf("error in SAY branch: %v", err)
 	}
@@ -618,7 +721,7 @@ func validateLogicBlock(content string) error {
 		if idxSecondSay == -1 {
 			return fmt.Errorf("PCL logic error: OTHERWISE block missing follow-up SAY statement")
 		}
-		
+
 		otherwiseBranch := strings.TrimSpace(remaining[idxSecondSay+3:])
 		if err := validatePhrase(otherwiseBranch); err != nil {
 			return fmt.Errorf("error in OTHERWISE branch: %v", err)
@@ -640,13 +743,13 @@ func findKeywordAtLevel(content, keyword string) int {
 		} else if stack == 0 && strings.HasPrefix(content[i:], keyword) {
 			// Ensure it's a "whole word" match by checking surrounding characters
 			endIdx := i + len(keyword)
-			
+
 			// Check character before keyword (must be start of string or whitespace)
 			isStart := i == 0 || content[i-1] == ' '
-			
+
 			// Check character after keyword (must be end of string or whitespace)
 			isEnd := endIdx == len(content) || content[endIdx] == ' '
-			
+
 			if isStart && isEnd {
 				return i
 			}
@@ -654,4 +757,3 @@ func findKeywordAtLevel(content, keyword string) int {
 	}
 	return -1
 }
-
