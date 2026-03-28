@@ -160,7 +160,7 @@ func (s *Service) startComms() {
 
 			exchanges, exists := phraseSource[phaseFacility.atcPhase]
 			if !exists || len(exchanges) == 0 {
-				util.LogWithLabel(ac.Registration, "error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
+				util.LogErrWithLabel(ac.Registration, "error: no phrases found for flight phase %d", ac.Flight.Phase.Current)
 				continue
 			}
 
@@ -584,7 +584,7 @@ func RadioPlayer(soxPath string) {
 
 		// PROTECT: If voice name is empty, we can't speak
 		if audio.Voice == "" {
-			util.LogWarnWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
+			util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
 			// If there's a lock even without a name (unlikely), release it
 			if audio.VoiceLock != nil {	
 				audio.VoiceLock.Unlock()
@@ -633,7 +633,7 @@ func RadioPlayer(soxPath string) {
             }
 
 			if err := playCmd.Start(); err != nil {
-				util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Error starting sox: %v", err)
+				util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error starting sox: %v", err)
 				audio.PiperCmd.Process.Kill()
 				return
 			}
@@ -651,7 +651,7 @@ func RadioPlayer(soxPath string) {
 			if err != nil {
 				// Log if it's not a standard exit, but 0xc0000409 should be gone
 				//if !strings.Contains(err.Error(), "exit status 1") {
-				util.LogWarnWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
+				util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error on Piper exit for %s: %v", audio.Voice, err)
 				//}
 			}
 
