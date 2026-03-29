@@ -91,6 +91,13 @@ type PiperConfig struct {
 	} `json:"audio"`
 }
 
+// RadioController replaces CurrentPlayback
+var RadioController = struct {
+    sync.Mutex
+    ActiveCmd *exec.Cmd
+    IsMuted   bool
+}{}
+
 // main function to recieve aircraft updates for phrase generation
 func (s *Service) startComms() {
 
@@ -220,6 +227,20 @@ func (s *Service) startComms() {
 			}
 		}
 	})
+}
+
+func (s *Service) SetRadioMute(mute bool) {
+    RadioController.Lock()
+    defer RadioController.Unlock()
+
+	RadioController.IsMuted = mute
+
+    // If we are muting, kill any CURRENT playback immediately
+    if mute && RadioController.ActiveCmd != nil && RadioController.ActiveCmd.Process != nil {
+        logger.Log.Info("COM Activity: Killing active playback and muting queue")
+        _ =RadioController.ActiveCmd.Process.Kill()
+        RadioController.ActiveCmd = nil
+    }
 }
 
 // autoReadback will generate the readback phrase from the original
@@ -582,6 +603,19 @@ func RadioPlayer(soxPath string) {
 
 		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received audio (channel buffer remaining capacity: %d)", cap(radioPlayer)-len(radioPlayer))
 
+		// --- 1. PRE-CHECK MUTE ---
+        RadioController.Lock()
+        if RadioController.IsMuted {
+            RadioController.Unlock()
+            util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Muted: Skipping queued audio due to COM activity")
+            // Cleanup Piper immediately since we aren't using it
+            if audio.PiperOut != nil { audio.PiperOut.Close() }
+            if audio.PiperCmd != nil && audio.PiperCmd.Process != nil { audio.PiperCmd.Process.Kill() }
+            if audio.VoiceLock != nil { audio.VoiceLock.Unlock() }
+            continue
+        }
+        RadioController.Unlock()
+
 		// PROTECT: If voice name is empty, we can't speak
 		if audio.Voice == "" {
 			util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
@@ -638,9 +672,21 @@ func RadioPlayer(soxPath string) {
 				return
 			}
 
+			// REGISTER FOR INTERRUPT
+            RadioController.Lock()
+            RadioController.ActiveCmd = playCmd
+            RadioController.Unlock()
+			
 			// 1. Wait for SoX first.
 			// When SoX finishes, it closes Stdin (audio.PiperOut).
 			_ = playCmd.Wait()
+
+			// UNREGISTER ---
+            RadioController.Lock()
+            if RadioController.ActiveCmd == playCmd {
+                RadioController.ActiveCmd = nil
+            }
+            RadioController.Unlock()
 
 			// 2. // Explicitly drop the handle to the pipe
 			audio.PiperOut.Close()

@@ -32,6 +32,8 @@ const (
 	DRSimCockpitRadiosCom2FreqHz = "sim/cockpit/radios/com2_freq_hz"
 	DRSimATCCom1TunedFacility = "sim/atc/com1_tuned_facility"
 	DRSimATCCom2TunedFacility = "sim/atc/com2_tuned_facility"
+	DRSimATCCom1Active = "sim/atc/com1_active"
+	DRSimATCCom2Active = "sim/atc/com2_active"
 
 	DRTrafficGlobalAIPositionLat     = "trafficglobal/ai/position_lat"
 	DRTrafficGlobalAIPositionLong    = "trafficglobal/ai/position_long"
@@ -49,6 +51,7 @@ const (
 	DRSimTimeLocalDateDays = "sim/time/local_date_days"
 	DRSimTimeLocalTimeSec  = "sim/time/local_time_sec"
 	DRSimTimeZuluTimeSec   = "sim/time/zulu_time_sec"
+
 )
 
 var SubscribeDatarefs = []xpapimodel.Dataref{
@@ -88,6 +91,10 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 	{Name: DRSimATCCom2TunedFacility,
 		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: DRSimATCCom1Active,
+		APIInfo: xpapimodel.DatarefInfo{}},
+	{Name: DRSimATCCom2Active,
+		APIInfo: xpapimodel.DatarefInfo{}},		
 
 	//traffic global datarefs
 	{Name: DRTrafficGlobalAIPositionLat, // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]

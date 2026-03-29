@@ -43,6 +43,9 @@ var (
 		simdata.DRSimCockpitRadiosCom1FreqHz: "int",
 		simdata.DRSimCockpitRadiosCom2FreqHz: "int",
 
+		simdata.DRSimATCCom1Active: "int",
+		simdata.DRSimATCCom2Active: "int",
+
 		simdata.DRSimATCCom1TunedFacility: "int",
 		simdata.DRSimATCCom2TunedFacility: "int",
 
@@ -282,6 +285,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
 	switch name {
+	// com active datarefs
+	case simdata.DRSimATCCom1Active:
+		return 0 // inactive
+	case simdata.DRSimATCCom2Active:
+		return 0 // inactive
+
 	// --- User Position (Heathrow Center) ---
 	case simdata.DRSimFlightmodelPositionLatitude:
 		return 51.471865 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing

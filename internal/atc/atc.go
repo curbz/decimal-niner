@@ -46,6 +46,7 @@ type ServiceInterface interface {
 	SetDataProvider(simdata.SimDataProvider)
 	CheckForCruiseSectorChange(ac *Aircraft)
 	Transmit(userState UserState, ac *Aircraft)
+	SetRadioMute(mute bool)
 }
 
 // AirportProvider defines the behavior for finding the nearest airport

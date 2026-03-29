@@ -597,6 +597,25 @@ func (xpc *XPConnect) updateWeatherData() {
 // determine if user has changed tuned frequencies and inform the ATC service if they have
 func (xpc *XPConnect) updateUserData() {
 
+	// check for radio activity
+	com1ActivityVal, errC1a := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimATCCom1Active, 0)
+	com2ActivityVal, errC2a := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimATCCom2Active, 0)
+	if errC1a != nil || errC2a != nil {
+		// log but don't return as we can still update user state with frequencies/facilities if we have those
+		logErrors(errC1a, errC2a)
+	}
+
+	transmitting := com1ActivityVal == 1 || com2ActivityVal == 1
+
+	// Use a simple state check to avoid spamming the log/mutex
+	if transmitting && !atc.RadioController.IsMuted {
+		logger.Log.Info("COM Transmission detected - Muting Radio Player")
+		xpc.atcService.SetRadioMute(true)
+	} else if !transmitting && atc.RadioController.IsMuted {
+		logger.Log.Info("COM Transmission cleared - Unmuting Radio Player")
+		xpc.atcService.SetRadioMute(false)
+	}
+
 	// get updated comms
 	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimCockpitRadiosCom1FreqHz, 0)
 	com2FreqVal, errC2 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimCockpitRadiosCom2FreqHz, 0)
