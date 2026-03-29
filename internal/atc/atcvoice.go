@@ -230,10 +230,17 @@ func (s *Service) startComms() {
 }
 
 func (s *Service) SetRadioMute(mute bool) {
+
+	// return without action if trying to mute but already muted or trying to unmute but already unmuted
+	if (mute && RadioController.IsMuted) || (!mute && !RadioController.IsMuted) {
+		return
+	} 
+
     RadioController.Lock()
     defer RadioController.Unlock()
 
 	RadioController.IsMuted = mute
+	logger.Log.Infof("RadioController.IsMuted changed to %v", mute)
 
     // If we are muting, kill any CURRENT playback immediately
     if mute && RadioController.ActiveCmd != nil && RadioController.ActiveCmd.Process != nil {

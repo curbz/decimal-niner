@@ -606,15 +606,7 @@ func (xpc *XPConnect) updateUserData() {
 	}
 
 	transmitting := com1ActivityVal == 1 || com2ActivityVal == 1
-
-	// Use a simple state check to avoid spamming the log/mutex
-	if transmitting && !atc.RadioController.IsMuted {
-		logger.Log.Info("COM Transmission detected - Muting Radio Player")
-		xpc.atcService.SetRadioMute(true)
-	} else if !transmitting && atc.RadioController.IsMuted {
-		logger.Log.Info("COM Transmission cleared - Unmuting Radio Player")
-		xpc.atcService.SetRadioMute(false)
-	}
+	xpc.atcService.SetRadioMute(transmitting)
 
 	// get updated comms
 	com1FreqVal, errC1 := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimCockpitRadiosCom1FreqHz, 0)
