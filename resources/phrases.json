@@ -18,7 +18,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi and hold short [of] runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, ready to taxi for departure to {@DESTINATION}.", "atc": "{$CALLSIGN} taxi to runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting taxi.", "atc": "{$CALLSIGN}, taxi [to runway] {@RUNWAY} [and] hold short." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi", "atc": "{$CALLSIGN}, [taxi request approved,] depart[ing] runway {@RUNWAY}" }
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi.", "atc": "{$CALLSIGN}, [taxi request approved,] depart[ing] runway {@RUNWAY}" }
   ],
   "depart": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading[, wind {@WIND}]." },

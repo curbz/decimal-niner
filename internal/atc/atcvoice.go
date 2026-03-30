@@ -244,7 +244,7 @@ func (s *Service) SetRadioMute(mute bool) {
 
     // If we are muting, kill any CURRENT playback immediately
     if mute && RadioController.ActiveCmd != nil && RadioController.ActiveCmd.Process != nil {
-        logger.Log.Info("COM Activity: Killing active playback and muting queue")
+        logger.Log.Info("com radio activity detected: killing active playback and muting queue")
         _ =RadioController.ActiveCmd.Process.Kill()
         RadioController.ActiveCmd = nil
     }

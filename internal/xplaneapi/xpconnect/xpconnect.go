@@ -605,7 +605,21 @@ func (xpc *XPConnect) updateUserData() {
 		logErrors(errC1a, errC2a)
 	}
 
-	transmitting := com1ActivityVal == 1 || com2ActivityVal == 1
+	// check we got values
+	if com1ActivityVal == nil || com2ActivityVal == nil {
+		logger.Log.Warn("couldn't validate radio activity - com1 or com2 dataref values are not available")
+		return
+	}
+
+	// convert to target types
+	ca1, caOk1 := com1ActivityVal.(float64)
+	ca2, caOk2 := com2ActivityVal.(float64)
+	if !caOk1 || !caOk2  {
+		logger.Log.Error("unexpected types for com radio activity datarefs")
+		return
+	}
+
+	transmitting := ca1 == 1 || ca2 == 1
 	xpc.atcService.SetRadioMute(transmitting)
 
 	// get updated comms
