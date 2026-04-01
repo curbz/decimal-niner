@@ -41,6 +41,7 @@ type VoiceManager struct {
 	globalVoicePool   []string
 	voiceLocks        sync.Map // Map of string -> *sync.Mutex
 	allowedSpeakerIDs map[string][]int
+	dictionaries 	  map[string]*PhoneticEngine
 }
 
 type PhraseClasses struct {
@@ -59,6 +60,7 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 
 	vm.loadPhrases(cfg)
 	vm.loadSpeakerConfig(cfg.ATC.Voices.Piper)
+	vm.LoadDictionaries(vm.voiceDir)
 
 	// loadvoice pools
 	if err := vm.initialisePools(); err != nil {
@@ -124,6 +126,31 @@ func (vm *VoiceManager) loadPhrases(cfg *config) {
 	}
 
 	logger.Log.Info("VoiceManager: All phrase files loaded and PCL syntax validated successfully.")
+}
+
+func (vm *VoiceManager) LoadDictionaries(dirPath string) {
+    vm.dictionaries = make(map[string]*PhoneticEngine)
+    
+    files, err := os.ReadDir(dirPath)
+    if err != nil {
+        logger.Log.Errorf("error: failed to scan voices directory for dictionaries: %v", err)
+        return
+    }
+
+    for _, file := range files {
+        if !file.IsDir() && strings.HasSuffix(file.Name(), "-dictionary.json") {
+            isoCode := strings.Split(file.Name(), "-")[0]
+            
+            fullPath := filepath.Join(dirPath, file.Name())
+            engine, err := NewPhoneticEngine(fullPath)
+			if err != nil {
+				continue
+			}
+            
+            vm.dictionaries[isoCode] = engine
+            logger.Log.Infof("loaded pronunciation dictionary for %s", isoCode)
+        }
+    }
 }
 
 func (vm *VoiceManager) initialisePools() error {

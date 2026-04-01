@@ -548,6 +548,12 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		}
 		vLock.Lock()
 
+		// final phrase manipulation - translate words in dictionary to phonetic spelling
+		isoCode := strings.Split(voice, "-")[0] // e.g., "en_GB"
+		if phoneticEngine, exists := vm.dictionaries[isoCode]; exists {
+			msg.Text = phoneticEngine.Apply(msg.Text)
+		}
+
 		cmd := exec.Command(piperPath,
 			"--model", onnx,
 			"--speaker", speakerID,

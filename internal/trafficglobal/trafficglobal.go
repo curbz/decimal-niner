@@ -3,6 +3,7 @@ package trafficglobal
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -83,7 +84,7 @@ func (fp FlightPhase) Index() int {
 
 type config struct {
 	TG struct {
-		BGLFile string `yaml:"bgl_file"`
+		FlightPlansPath string `yaml:"plugin_directory"`	// Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
 	} `yaml:"trafficglobal"`
 }
 
@@ -100,38 +101,64 @@ func LoadConfig(cfgPath string) *config {
 	return cfg
 }
 
-func BGLReader(filePath string) (map[string][]ScheduledFlight, map[string]bool) {
-
-	logger.Log.Infof("Loading Traffic Global BGL file: %s\n", filePath)
-
+func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]bool) {
 	start := time.Now()
+
+	// Initialize the master storage once
+	masterSchedules := make(map[string][]ScheduledFlight)
+	masterAirports := make(map[string]bool)
+
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		logger.Log.Errorf("Could not open traffic directory: %v", err)
+		return nil, nil
+	}
+
+	var fileCount int
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
+			fullPath := filepath.Join(dirPath, file.Name())
+
+			err := BGLReader(fullPath, masterSchedules, masterAirports)
+			if err != nil {
+				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)
+				continue
+			}
+			fileCount++
+		}
+	}
+
+	logger.Log.Infof("Loaded %d BGL flight plan file(s). Total: %d schedules, %d airports in %v",
+		fileCount, len(masterSchedules), len(masterAirports), time.Since(start))
+
+	return masterSchedules, masterAirports
+}
+
+func BGLReader(filePath string, masterSchedules map[string][]ScheduledFlight, masterAirports map[string]bool) error {
+	logger.Log.Debugf("Parsing BGL: %s", filepath.Base(filePath))
+
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		logger.Log.Errorf("error reading bgl file: %v\n", err)
-		return nil, nil
+		return fmt.Errorf("read error: %v", err)
 	}
 
 	legs, airportICAOlist := collectAllLegsSequential(data)
 	if len(legs) == 0 {
-		logger.Log.Errorf("no legs extracted from bgl file %s", filePath)
-		return nil, nil
+		return fmt.Errorf("no legs found in %s", filePath)
 	}
-	logger.Log.Infof("BGL traffic parser extracted %d legs and %d airports in %v\n", len(legs), len(airportICAOlist), time.Since(start))
 
-	schedules := make(map[string][]ScheduledFlight)
+	// Directly update the master maps
 	for _, l := range legs {
 		key := fmt.Sprintf("%s_%d_%d", l.AircraftRegistration, l.Number, l.DepartureDayOfWeek)
-		existingLegs, found := schedules[key]
-		if found {
-			schedules[key] = append(existingLegs, l)
-			continue
-		} else {
-			schedules[key] = []ScheduledFlight{l}
-		}
-
+		// No need to check 'found'; appending to a nil slice in a map works
+		masterSchedules[key] = append(masterSchedules[key], l)
 	}
 
-	return schedules, airportICAOlist
+	for icao := range airportICAOlist {
+		masterAirports[icao] = true
+	}
+
+	return nil
 }
 
 func isRegCharUpper(b byte) bool {

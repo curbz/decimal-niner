@@ -322,6 +322,11 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 		return
 	}
 
+	// if flight position is empty return
+	if ac.Flight.Position == (Position{}) {
+		return
+	}
+
 	closestAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 4.0)
 
 	// infer what we can from current location
