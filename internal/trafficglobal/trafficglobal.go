@@ -277,45 +277,6 @@ func decodeFlightLevel(block []byte) int {
 	return primary
 }
 
-// looksLikeRegistrationAt detect if a registration starts at pos
-// requires the registration to be preceded by 0x00 and rejects 0x07 prefix (ICAO).
-func looksLikeRegistrationAt(data []byte, pos int) bool {
-	n := len(data)
-	if pos <= 0 || pos >= n {
-		return false
-	}
-	// registration must be preceded by 0x00 (not 0x07 which marks ICAO)
-	if data[pos-1] != 0x00 {
-		return false
-	}
-	// must start with reg char
-	if !isRegCharUpper(data[pos]) {
-		return false
-	}
-	// find end within 1..8 chars
-	j := pos
-	for j < n && isRegCharUpper(data[j]) {
-		j++
-	}
-	if j == pos || j-pos > 8 || j-pos < 2 {
-		return false
-	}
-	// terminator must be NUL or space
-	if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
-		return false
-	}
-	// quick ICAO sanity at expected offset
-	firstICAOOffset := 18
-	icaoPos := pos + firstICAOOffset
-	if icaoPos+ICAO_LEN >= n {
-		return false
-	}
-	if !isICAO(data[icaoPos : icaoPos+ICAO_LEN]) {
-		return false
-	}
-	return true
-}
-
 func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) {
 	const firstICAOOffset = 18
 	n := len(data)
@@ -339,6 +300,11 @@ func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) 
 			continue
 		}
 		if j >= n || !(data[j] == 0x00 || data[j] == 0x20) {
+			i = j
+			continue
+		}
+		// end of reg identifier
+		if (data[i+9] != 0x07 && data[i+9] != 0x17 && data[i+9] != 0x18 && data[i+9] != 0x19 && data[i+9] != 0x1A) {
 			i = j
 			continue
 		}
@@ -373,10 +339,6 @@ func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) 
 
 		for cursor+LEG_SIZE <= n {
 
-			if looksLikeRegistrationAt(data, cursor) {
-				break
-			}
-
 			block := data[cursor : cursor+LEG_SIZE]
 			if !validateLeg(block) {
 				invalidCount++
@@ -395,6 +357,10 @@ func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) 
 
 			dd, dt := decodeBGLTime24(block[1], block[2], block[3])
 			ad, at := decodeBGLTime24(block[5], block[6], block[7])
+
+			if dd > ad && dd != 6 {
+				logger.Log.Warn("invalid leg ", regStr, " ", icaoDest)
+			}
 
 			depHour, depMin := 0, 0
 			arrHour, arrMin := 0, 0
