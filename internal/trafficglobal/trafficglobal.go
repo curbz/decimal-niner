@@ -28,10 +28,9 @@ var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 
 type config struct {
 	TG struct {
-		FlightPlansPath string `yaml:"plugin_directory"`	// Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
+		FlightPlansPath string `yaml:"plugin_directory"` // Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
 	} `yaml:"trafficglobal"`
 }
-
 
 var (
 	// Regex breakdown:
@@ -103,7 +102,7 @@ func BGLReader(filePath, airline string, masterSchedules map[string][]flightplan
 
 	// Directly update the master maps
 	for _, l := range legs {
-		l.Airline = airline
+		l.AirlineName = airline
 		key := fmt.Sprintf("%s_%d_%d", l.AircraftRegistration, l.Number, l.DepartureDayOfWeek)
 		// No need to check 'found'; appending to a nil slice in a map works
 		masterSchedules[key] = append(masterSchedules[key], l)
@@ -119,7 +118,7 @@ func BGLReader(filePath, airline string, masterSchedules map[string][]flightplan
 func cleanAirlineName(fileName string) string {
 	// 1. Handle case sensitivity
 	name := strings.TrimSpace(fileName)
-	
+
 	// 2. Execute Regex
 	matches := airlineRegex.FindStringSubmatch(name)
 	if len(matches) < 2 {
@@ -132,7 +131,7 @@ func cleanAirlineName(fileName string) string {
 	// 3. Clean up delimiters for a "human readable" look
 	// Replaces underscores with spaces (e.g., Aeromexico_Connect -> Aeromexico Connect)
 	result = strings.ReplaceAll(result, "_", " ")
-	
+
 	// 4. Final trim for safety
 	return strings.TrimSpace(result)
 }
@@ -280,7 +279,7 @@ func collectLegs(data []byte) ([]flightplan.ScheduledFlight, map[string]bool) {
 			continue
 		}
 		// end of reg identifier
-		if (data[i+9] != 0x07 && data[i+9] != 0x17 && data[i+9] != 0x18 && data[i+9] != 0x19 && data[i+9] != 0x1A) {
+		if data[i+9] != 0x07 && data[i+9] != 0x17 && data[i+9] != 0x18 && data[i+9] != 0x19 && data[i+9] != 0x1A {
 			i = j
 			continue
 		}

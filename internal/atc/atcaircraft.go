@@ -38,6 +38,7 @@ type Flight struct {
 	AssignedRunway      string
 	Squawk              string
 	PlanAssigned        bool
+	AirlineName         string
 }
 
 type Position struct {
@@ -306,6 +307,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
 	ac.Flight.CruiseAlt = candidateScheds[0].CruiseAlt * 100
+	ac.Flight.AirlineName = candidateScheds[0].AirlineName
 
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
@@ -408,7 +410,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 }
 
 func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
-	
+
 	// 1. Try the Controller's ICAO first (works for Tower/Approach)
 
 	if ac.Flight.Comms.Controller != nil {
@@ -432,7 +434,7 @@ func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
 			transitionAlt = 18000
 		}
 	}
-    
+
 	return transitionAlt
 }
 

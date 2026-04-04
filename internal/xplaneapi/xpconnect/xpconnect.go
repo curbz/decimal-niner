@@ -897,6 +897,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 		if airlineInfo != nil {
 			callsign = airlineInfo.Callsign
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+			aircraft.Flight.AirlineName = airlineInfo.AirlineName
 		} else {
 			util.LogWarnWithLabel(aircraft.Registration, "no airline information found for code %s", airlineCode)
 			// if we don't have airline info, we also won't have country code, so use tail number as fallback

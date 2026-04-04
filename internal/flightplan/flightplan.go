@@ -3,7 +3,7 @@ package flightplan
 // ScheduledFlight is the requested output struct for each parsed leg.
 type ScheduledFlight struct {
 	AircraftRegistration string
-	Airline 			 string
+	AirlineName          string
 	Number               int
 	IcaoOrigin           string
 	IcaoDest             string
