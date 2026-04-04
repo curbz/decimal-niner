@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
@@ -36,6 +36,8 @@ func TestInferFlightPlan(t *testing.T) {
 			ac.Flight.Phase.Class = tt.phaseClass
 			ac.Flight.Origin = tt.initOrigin
 			ac.Flight.Destination = tt.initDest
+			// position cannot be empty otherwise inferFlightPlan will return with no action
+			ac.Flight.Position = Position{ Altitude: 1.0 }
 
 			s.inferFlightPlan(ac)
 
@@ -332,8 +334,8 @@ func TestSetFlightPhaseClass(t *testing.T) {
 	}{
 		{
 			name:          "Unknown -> Parked at Origin (Preflight)",
-			prevPhase:     trafficglobal.Unknown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
+			prevPhase:     flightphase.Unknown.Index(),
+			currPhase:     flightphase.Parked.Index(),
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EGKK",
@@ -341,8 +343,8 @@ func TestSetFlightPhaseClass(t *testing.T) {
 		},
 		{
 			name:          "Unknown -> Parked at Destination (Postflight)",
-			prevPhase:     trafficglobal.Unknown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
+			prevPhase:     flightphase.Unknown.Index(),
+			currPhase:     flightphase.Parked.Index(),
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EHAM",
@@ -350,8 +352,8 @@ func TestSetFlightPhaseClass(t *testing.T) {
 		},
 		{
 			name:          "Shutdown -> Parked (Standard Arrival)",
-			prevPhase:     trafficglobal.Shutdown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
+			prevPhase:     flightphase.Shutdown.Index(),
+			currPhase:     flightphase.Parked.Index(),
 			expectedClass: PostflightParked,
 		},
 		{
@@ -407,7 +409,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Parked.Index()
+				ac.Flight.Phase.Current = flightphase.Parked.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
 				ac.Flight.Position = Position{Lat: 51.0, Long: -0.1}
 				return s, ac
@@ -419,7 +421,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
 				ac.Flight.Position = Position{Lat: 51.5, Long: -0.2}
 				return s, ac
@@ -431,7 +433,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 51.0000, Long: -0.1000}
 				ac.Flight.Position = Position{Lat: 51.00005, Long: -0.10005} // ~ few meters
 				ac.Flight.Comms.Controller = &Controller{}
@@ -445,7 +447,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 51.0, Long: -0.1}
 				ac.Flight.Position = Position{Lat: 51.2, Long: -0.1} // ~0.2 deg lat ~= 12 NM
 				ac.Flight.Comms.Controller = &Controller{}
@@ -485,13 +487,13 @@ func (m *mockAirportProviderForTrans) GetClosestAirport(lat, long, maxRangeNm fl
 
 func TestGetTransistionAltitude(t *testing.T) {
 	tests := []struct {
-		name             string
-		airports         map[string]*Airport
-		airportService   *mockAirportProviderForTrans
-		controllerICAO    string
-		positionLat      float64
-		positionLong     float64
-		want             int
+		name           string
+		airports       map[string]*Airport
+		airportService *mockAirportProviderForTrans
+		controllerICAO string
+		positionLat    float64
+		positionLong   float64
+		want           int
 	}{
 		{
 			name: "controller ICAO with TransAlt",
@@ -512,15 +514,15 @@ func TestGetTransistionAltitude(t *testing.T) {
 			want:           6000,
 		},
 		{
-			name: "regional default when nearest ICAO starts with E",
-			airports: map[string]*Airport{},
+			name:           "regional default when nearest ICAO starts with E",
+			airports:       map[string]*Airport{},
 			airportService: &mockAirportProviderForTrans{ret: "EHXX"},
 			controllerICAO: "EGTT",
 			want:           6000,
 		},
 		{
-			name: "global default when nothing found",
-			airports: map[string]*Airport{},
+			name:           "global default when nothing found",
+			airports:       map[string]*Airport{},
 			airportService: &mockAirportProviderForTrans{ret: ""},
 			controllerICAO: "EGTT",
 			want:           18000,

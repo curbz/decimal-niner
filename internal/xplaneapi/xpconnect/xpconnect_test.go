@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 )
 
@@ -95,7 +95,7 @@ func TestUnknownTransitionPreserved(t *testing.T) {
 	xpc.updateAircraftData()
 
 	// In xpconnect_test.go
-	expectedUnknown := int(trafficglobal.Unknown.Index()) // This should be -1 based on your fail
+	expectedUnknown := int(flightphase.Unknown.Index()) // This should be -1 based on your fail
 
 	if mockATC.ReceivedPreviousPhase != expectedUnknown {
 		t.Errorf("Logic Error: ATC service saw Previous Phase as %d, expected %d",

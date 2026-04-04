@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -217,7 +217,7 @@ func (s *Service) AssignController(ac *Aircraft) *Controller {
 
 	// Identify AI's intended facility
 	searchICAO := getAirportICAObyPhaseClass(ac)
-	phaseFacility := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+	phaseFacility := atcFacilityByPhaseMap[flightphase.FlightPhase(ac.Flight.Phase.Current)]
 
 	aiFac := s.locateController(
 		ac.Registration,

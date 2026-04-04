@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
@@ -95,7 +95,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	s.setFlightPhaseClass(ac)
 	util.LogWithLabel(ac.Registration, "flight %d phase %s classified as %s",
 		ac.Flight.Number,
-		trafficglobal.FlightPhase(ac.Flight.Phase.Current),
+		flightphase.FlightPhase(ac.Flight.Phase.Current),
 		ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
@@ -172,7 +172,7 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 
 	// if we are not in cruise, there is no need to check for sector changes
-	if ac.Flight.Phase.Current != trafficglobal.Cruise.Index() {
+	if ac.Flight.Phase.Current != flightphase.Cruise.Index() {
 		return
 	}
 
@@ -363,8 +363,8 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	// we include Shutdown here as there has been scenarios observed in the traffic global
 	// plugin whereby the aircraft has been assigned a new flight plan whilst still in
 	// the shutdown state
-	case trafficglobal.Parked.Index(), trafficglobal.Shutdown.Index():
-		if ph.Previous == trafficglobal.Unknown.Index() {
+	case flightphase.Parked.Index(), flightphase.Shutdown.Index():
+		if ph.Previous == flightphase.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
 				util.LogWarnWithLabel(ac.Registration, "no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
@@ -385,21 +385,21 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 			ph.Class = PostflightParked
 			return
 		}
-	case trafficglobal.Startup.Index(),
-		trafficglobal.TaxiOut.Index(),
-		trafficglobal.Depart.Index(),
-		trafficglobal.Climbout.Index():
+	case flightphase.Startup.Index(),
+		flightphase.TaxiOut.Index(),
+		flightphase.Depart.Index(),
+		flightphase.Climbout.Index():
 		ph.Class = Departing
 		return
-	case trafficglobal.Approach.Index(),
-		trafficglobal.Holding.Index(),
-		trafficglobal.Final.Index(),
-		trafficglobal.GoAround.Index(),
-		trafficglobal.Braking.Index(),
-		trafficglobal.TaxiIn.Index():
+	case flightphase.Approach.Index(),
+		flightphase.Holding.Index(),
+		flightphase.Final.Index(),
+		flightphase.GoAround.Index(),
+		flightphase.Braking.Index(),
+		flightphase.TaxiIn.Index():
 		ph.Class = Arriving
 		return
-	case trafficglobal.Cruise.Index():
+	case flightphase.Cruise.Index():
 		ph.Class = Cruising
 		return
 	default:
@@ -414,25 +414,26 @@ func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
 	if ac.Flight.Comms.Controller != nil {
 		cIcao := ac.Flight.Comms.Controller.ICAO
 		if ap, ok := s.Airports[cIcao]; ok && ap.TransAlt > 0 {
-			transitionAlt = ap.TransAlt
-		}		
+			return ap.TransAlt
+		}
+	}
+
+	// 2. FALLBACK: Look at the nearest airport under the plane
+	// This is crucial for Center controllers who don't have a TransAlt
+	nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)
+	if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
+		transitionAlt = nearAp.TransAlt
 	} else {
-        // 2. FALLBACK: Look at the nearest airport under the plane
-        // This is crucial for Center controllers who don't have a TransAlt
-        nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)
-        if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
-            transitionAlt = nearAp.TransAlt
-        } else {
-            // 3. FINAL FALLBACK: Continental Standards
-            // If ICAO starts with E or L (Europe), use 6000, otherwise 18000
-            if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
-                transitionAlt = 6000
-            } else {
-                transitionAlt = 18000
-            }
-        }
-    }
-	return
+		// 3. FINAL FALLBACK: Continental Standards
+		// If ICAO starts with E or L (Europe), use 6000, otherwise 18000
+		if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
+			transitionAlt = 6000
+		} else {
+			transitionAlt = 18000
+		}
+	}
+    
+	return transitionAlt
 }
 
 func calculateDistance(pos1, pos2 Position) float64 {

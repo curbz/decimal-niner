@@ -36,5 +36,5 @@ atc:
     say_again_factor: 30
     comms_country_code_default: "GB"
 trafficglobal:
-  #plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
-  plugin_directory: "/home/dmorris/decimal-niner/X-Plane"
+  plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
+  #plugin_directory: "/home/dmorris/decimal-niner/X-Plane"

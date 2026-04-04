@@ -21,9 +21,9 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
@@ -614,7 +614,7 @@ func (xpc *XPConnect) updateUserData() {
 	// convert to target types
 	ca1, caOk1 := com1ActivityVal.(float64)
 	ca2, caOk2 := com2ActivityVal.(float64)
-	if !caOk1 || !caOk2  {
+	if !caOk1 || !caOk2 {
 		logger.Log.Error("unexpected types for com radio activity datarefs")
 		return
 	}
@@ -774,10 +774,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-			lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLat, index)
-			lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLong, index)
-			alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionElev, index)
-			hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionHeading, index)
+		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLat, index)
+		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLong, index)
+		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionElev, index)
+		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionHeading, index)
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
@@ -837,8 +837,8 @@ func (xpc *XPConnect) updateAircraftData() {
 				util.LogWithLabel(ac.Registration,
 					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d",
 					ac.Flight.Number,
-					trafficglobal.FlightPhase(ac.Flight.Phase.Previous).String(),
-					trafficglobal.FlightPhase(ac.Flight.Phase.Current).String(),
+					flightphase.FlightPhase(ac.Flight.Phase.Previous).String(),
+					flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
 					ac.Flight.Position.Lat,
 					ac.Flight.Position.Long,
 					ac.Flight.Position.Altitude,
@@ -864,7 +864,7 @@ func (xpc *XPConnect) updateAircraftData() {
 func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
 
 	// set flight phase to unknown initially
-	fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
+	fpUnknown := flightphase.FlightPhase(flightphase.Unknown.Index())
 	aircraft := &atc.Aircraft{
 		Registration: registration,
 		Flight: atc.Flight{

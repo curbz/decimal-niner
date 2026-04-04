@@ -20,9 +20,10 @@ import (
 
 	"golang.org/x/text/runes"
 
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/pcl"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
+
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -56,14 +57,14 @@ type Exchange struct {
 }
 
 type Piper struct {
-	Application    string `yaml:"application"`
-	VoiceDirectory string `yaml:"voice_directory"`
-	Speakers []Speaker `yaml:"speakers"`
+	Application    string    `yaml:"application"`
+	VoiceDirectory string    `yaml:"voice_directory"`
+	Speakers       []Speaker `yaml:"speakers"`
 }
 
 type Speaker struct {
 	FileName string `yaml:"voice_file"`
-	IDs []int `yaml:"ids"`
+	IDs      []int  `yaml:"ids"`
 }
 
 type Sox struct {
@@ -93,9 +94,9 @@ type PiperConfig struct {
 
 // RadioController replaces CurrentPlayback
 var RadioController = struct {
-    sync.Mutex
-    ActiveCmd *exec.Cmd
-    IsMuted   bool
+	sync.Mutex
+	ActiveCmd *exec.Cmd
+	IsMuted   bool
 }{}
 
 // main function to recieve aircraft updates for phrase generation
@@ -116,7 +117,7 @@ func (s *Service) startComms() {
 				continue
 			}
 
-			phaseFacility, exists := atcFacilityByPhaseMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+			phaseFacility, exists := atcFacilityByPhaseMap[flightphase.FlightPhase(ac.Flight.Phase.Current)]
 			if !exists {
 				util.LogErrWithLabel(ac.Registration, "error: phase facility not found for flight phase %d", ac.Flight.Phase.Current)
 				continue
@@ -192,7 +193,7 @@ func (s *Service) startComms() {
 					s.preparePhrase(exchange.ATC, roleNameMap[phaseFacility.roleId], ac)
 					// pilot reads back atc instructions, but not for shutdown to avoid unecessary repetition
 					// also check if read back is explicitly precluded
-					if ac.Flight.Phase.Current != trafficglobal.Shutdown.Index() &&
+					if ac.Flight.Phase.Current != flightphase.Shutdown.Index() &&
 						!strings.Contains(exchange.ATC, "{NOREADBACK}") {
 						s.preparePhrase(autoReadback(exchange.ATC), "PILOT", ac)
 					}
@@ -222,7 +223,7 @@ func (s *Service) startComms() {
 			}
 
 			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no further communications and this allows for quicker recycling of voices in busy airspaces. For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
-			if ac.Flight.Phase.Current == trafficglobal.Shutdown.Index() {
+			if ac.Flight.Phase.Current == flightphase.Shutdown.Index() {
 				s.VoiceManager.ReleaseSession(ac)
 			}
 		}
@@ -234,20 +235,20 @@ func (s *Service) SetRadioMute(mute bool) {
 	// return without action if trying to mute but already muted or trying to unmute but already unmuted
 	if (mute && RadioController.IsMuted) || (!mute && !RadioController.IsMuted) {
 		return
-	} 
+	}
 
-    RadioController.Lock()
-    defer RadioController.Unlock()
+	RadioController.Lock()
+	defer RadioController.Unlock()
 
 	RadioController.IsMuted = mute
 	logger.Log.Infof("RadioController.IsMuted changed to %v", mute)
 
-    // If we are muting, kill any CURRENT playback immediately
-    if mute && RadioController.ActiveCmd != nil && RadioController.ActiveCmd.Process != nil {
-        logger.Log.Info("com radio activity detected: killing active playback and muting queue")
-        _ =RadioController.ActiveCmd.Process.Kill()
-        RadioController.ActiveCmd = nil
-    }
+	// If we are muting, kill any CURRENT playback immediately
+	if mute && RadioController.ActiveCmd != nil && RadioController.ActiveCmd.Process != nil {
+		logger.Log.Info("com radio activity detected: killing active playback and muting queue")
+		_ = RadioController.ActiveCmd.Process.Kill()
+		RadioController.ActiveCmd = nil
+	}
 }
 
 // autoReadback will generate the readback phrase from the original
@@ -617,23 +618,29 @@ func RadioPlayer(soxPath string) {
 		util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "radio player received audio (channel buffer remaining capacity: %d)", cap(radioPlayer)-len(radioPlayer))
 
 		// --- 1. PRE-CHECK MUTE ---
-        RadioController.Lock()
-        if RadioController.IsMuted {
-            RadioController.Unlock()
-            util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Muted: Skipping queued audio due to COM activity")
-            // Cleanup Piper immediately since we aren't using it
-            if audio.PiperOut != nil { audio.PiperOut.Close() }
-            if audio.PiperCmd != nil && audio.PiperCmd.Process != nil { audio.PiperCmd.Process.Kill() }
-            if audio.VoiceLock != nil { audio.VoiceLock.Unlock() }
-            continue
-        }
-        RadioController.Unlock()
+		RadioController.Lock()
+		if RadioController.IsMuted {
+			RadioController.Unlock()
+			util.LogWithLabel(audio.Msg.AircraftSnap.Registration, "Muted: Skipping queued audio due to COM activity")
+			// Cleanup Piper immediately since we aren't using it
+			if audio.PiperOut != nil {
+				audio.PiperOut.Close()
+			}
+			if audio.PiperCmd != nil && audio.PiperCmd.Process != nil {
+				audio.PiperCmd.Process.Kill()
+			}
+			if audio.VoiceLock != nil {
+				audio.VoiceLock.Unlock()
+			}
+			continue
+		}
+		RadioController.Unlock()
 
 		// PROTECT: If voice name is empty, we can't speak
 		if audio.Voice == "" {
 			util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error: voice name is empty, skipping speech audio playback to prevent Piper error")
 			// If there's a lock even without a name (unlikely), release it
-			if audio.VoiceLock != nil {	
+			if audio.VoiceLock != nil {
 				audio.VoiceLock.Unlock()
 			}
 			continue
@@ -669,15 +676,15 @@ func RadioPlayer(soxPath string) {
 				"%s (%s)", audio.Msg.Text, audio.Voice)
 
 			// Wait for Piper to actually have data ready ---
-            // We use a small buffer to "catch" the first byte.
-            firstByte := make([]byte, 1)
-            n, _ := a.PiperOut.Read(firstByte)            
-            if n > 0 {
-                // We have data! Combine that first byte with the rest of the stream
-                playCmd.Stdin = io.MultiReader(bytes.NewReader(firstByte), a.PiperOut)
-            } else {
-                playCmd.Stdin = a.PiperOut
-            }
+			// We use a small buffer to "catch" the first byte.
+			firstByte := make([]byte, 1)
+			n, _ := a.PiperOut.Read(firstByte)
+			if n > 0 {
+				// We have data! Combine that first byte with the rest of the stream
+				playCmd.Stdin = io.MultiReader(bytes.NewReader(firstByte), a.PiperOut)
+			} else {
+				playCmd.Stdin = a.PiperOut
+			}
 
 			if err := playCmd.Start(); err != nil {
 				util.LogErrWithLabel(audio.Msg.AircraftSnap.Registration, "error starting sox: %v", err)
@@ -686,20 +693,20 @@ func RadioPlayer(soxPath string) {
 			}
 
 			// REGISTER FOR INTERRUPT
-            RadioController.Lock()
-            RadioController.ActiveCmd = playCmd
-            RadioController.Unlock()
-			
+			RadioController.Lock()
+			RadioController.ActiveCmd = playCmd
+			RadioController.Unlock()
+
 			// 1. Wait for SoX first.
 			// When SoX finishes, it closes Stdin (audio.PiperOut).
 			_ = playCmd.Wait()
 
 			// UNREGISTER ---
-            RadioController.Lock()
-            if RadioController.ActiveCmd == playCmd {
-                RadioController.ActiveCmd = nil
-            }
-            RadioController.Unlock()
+			RadioController.Lock()
+			if RadioController.ActiveCmd == playCmd {
+				RadioController.ActiveCmd = nil
+			}
+			RadioController.Unlock()
 
 			// 2. // Explicitly drop the handle to the pipe
 			audio.PiperOut.Close()
@@ -721,14 +728,14 @@ func RadioPlayer(soxPath string) {
 
 func noiseType(role string, flightPhase int) string {
 	if role == "PILOT" {
-		if flightPhase == trafficglobal.Cruise.Index() ||
-			flightPhase == trafficglobal.Climbout.Index() ||
-			flightPhase == trafficglobal.Depart.Index() ||
-			flightPhase == trafficglobal.GoAround.Index() ||
-			flightPhase == trafficglobal.Approach.Index() ||
-			flightPhase == trafficglobal.Final.Index() ||
-			flightPhase == trafficglobal.Braking.Index() ||
-			flightPhase == trafficglobal.Holding.Index() {
+		if flightPhase == flightphase.Cruise.Index() ||
+			flightPhase == flightphase.Climbout.Index() ||
+			flightPhase == flightphase.Depart.Index() ||
+			flightPhase == flightphase.GoAround.Index() ||
+			flightPhase == flightphase.Approach.Index() ||
+			flightPhase == flightphase.Final.Index() ||
+			flightPhase == flightphase.Braking.Index() ||
+			flightPhase == flightphase.Holding.Index() {
 			return "pinknoise"
 		}
 	}
@@ -847,7 +854,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool)
 
 	// Contextual Rounding Logic
 	switch phase.Current {
-	case trafficglobal.Final.Index(), trafficglobal.Approach.Index():
+	case flightphase.Final.Index(), flightphase.Approach.Index():
 		// Nearest 100ft for precision during landing (e.g., 2,412 -> 2,400)
 		roundedAlt = ((alt + 50) / 100) * 100
 	default:
@@ -860,7 +867,7 @@ func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool)
 		fl := roundedAlt / 100
 
 		// Ensure cruise flight levels are multiples of 10 (e.g., 330)
-		if phase.Current == trafficglobal.Cruise.Index() {
+		if phase.Current == flightphase.Cruise.Index() {
 			fl = (fl / 10) * 10
 		}
 
@@ -981,7 +988,7 @@ func toPhonetics(s string) string {
 // generateHandoffPhrase creates a controller handoff phrase and automatically includes valediction (based on configured factor)
 func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 	// Identify the 'Next Role' based on the new phase
-	nextRole, exists := handoffMap[trafficglobal.FlightPhase(ac.Flight.Phase.Current)]
+	nextRole, exists := handoffMap[flightphase.FlightPhase(ac.Flight.Phase.Current)]
 	if !exists {
 		return ""
 	}
@@ -1007,7 +1014,7 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 
 	// if next role is approach or cruise, include the facility name
 	facilityName := ""
-	if nextRole == trafficglobal.Approach.Index() || nextRole == trafficglobal.Cruise.Index() {
+	if nextRole == flightphase.Approach.Index() || nextRole == flightphase.Cruise.Index() {
 		facilityName = nextController.Name
 	}
 

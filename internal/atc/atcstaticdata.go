@@ -1,6 +1,8 @@
 package atc
 
-import "github.com/curbz/decimal-niner/internal/trafficglobal"
+import (
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
+)
 
 var SizeClass = []string{
 	"A", "B", "C", "D", "E", "F",
@@ -276,60 +278,60 @@ var numericMap = map[rune]string{
 	'9': "niner",
 }
 
-var atcFacilityByPhaseMap = map[trafficglobal.FlightPhase]PhaseFacility{
+var atcFacilityByPhaseMap = map[flightphase.FlightPhase]PhaseFacility{
 	// PRE-FLIGHT & DEPARTURE
-	trafficglobal.Parked: {
+	flightphase.Parked: {
 		atcPhase: "pre_flight_parked",
 		roleId:   1,
 	},
-	trafficglobal.Startup: {
+	flightphase.Startup: {
 		atcPhase: "startup",
 		roleId:   2,
 	},
-	trafficglobal.TaxiOut: {
+	flightphase.TaxiOut: {
 		atcPhase: "taxi_out",
 		roleId:   2,
 	},
-	trafficglobal.Depart: {
+	flightphase.Depart: {
 		atcPhase: "depart",
 		roleId:   3,
 	},
-	trafficglobal.Climbout: {
+	flightphase.Climbout: {
 		atcPhase: "climb_out",
 		roleId:   4,
 	},
 	// --- ENROUTE & ARRIVAL ---
-	trafficglobal.Cruise: {
+	flightphase.Cruise: {
 		atcPhase: "cruise",
 		roleId:   6,
 	},
-	trafficglobal.Approach: {
+	flightphase.Approach: {
 		atcPhase: "approach",
 		roleId:   5,
 	},
-	trafficglobal.Holding: {
+	flightphase.Holding: {
 		atcPhase: "holding",
 		roleId:   5,
 	},
-	trafficglobal.Final: {
+	flightphase.Final: {
 		atcPhase: "final",
 		roleId:   3,
 	},
-	trafficglobal.GoAround: {
+	flightphase.GoAround: {
 		atcPhase: "go_around",
 		roleId:   3,
 	},
 	// --- LANDING & TAXI-IN ---
-	trafficglobal.Braking: {
+	flightphase.Braking: {
 		// In Traffic Global, Braking usually covers the rollout and runway exit
 		atcPhase: "braking",
 		roleId:   3,
 	},
-	trafficglobal.TaxiIn: {
+	flightphase.TaxiIn: {
 		atcPhase: "taxi_in",
 		roleId:   2,
 	},
-	trafficglobal.Shutdown: {
+	flightphase.Shutdown: {
 		atcPhase: "post_flight_parked",
 		roleId:   2,
 	},
@@ -343,19 +345,19 @@ var roleNameMap = map[int]string{
 	3:  "Tower",     // Mapped from 1054
 	4:  "Departure", // Mapped from 1056
 	5:  "Approach",  // Mapped from 1055
-	6:  "Center",    
+	6:  "Center",
 	7:  "Information Service", // Mapped from 1050
 	8:  "Information Service", // Mapped from 1051
 }
 
-var handoffMap = map[trafficglobal.FlightPhase]int{
-	trafficglobal.Parked:   2, // Delivery -> Ground
-	trafficglobal.TaxiOut:  3, // Ground -> Tower
-	trafficglobal.Depart:   4, // Tower -> Departure
-	trafficglobal.Climbout: 6, // Departure -> Center
-	trafficglobal.Cruise:   5, // Center -> Approach (or another Center)
-	trafficglobal.Approach: 3, // Approach -> Tower
-	trafficglobal.Braking:  2, // Tower -> Ground
+var handoffMap = map[flightphase.FlightPhase]int{
+	flightphase.Parked:   2, // Delivery -> Ground
+	flightphase.TaxiOut:  3, // Ground -> Tower
+	flightphase.Depart:   4, // Tower -> Departure
+	flightphase.Climbout: 6, // Departure -> Center
+	flightphase.Cruise:   5, // Center -> Approach (or another Center)
+	flightphase.Approach: 3, // Approach -> Tower
+	flightphase.Braking:  2, // Tower -> Ground
 }
 
 var approachRank = map[string]int{

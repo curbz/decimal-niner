@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/curbz/decimal-niner/internal/atc/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 type Hold struct {
@@ -121,7 +121,7 @@ func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
 	if airportExists && len(airport.Holds) > 0 {
 
 		// A. GO-AROUND: Specifically look for the MAFix
-		if phase == trafficglobal.GoAround.Index() {
+		if phase == flightphase.GoAround.Index() {
 			// Find the MAFix name for the specific runway
 			// runway is normalized (e.g., "27R")
 			var targetFix string
