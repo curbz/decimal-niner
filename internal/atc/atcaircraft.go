@@ -20,7 +20,6 @@ type Aircraft struct {
 	Type         string
 	SizeClass    string
 	Code         string
-	Airline      string
 	Registration string
 }
 

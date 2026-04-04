@@ -66,6 +66,7 @@ var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 // ScheduledFlight is the requested output struct for each parsed leg.
 type ScheduledFlight struct {
 	AircraftRegistration string
+	Airline 			 string
 	Number               int
 	IcaoOrigin           string
 	IcaoDest             string
@@ -87,6 +88,16 @@ type config struct {
 		FlightPlansPath string `yaml:"plugin_directory"`	// Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
 	} `yaml:"trafficglobal"`
 }
+
+
+var (
+	// Regex breakdown:
+	// 1. Matches everything from the start
+	// 2. Lookahead: Stops before a space/underscore followed by:
+	//    - A 4-digit year (e.g., 2022)
+	//    - A Season code (e.g., S24, W25, Su24)
+	airlineRegex = regexp.MustCompile(`^(.*?)(?:[ _]+(?:\d{4}|[SW][u]?\d{2}))?\.bgl$`)
+)
 
 func LoadConfig(cfgPath string) *config {
 
@@ -118,8 +129,8 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
 			fullPath := filepath.Join(dirPath, file.Name())
-
-			err := BGLReader(fullPath, masterSchedules, masterAirports)
+			airlineName := cleanAirlineName(file.Name())
+			err := BGLReader(fullPath, airlineName, masterSchedules, masterAirports)
 			if err != nil {
 				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)
 				continue
@@ -134,7 +145,7 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 	return masterSchedules, masterAirports
 }
 
-func BGLReader(filePath string, masterSchedules map[string][]ScheduledFlight, masterAirports map[string]bool) error {
+func BGLReader(filePath, airline string, masterSchedules map[string][]ScheduledFlight, masterAirports map[string]bool) error {
 	logger.Log.Debugf("Parsing BGL: %s", filepath.Base(filePath))
 
 	data, err := os.ReadFile(filePath)
@@ -142,13 +153,14 @@ func BGLReader(filePath string, masterSchedules map[string][]ScheduledFlight, ma
 		return fmt.Errorf("read error: %v", err)
 	}
 
-	legs, airportICAOlist := collectAllLegsSequential(data)
+	legs, airportICAOlist := collectLegs(data)
 	if len(legs) == 0 {
 		return fmt.Errorf("no legs found in %s", filePath)
 	}
 
 	// Directly update the master maps
 	for _, l := range legs {
+		l.Airline = airline
 		key := fmt.Sprintf("%s_%d_%d", l.AircraftRegistration, l.Number, l.DepartureDayOfWeek)
 		// No need to check 'found'; appending to a nil slice in a map works
 		masterSchedules[key] = append(masterSchedules[key], l)
@@ -159,6 +171,27 @@ func BGLReader(filePath string, masterSchedules map[string][]ScheduledFlight, ma
 	}
 
 	return nil
+}
+
+func cleanAirlineName(fileName string) string {
+	// 1. Handle case sensitivity
+	name := strings.TrimSpace(fileName)
+	
+	// 2. Execute Regex
+	matches := airlineRegex.FindStringSubmatch(name)
+	if len(matches) < 2 {
+		// Fallback: just strip .bgl if regex fails
+		return strings.TrimSuffix(name, ".bgl")
+	}
+
+	result := matches[1]
+
+	// 3. Clean up delimiters for a "human readable" look
+	// Replaces underscores with spaces (e.g., Aeromexico_Connect -> Aeromexico Connect)
+	result = strings.ReplaceAll(result, "_", " ")
+	
+	// 4. Final trim for safety
+	return strings.TrimSpace(result)
 }
 
 func isRegCharUpper(b byte) bool {
@@ -207,7 +240,7 @@ func decodeTime3(b []byte) (string, bool) {
 	return "", false
 }
 
-func tryFlightNum(block []byte) (int, string, int) {
+func decodeFlightNum(block []byte) (int, string, int) {
 	// returns (number int, rawHex string, rawVal int)
 	if len(block) >= 16 {
 		val := int(block[14]) | int(block[15])<<8
@@ -277,7 +310,7 @@ func decodeFlightLevel(block []byte) int {
 	return primary
 }
 
-func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) {
+func collectLegs(data []byte) ([]ScheduledFlight, map[string]bool) {
 	const firstICAOOffset = 18
 	n := len(data)
 	var out []ScheduledFlight
@@ -351,7 +384,7 @@ func collectAllLegsSequential(data []byte) ([]ScheduledFlight, map[string]bool) 
 			invalidCount = 0
 
 			icaoDest := string(block[ICAO_OFFSET : ICAO_OFFSET+ICAO_LEN])
-			fn, _, _ := tryFlightNum(block)
+			fn, _, _ := decodeFlightNum(block)
 
 			rawFlightNums = append(rawFlightNums, fn)
 
