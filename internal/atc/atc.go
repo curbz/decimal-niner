@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -23,7 +23,7 @@ type Service struct {
 	Airlines        map[string]AirlineInfo
 	Airports        map[string]*Airport
 	AirportService  AirportProvider
-	FlightSchedules map[string][]trafficglobal.ScheduledFlight
+	FlightSchedules map[string][]flightplan.ScheduledFlight
 	Weather         *Weather
 	DataProvider    simdata.SimDataProvider
 	SimInitTime     time.Time
@@ -72,7 +72,7 @@ type config struct {
 	} `yaml:"atc"`
 }
 
-func New(cfgPath string, fScheds map[string][]trafficglobal.ScheduledFlight, requiredAirports map[string]bool) *Service {
+func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requiredAirports map[string]bool) *Service {
 
 	logger.Log.Info("Starting ATC service - loading all configurations")
 

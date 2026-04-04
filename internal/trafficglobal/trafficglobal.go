@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -63,22 +64,6 @@ const (
 
 var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 
-// ScheduledFlight is the requested output struct for each parsed leg.
-type ScheduledFlight struct {
-	AircraftRegistration string
-	Airline 			 string
-	Number               int
-	IcaoOrigin           string
-	IcaoDest             string
-	DepartureDayOfWeek   int
-	DepatureHour         int
-	DepartureMin         int
-	ArrivalDayOfWeek     int
-	ArrivalHour          int
-	ArrivalMin           int
-	CruiseAlt            int
-}
-
 func (fp FlightPhase) Index() int {
 	return int(fp)
 }
@@ -112,11 +97,11 @@ func LoadConfig(cfgPath string) *config {
 	return cfg
 }
 
-func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]bool) {
+func LoadFlightPlans(dirPath string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
 	start := time.Now()
 
 	// Initialize the master storage once
-	masterSchedules := make(map[string][]ScheduledFlight)
+	masterSchedules := make(map[string][]flightplan.ScheduledFlight)
 	masterAirports := make(map[string]bool)
 
 	files, err := os.ReadDir(dirPath)
@@ -145,7 +130,7 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 	return masterSchedules, masterAirports
 }
 
-func BGLReader(filePath, airline string, masterSchedules map[string][]ScheduledFlight, masterAirports map[string]bool) error {
+func BGLReader(filePath, airline string, masterSchedules map[string][]flightplan.ScheduledFlight, masterAirports map[string]bool) error {
 	logger.Log.Debugf("Parsing BGL: %s", filepath.Base(filePath))
 
 	data, err := os.ReadFile(filePath)
@@ -310,10 +295,10 @@ func decodeFlightLevel(block []byte) int {
 	return primary
 }
 
-func collectLegs(data []byte) ([]ScheduledFlight, map[string]bool) {
+func collectLegs(data []byte) ([]flightplan.ScheduledFlight, map[string]bool) {
 	const firstICAOOffset = 18
 	n := len(data)
-	var out []ScheduledFlight
+	var out []flightplan.ScheduledFlight
 	airportICAOlist := make(map[string]bool)
 
 	i := 0
@@ -367,7 +352,7 @@ func collectLegs(data []byte) ([]ScheduledFlight, map[string]bool) {
 		cursor := foundAlign
 		invalidCount := 0
 
-		var blockLegs []ScheduledFlight
+		var blockLegs []flightplan.ScheduledFlight
 		var rawFlightNums []int
 
 		for cursor+LEG_SIZE <= n {
@@ -415,7 +400,7 @@ func collectLegs(data []byte) ([]ScheduledFlight, map[string]bool) {
 
 			cruise := decodeFlightLevel(block)
 
-			sf := ScheduledFlight{
+			sf := flightplan.ScheduledFlight{
 				AircraftRegistration: regStr,
 				Number:               0, // assign later
 				IcaoOrigin:           "",

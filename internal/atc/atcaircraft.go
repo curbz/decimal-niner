@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -222,7 +223,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	simYesterdayDayOfWeek := (simTodayDayOfWeek + 6) % 7
 	simMinsSinceMidnight := simTime.Hour()*60 + simTime.Minute()
 
-	candidateScheds := make([]trafficglobal.ScheduledFlight, 0)
+	candidateScheds := make([]flightplan.ScheduledFlight, 0)
 
 	// find active flights using schedule times
 	// when no flight found, expand search by 20 minutes up to 4 hours

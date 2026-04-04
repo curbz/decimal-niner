@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
@@ -81,7 +82,7 @@ func TestAddFlightPlan(t *testing.T) {
 		registration             string
 		flightNumber             int
 		simTime                  time.Time
-		schedules                map[string][]trafficglobal.ScheduledFlight
+		schedules                map[string][]flightplan.ScheduledFlight
 		strictFlightPlanMatching bool
 		expectOrigin             string
 		expectDest               string
@@ -92,7 +93,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N12345",
 			flightNumber: 101,
 			simTime:      time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 10:30
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N12345_101_0": {
 					{
 						IcaoOrigin:         "KJFK",
@@ -116,7 +117,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N12346",
 			flightNumber: 101,
 			simTime:      time.Date(2024, 1, 1, 13, 15, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 13:15
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N12346_101_0": {
 					{
 						IcaoOrigin:         "KJFK",
@@ -140,7 +141,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N12347",
 			flightNumber: 101,
 			simTime:      time.Date(2024, 1, 1, 9, 45, 0, 0, time.UTC), // this date in 2024 resolves to a Monday at 09:45
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N12347_101_0": {
 					{
 						IcaoOrigin:         "KJFK",
@@ -164,7 +165,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N54321",
 			flightNumber: 202,
 			simTime:      time.Date(2026, 1, 27, 6, 0, 0, 0, time.UTC), // this date in 2024 resolves to a Tuesday at 08:00
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N54321_202_0": { // Monday
 					{
 						IcaoOrigin:         "EGLL",
@@ -188,7 +189,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration:             "N99999",
 			flightNumber:             999,
 			simTime:                  time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC),
-			schedules:                map[string][]trafficglobal.ScheduledFlight{},
+			schedules:                map[string][]flightplan.ScheduledFlight{},
 			strictFlightPlanMatching: true,
 			expectNoMatch:            true,
 		},
@@ -197,7 +198,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N11111",
 			flightNumber: 111,
 			simTime:      time.Date(2026, 1, 27, 5, 0, 0, 0, time.UTC), // 5am Tuesday, this is before 10:00 departure and outside max extended search window
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N11111_111_1": {
 					{
 						IcaoOrigin:         "KATL",
@@ -219,7 +220,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N22222",
 			flightNumber: 222,
 			simTime:      time.Date(2024, 1, 27, 18, 0, 0, 0, time.UTC), // 6pm Tuesday is after 13:00 arrival and outside max extended search window
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N22222_222_1": {
 					{
 						IcaoOrigin:         "KDFW",
@@ -241,7 +242,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N33333",
 			flightNumber: 333,
 			simTime:      time.Date(2024, 1, 27, 18, 0, 0, 0, time.UTC), // 6pm Tuesday is after 13:00 arrival and outside max extended search window
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N33333_333_1": {
 					{
 						IcaoOrigin:         "KDFW",
@@ -265,7 +266,7 @@ func TestAddFlightPlan(t *testing.T) {
 			registration: "N44444",
 			flightNumber: 444,
 			simTime:      time.Date(2026, 1, 31, 6, 0, 0, 0, time.UTC), // 6am Saturday, this is before 10:00 departure and on a different departure day of week
-			schedules: map[string][]trafficglobal.ScheduledFlight{
+			schedules: map[string][]flightplan.ScheduledFlight{
 				"N44444_444_1": {
 					{
 						IcaoOrigin:         "KATL",
