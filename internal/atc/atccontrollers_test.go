@@ -9,7 +9,7 @@ import (
 func TestLocateController(t *testing.T) {
 
 	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true, "EGHI": true}
-	atcService := New("config.yaml", make(map[string][]flightplan.ScheduledFlight), requiredAirports)
+	atcService, _ := New("config.yaml", make(map[string][]flightplan.ScheduledFlight), requiredAirports)
 
 	tests := []struct {
 		label        string
@@ -67,7 +67,7 @@ func TestLocateControllerGlobal(t *testing.T) {
 		"NZAA": true, "FACT": true,
 	}
 
-	atcService := New("config.yaml", nil, requiredAirports)
+	atcService, _ := New("config.yaml", nil, requiredAirports)
 
 	tests := []struct {
 		label      string
@@ -273,7 +273,7 @@ func TestLocateControllerTierLogic(t *testing.T) {
 
 func TestUnicomFallbackLogic(t *testing.T) {
 
-	s := New("config.yaml", nil, map[string]bool{"EGTF": true})
+	s, _ := New("config.yaml", nil, map[string]bool{"EGTF": true})
 	lat, lon := 51.35, -0.56
 
 	// 1. Search for a role we are SURE isn't there (e.g., Role 6 - Center)

@@ -10,6 +10,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
+	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -18,6 +19,7 @@ import (
 type d9config struct {
 	D9 struct {
 		LoggingLevel string `yaml:"logging_level"`
+		TrafficEngine string `yaml:"traffic_engine"`
 	} `yaml:"d9"`
 }
 
@@ -81,18 +83,36 @@ func main() {
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	// Get flight schedules from traffic global
-	tgConfig := trafficglobal.LoadConfig(cfgPath)
-	fScheds, airports := trafficglobal.LoadFlightPlans(tgConfig.TG.FlightPlansPath)
+	var te traffic.Engine
+	var teErr error
+	switch cfg.D9.TrafficEngine {
+	case "trafficglobal":
+		te, teErr = trafficglobal.New(cfgPath)
+	default:
+		if logger.Log != nil {
+			logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
+		} 
+		return
+	}
+	if teErr != nil {
+		if logger.Log != nil {
+			logger.Log.Fatalf("error initialising traffic engine: %v", err)
+		}
+		return
+	}
+
+	// Get flight schedules
+	fScheds, airports := te.LoadFlightPlans(te.GetFlightPlanPath())
 
 	// Create ATC service
-	atcService := atc.New(cfgPath, fScheds, airports)
-	if atcService == nil {
+	atcService, err := atc.New(cfgPath, fScheds, airports)
+	if err != nil {
 		if logger.Log != nil {
 			logger.Log.Info("failed to create ATC service, exiting")
 		}
 		return
 	}
+
 	// set the airport service provider
 	atcService.AirportService = atcService
 	

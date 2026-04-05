@@ -291,7 +291,7 @@ func TestAddFlightPlan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			atcService := New("config.yaml", tt.schedules, make(map[string]bool))
+			atcService, _ := New("config.yaml", tt.schedules, make(map[string]bool))
 
 			ac := &Aircraft{
 				Registration: tt.registration,

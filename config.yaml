@@ -1,6 +1,7 @@
 # D9
 d9:
   logging_level: "info"
+  traffic_engine: "trafficglobal"
 
 # X-Plane Connection Settings
 xplane_api:
@@ -36,5 +37,5 @@ atc:
     say_again_factor: 30
     comms_country_code_default: "GB"
 trafficglobal:
-  plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
-  #plugin_directory: "/home/dmorris/decimal-niner/X-Plane"
+  #plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
+  plugin_directory: "/home/dmorris/decimal-niner/X-Plane"

@@ -11,6 +11,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -26,10 +27,14 @@ const (
 
 var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 
-type config struct {
+type TGconfig struct {
 	TG struct {
-		FlightPlansPath string `yaml:"plugin_directory"` // Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
+		FlightPlanPath string `yaml:"plugin_directory"` // Traffic Global expects flight plan BGL files in the root of Traffic Global's plugin folder
 	} `yaml:"trafficglobal"`
+}
+
+type TrafficGlobal struct {
+	FlightPlanPath string
 }
 
 var (
@@ -41,20 +46,25 @@ var (
 	airlineRegex = regexp.MustCompile(`^(.*?)(?:[ _]+(?:\d{4}|[SW][u]?\d{2}))?\.bgl$`)
 )
 
-func LoadConfig(cfgPath string) *config {
+func New(cfgPath string) (traffic.Engine, error) {
 
-	logger.Log.Info("Loading Traffic Global configurations")
-
-	cfg, err := util.LoadConfig[config](cfgPath)
+	cfg, err := util.LoadConfig[TGconfig](cfgPath)
 	if err != nil {
 		logger.Log.Errorf("Error reading configuration file: %v", err)
-		return nil
+		return nil, err
 	}
 
-	return cfg
+	te := &TrafficGlobal{
+		FlightPlanPath: cfg.TG.FlightPlanPath,
+	}
+	return te, nil
 }
 
-func LoadFlightPlans(dirPath string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
+func (tg *TrafficGlobal) GetFlightPlanPath() string {
+	return tg.FlightPlanPath
+}
+
+func (tg *TrafficGlobal) LoadFlightPlans(dirPath string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
 	start := time.Now()
 
 	// Initialize the master storage once
