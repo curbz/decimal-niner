@@ -88,7 +88,7 @@ func (xpc *XPConnect) Start() {
 	}
 	xpc.atcService.SetSimTime(simInitTime, time.Now())
 
-	logger.Log.Info("get traffic global dataref incides from x-plane web api")
+	logger.Log.Info("get dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
 	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {
@@ -264,6 +264,7 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 					APIInfo:         dataref,
 					Value:           nil,
 					DecodedDataType: dr.DecodedDataType,
+					SetValue: dr.SetValue,
 				}
 				break
 			}
@@ -478,7 +479,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value has wrong type: %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
 		}
 		if decoded, err := util.DecodeNullTerminatedString(s); err == nil && len(decoded) > 0 {
-			dr.Value = decoded
+			if dr.SetValue != nil {
+				dr.SetValue(dr, decoded)
+			} else {
+				dr.Value = decoded
+			}
 		} else {
 			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value: %v error: %v", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
 		}
@@ -495,7 +500,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			strArray[i] = util.DecodeUint32(uint32(f))
 		}
-		dr.Value = strArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, strArray)
+		} else {
+			dr.Value = strArray
+		}
 	case "float_array":
 		arr, ok := value.([]any)
 		if !ok {
@@ -509,7 +518,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			floatArray[i] = f
 		}
-		dr.Value = floatArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, floatArray)
+		} else {
+			dr.Value = floatArray
+		}
 	case "int_array":
 		arr, ok := value.([]any)
 		if !ok {
@@ -523,9 +536,17 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			intArray[i] = int(f)
 		}
-		dr.Value = intArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, intArray)
+		} else {
+			dr.Value = intArray
+		}
 	default:
-		dr.Value = value
+		if dr.SetValue != nil {
+			dr.SetValue(dr, value)
+		} else {
+			dr.Value = value
+		}
 	}
 
 	return nil

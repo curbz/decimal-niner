@@ -91,7 +91,11 @@ func New(cfgPath string) (traffic.Engine, error) {
 		{Name: simdata.DRTrafficEngineAIParking, // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 		{Name: simdata.DRTrafficEngineAIFlightPhase, // Int array of phase type (FlightPhase enum) <-- [5,5,5]
-			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array", 
+			SetValue: func(dr *xpapimodel.Dataref, newValue any) {
+				dr.Value = newValue
+			},
+		},
 		// The runway is the designator at the source airport if the flight phase is one of:
 		//   FP_TaxiOut, FP_Depart, FP_Climbout
 		// ... and at the destination airport if the flight phase is one of:
