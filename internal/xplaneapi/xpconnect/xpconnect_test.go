@@ -34,6 +34,20 @@ func (m *MockATC) GetCurrentZuluTime() time.Time                       { return 
 func (m *MockATC) SetDataProvider(dp simdata.SimDataProvider)          {}
 
 func setupMockDatarefs(tail string, flightNum int, phase int) map[int]*xpapimodel.Dataref {
+
+	simdata.DRTrafficEngineAIPositionLat     = "trafficglobal/ai/position_lat"
+	simdata.DRTrafficEngineAIPositionLong    = "trafficglobal/ai/position_long"
+	simdata.DRTrafficEngineAIPositionHeading = "trafficglobal/ai/position_heading"
+	simdata.DRTrafficEngineAIPositionElev    = "trafficglobal/ai/position_elev"
+	simdata.DRTrafficEngineAIAircraftCode    = "trafficglobal/ai/aircraft_code"
+	simdata.DRTrafficEngineAIAirlineCode     = "trafficglobal/ai/airline_code"
+	simdata.DRTrafficEngineAITailNumber      = "trafficglobal/ai/tail_number"
+	simdata.DRTrafficEngineAIClass           = "trafficglobal/ai/ai_class"
+	simdata.DRTrafficEngineAIFlightNum       = "trafficglobal/ai/flight_num"
+	simdata.DRTrafficEngineAIParking         = "trafficglobal/ai/parking"
+	simdata.DRTrafficEngineAIFlightPhase     = "trafficglobal/ai/flight_phase"
+	simdata.DRTrafficEngineAIRunway          = "trafficglobal/ai/runway"
+
 	m := make(map[int]*xpapimodel.Dataref)
 
 	// Essential Keys
@@ -41,7 +55,7 @@ func setupMockDatarefs(tail string, flightNum int, phase int) map[int]*xpapimode
 	m[2] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIFlightNum, Value: []int{flightNum}, DecodedDataType: "int_array"}
 	m[3] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIFlightPhase, Value: []int{phase}, DecodedDataType: "int_array"}
 
-	// NEW: Mock airline codes so airlineCodes[index] doesn't panic
+	// Mock airline codes so airlineCodes[index] doesn't panic
 	m[11] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIAirlineCode, Value: []string{"BAW"}, DecodedDataType: "base64_string_array"}
 
 	// Position Data (prevents nil pointer panics during assignment)
@@ -75,11 +89,11 @@ func TestAircraftStateTransition(t *testing.T) {
 
 	// VERIFICATION
 	if mockATC.NotifyCount > 1 {
-		t.Errorf("🚨 BUG DETECTED: NotifyAircraftChange called %d times. Expected: 1", mockATC.NotifyCount)
+		t.Errorf("FAIL: NotifyAircraftChange called %d times. Expected: 1", mockATC.NotifyCount)
 	} else if mockATC.NotifyCount == 1 {
-		t.Log("✅ SUCCESS: Transition handled exactly once.")
+		t.Log("SUCCESS: Transition handled exactly once.")
 	} else {
-		t.Error("❌ FAIL: Notification never triggered.")
+		t.Error("FAIL: Notification never triggered.")
 	}
 }
 
