@@ -21,7 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
-	"github.com/curbz/decimal-niner/internal/atc/flightphase"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
 

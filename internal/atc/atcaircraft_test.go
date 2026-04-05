@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/curbz/decimal-niner/internal/atc/flightphase"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )

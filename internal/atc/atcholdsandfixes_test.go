@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/curbz/decimal-niner/internal/atc/flightphase"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 )
 
 func rad(deg float64) float64 { return deg * math.Pi / 180 }

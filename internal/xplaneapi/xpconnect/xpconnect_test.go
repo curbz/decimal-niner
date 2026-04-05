@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
-	"github.com/curbz/decimal-niner/internal/atc/flightphase"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 )

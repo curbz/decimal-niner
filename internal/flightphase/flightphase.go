@@ -1,6 +1,5 @@
 package flightphase
 
-
 type FlightPhase int
 
 const (
