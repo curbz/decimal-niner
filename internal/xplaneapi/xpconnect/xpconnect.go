@@ -714,7 +714,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAITailNumber)
+	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAITailNumber)
 	if tailNumbersDR == nil {
 		logger.Log.Error("error: tail number dataref not found")
 		return
@@ -727,8 +727,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIAirlineCode)
-	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightNum)
+	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIAirlineCode)
+	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIFlightNum)
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		logger.Log.Error("error: airline code or flight number dataref not found")
 	} else {
@@ -760,7 +760,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightPhase, index)
+		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIFlightPhase, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -774,10 +774,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLat, index)
-		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLong, index)
-		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionElev, index)
-		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionHeading, index)
+		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionLat, index)
+		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionLong, index)
+		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionElev, index)
+		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionHeading, index)
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
@@ -798,7 +798,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update parking
-		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIParking, index)
+		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIParking, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -810,7 +810,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update assigned runway
-		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIRunway, index)
+		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIRunway, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -882,7 +882,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 	util.LogWithLabel(registration, "New aircraft detected registration %s flight number %d", registration, flightNumber)
 
 	// get aircraft class
-	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIClass, index)
+	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIClass, index)
 	sizeClass := class.(int)
 	if err != nil || sizeClass > 5 {
 		logger.Log.Error(err)

@@ -37,23 +37,23 @@ func setupMockDatarefs(tail string, flightNum int, phase int) map[int]*xpapimode
 	m := make(map[int]*xpapimodel.Dataref)
 
 	// Essential Keys
-	m[1] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAITailNumber, Value: []string{tail}, DecodedDataType: "base64_string_array"}
-	m[2] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIFlightNum, Value: []int{flightNum}, DecodedDataType: "int_array"}
-	m[3] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIFlightPhase, Value: []int{phase}, DecodedDataType: "int_array"}
+	m[1] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAITailNumber, Value: []string{tail}, DecodedDataType: "base64_string_array"}
+	m[2] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIFlightNum, Value: []int{flightNum}, DecodedDataType: "int_array"}
+	m[3] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIFlightPhase, Value: []int{phase}, DecodedDataType: "int_array"}
 
 	// NEW: Mock airline codes so airlineCodes[index] doesn't panic
-	m[11] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIAirlineCode, Value: []string{"BAW"}, DecodedDataType: "base64_string_array"}
+	m[11] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIAirlineCode, Value: []string{"BAW"}, DecodedDataType: "base64_string_array"}
 
 	// Position Data (prevents nil pointer panics during assignment)
-	m[4] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIPositionLat, Value: []float64{51.15}, DecodedDataType: "float_array"}
-	m[5] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIPositionLong, Value: []float64{-0.17}, DecodedDataType: "float_array"}
-	m[6] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIPositionElev, Value: []float64{195.0}, DecodedDataType: "float_array"}
-	m[7] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIPositionHeading, Value: []float64{347.0}, DecodedDataType: "float_array"}
+	m[4] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIPositionLat, Value: []float64{51.15}, DecodedDataType: "float_array"}
+	m[5] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIPositionLong, Value: []float64{-0.17}, DecodedDataType: "float_array"}
+	m[6] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIPositionElev, Value: []float64{195.0}, DecodedDataType: "float_array"}
+	m[7] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIPositionHeading, Value: []float64{347.0}, DecodedDataType: "float_array"}
 
 	// Class and Assignment Data
-	m[8] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIClass, Value: []int{3}, DecodedDataType: "int_array"}
-	m[9] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIParking, Value: []string{"Gate A1"}, DecodedDataType: "base64_string_array"}
-	m[10] = &xpapimodel.Dataref{Name: simdata.DRTrafficGlobalAIRunway, Value: []string{"26L"}, DecodedDataType: "base64_string_array"}
+	m[8] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIClass, Value: []int{3}, DecodedDataType: "int_array"}
+	m[9] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIParking, Value: []string{"Gate A1"}, DecodedDataType: "base64_string_array"}
+	m[10] = &xpapimodel.Dataref{Name: simdata.DRTrafficEngineAIRunway, Value: []string{"26L"}, DecodedDataType: "base64_string_array"}
 
 	return m
 }

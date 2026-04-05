@@ -55,28 +55,28 @@ var (
 
 		// weather
 		simdata.DRSimFlightmodelPositionMagVariation: "float",
-		simdata.DRSimWeatherRegionTurbulence:          "float",
+		simdata.DRSimWeatherRegionTurbulence:         "float",
 		simdata.DRSimWeatherRegionShearSpeed:         "float",
 		simdata.DRSimWeatherRegionWindSpeed:          "float",
 		simdata.DRSimWeatherRegionWindDirection:      "float",
 		simdata.DRSimWeatherAircraftBarometer:        "float",
 		simdata.DRSimWeatherRegionSeaLevelPressure:   "double",
 
-		simdata.DRTrafficGlobalAIPositionLat:     "float[]",
-		simdata.DRTrafficGlobalAIPositionLong:    "float[]",
-		simdata.DRTrafficGlobalAIPositionHeading: "float[]",
-		simdata.DRTrafficGlobalAIPositionElev:    "float[]",
+		simdata.DRTrafficEngineAIPositionLat:     "float[]",
+		simdata.DRTrafficEngineAIPositionLong:    "float[]",
+		simdata.DRTrafficEngineAIPositionHeading: "float[]",
+		simdata.DRTrafficEngineAIPositionElev:    "float[]",
 
-		simdata.DRTrafficGlobalAIAircraftCode: "binary[]",
-		simdata.DRTrafficGlobalAIAirlineCode:  "binary[]",
-		simdata.DRTrafficGlobalAITailNumber:   "binary[]",
+		simdata.DRTrafficEngineAIAircraftCode: "binary[]",
+		simdata.DRTrafficEngineAIAirlineCode:  "binary[]",
+		simdata.DRTrafficEngineAITailNumber:   "binary[]",
 
-		simdata.DRTrafficGlobalAIClass:   "int[]",
-		simdata.DRTrafficGlobalAIFlightNum: "int[]",
+		simdata.DRTrafficEngineAIClass:     "int[]",
+		simdata.DRTrafficEngineAIFlightNum: "int[]",
 
-		simdata.DRTrafficGlobalAIParking:      "binary[]",
-		simdata.DRTrafficGlobalAIFlightPhase: "int[]",
-		simdata.DRTrafficGlobalAIRunway:       "int[]",
+		simdata.DRTrafficEngineAIParking:     "binary[]",
+		simdata.DRTrafficEngineAIFlightPhase: "int[]",
+		simdata.DRTrafficEngineAIRunway:      "int[]",
 	}
 )
 
@@ -338,43 +338,43 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return []float64{90.0 + float64(iter*4)}
 
 	// --- AI Aircraft Data (Moving around EGLL) ---
-	case simdata.DRTrafficGlobalAIPositionLat:
+	case simdata.DRTrafficEngineAIPositionLat:
 		return []float64{
 			51.4695,                           // AC1: Near Terminal 5
 			51.4710 + (float64(iter) * 0.001), // AC2: Taxiing toward 27R
 			51.4770 + (float64(iter) * 0.005), // AC3: On Final Approach
 		}
 
-	case simdata.DRTrafficGlobalAIPositionLong:
+	case simdata.DRTrafficEngineAIPositionLong:
 		return []float64{
 			-0.4870,
 			-0.4600 + (float64(iter) * 0.001),
 			-0.3500 + (float64(iter) * 0.005),
 		}
 
-	case simdata.DRTrafficGlobalAIPositionHeading:
+	case simdata.DRTrafficEngineAIPositionHeading:
 		return []float64{90.0, 270.0, 270.0}
 
-	case simdata.DRTrafficGlobalAIPositionElev:
+	case simdata.DRTrafficEngineAIPositionElev:
 		return []float64{
 			25.0,  // Ground
 			25.0,  // Ground
 			300.5, // Descending on Final
 		}
 
-	case simdata.DRTrafficGlobalAIAircraftCode:
+	case simdata.DRTrafficEngineAIAircraftCode:
 		// B378, A320, A359
 		s := "B788\x00A320\x00A359\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case simdata.DRTrafficGlobalAIClass:
+	case simdata.DRTrafficEngineAIClass:
 		return []int{5, 2, 4}
 
-	case simdata.DRTrafficGlobalAIAirlineCode:
+	case simdata.DRTrafficEngineAIAirlineCode:
 		s := "BAW\x00EZY\x00VIR\x00" // British Airways, EasyJet, Virgin Atlantic
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case simdata.DRTrafficGlobalAIFlightPhase:
+	case simdata.DRTrafficEngineAIFlightPhase:
 		// Provide deterministic transitions per-iteration for the three sample aircraft:
 		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 6, 7)
 		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (7, 8, 10)
@@ -389,10 +389,10 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 			return []int{7, 10, 11}
 		}
 
-	case simdata.DRTrafficGlobalAIRunway:
+	case simdata.DRTrafficEngineAIRunway:
 		return []float64{4994866, 5388082, 5388082, 5388082}
 
-	case simdata.DRTrafficGlobalAITailNumber:
+	case simdata.DRTrafficEngineAITailNumber:
 		// G-AOWK,138,EGLL,KLAX,4,10,25,4,21,45,154 <-- departure
 		// G-BCOL,599,EGLL,LOWW,4,9,0,4,11,30,309   <-- departure
 		// G-ARBD,342,LFMN,EGLL,4,9,45,4,12,0,289   <-- arrival
@@ -400,10 +400,10 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		s := "G-AOWK\x00G-BCOL\x00G-ARBD\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 
-	case simdata.DRTrafficGlobalAIFlightNum:
+	case simdata.DRTrafficEngineAIFlightNum:
 		return []int{138, 599, 342}
 
-	case simdata.DRTrafficGlobalAIParking:
+	case simdata.DRTrafficEngineAIParking:
 		s := "22\x00RAMP 19\x00215L\x00"
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	}

@@ -11,7 +11,9 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/traffic"
+	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -54,6 +56,51 @@ func New(cfgPath string) (traffic.Engine, error) {
 		return nil, err
 	}
 
+	simdata.DRTrafficEngineAIPositionLat     = "trafficglobal/ai/position_lat"
+	simdata.DRTrafficEngineAIPositionLong    = "trafficglobal/ai/position_long"
+	simdata.DRTrafficEngineAIPositionHeading = "trafficglobal/ai/position_heading"
+	simdata.DRTrafficEngineAIPositionElev    = "trafficglobal/ai/position_elev"
+	simdata.DRTrafficEngineAIAircraftCode    = "trafficglobal/ai/aircraft_code"
+	simdata.DRTrafficEngineAIAirlineCode     = "trafficglobal/ai/airline_code"
+	simdata.DRTrafficEngineAITailNumber      = "trafficglobal/ai/tail_number"
+	simdata.DRTrafficEngineAIClass           = "trafficglobal/ai/ai_class"
+	simdata.DRTrafficEngineAIFlightNum       = "trafficglobal/ai/flight_num"
+	simdata.DRTrafficEngineAIParking         = "trafficglobal/ai/parking"
+	simdata.DRTrafficEngineAIFlightPhase     = "trafficglobal/ai/flight_phase"
+	simdata.DRTrafficEngineAIRunway          = "trafficglobal/ai/runway"
+
+	subscribeDatarefs := []xpapimodel.Dataref {
+		{Name: simdata.DRTrafficEngineAIPositionLat, // Float array <-- [35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766,35.145877838134766]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: simdata.DRTrafficEngineAIPositionLong, // Float array <-- [24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273,24.120702743530273]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: simdata.DRTrafficEngineAIPositionHeading, // Float array <-- failed to retrieve this one
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: simdata.DRTrafficEngineAIPositionElev, // Float array, Altitude in meters <-- [10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375,10372.2021484375]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "float_array"},
+		{Name: simdata.DRTrafficEngineAIAircraftCode, // Binary array of zero-terminated char strings <-- "QVQ0ADczSABBVDQAREg0AEFUNAAA" decodes to AT4,73H,AT4,DH4,AT4 (commas added for clarity)
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: simdata.DRTrafficEngineAIAirlineCode, // Binary array of zero-terminated char strings <-- "U0VIAE1TUgBTRUgAT0FMAFNFSAAA" decodes to SEH,MSR,SEH,OAL,SEH
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: simdata.DRTrafficEngineAITailNumber, // Binary array of zero-terminated char strings <-- "U1gtQUFFAFNVLVdGTABTWC1CWEIAU1gtWENOAFNYLVVJVAAA" decodes to SX-AAE,SU-WFL,SX-BXB,SX-XCN,SX-UIT
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: simdata.DRTrafficEngineAIClass, // Int array of size class (SizeClass enum) <-- [2,2,2,2,2]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		{Name: simdata.DRTrafficEngineAIFlightNum, // Int array of flight numbers <-- [471,471,471,471,471]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		{Name: simdata.DRTrafficEngineAIParking, // Binary array of zero-terminated char strings <-- RAMP 2,APRON A1,APRON B (commas added for clarity)
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
+		{Name: simdata.DRTrafficEngineAIFlightPhase, // Int array of phase type (FlightPhase enum) <-- [5,5,5]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array"},
+		// The runway is the designator at the source airport if the flight phase is one of:
+		//   FP_TaxiOut, FP_Depart, FP_Climbout
+		// ... and at the destination airport if the flight phase is one of:
+		//   FP_Cruise, FP_Approach, FP_Final, FP_Braking, FP_TaxiIn, FP_GoAround
+		{Name: simdata.DRTrafficEngineAIRunway, // Int array of runway identifiers i.e. (uint32_t)'08R' <-- [538756,13107,0,0]
+			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "uint32_string_array"},
+	}
+	simdata.SubscribeDatarefs = append(simdata.SubscribeDatarefs, subscribeDatarefs...)
+
 	te := &TrafficGlobal{
 		FlightPlanPath: cfg.TG.FlightPlanPath,
 	}
@@ -82,7 +129,7 @@ func (tg *TrafficGlobal) LoadFlightPlans(dirPath string) (map[string][]flightpla
 		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
 			fullPath := filepath.Join(dirPath, file.Name())
 			airlineName := cleanAirlineName(file.Name())
-			err := BGLReader(fullPath, airlineName, masterSchedules, masterAirports)
+			err := bglReader(fullPath, airlineName, masterSchedules, masterAirports)
 			if err != nil {
 				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)
 				continue
@@ -97,7 +144,7 @@ func (tg *TrafficGlobal) LoadFlightPlans(dirPath string) (map[string][]flightpla
 	return masterSchedules, masterAirports
 }
 
-func BGLReader(filePath, airline string, masterSchedules map[string][]flightplan.ScheduledFlight, masterAirports map[string]bool) error {
+func bglReader(filePath, airline string, masterSchedules map[string][]flightplan.ScheduledFlight, masterAirports map[string]bool) error {
 	logger.Log.Debugf("Parsing BGL: %s", filepath.Base(filePath))
 
 	data, err := os.ReadFile(filePath)

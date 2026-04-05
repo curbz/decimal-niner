@@ -11,7 +11,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/traffic"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -56,6 +56,10 @@ func main() {
 	// Initialize the logger once at start
 	logger.Init(cfg.D9.LoggingLevel)
 
+	if logger.Log == nil {
+		log.Fatal("error initialising logger")
+	}
+
 	var srv any
 	if *mock {
 		if logger.Log != nil {
@@ -68,9 +72,7 @@ func main() {
 				switch v := srv.(type) {
 				case interface{ Close() error }:
 					if err := v.Close(); err != nil {
-						if logger.Log != nil {
-							logger.Log.Infof("error closing mock server: %v", err)
-						}
+						logger.Log.Infof("error closing mock server: %v", err)
 					}
 				case interface{ Close() }:
 					v.Close()
@@ -89,15 +91,11 @@ func main() {
 	case "trafficglobal":
 		te, teErr = trafficglobal.New(cfgPath)
 	default:
-		if logger.Log != nil {
-			logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
-		} 
+		logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
 		return
 	}
 	if teErr != nil {
-		if logger.Log != nil {
-			logger.Log.Fatalf("error initialising traffic engine: %v", err)
-		}
+		logger.Log.Fatalf("error initialising traffic engine: %v", err)
 		return
 	}
 
@@ -107,9 +105,7 @@ func main() {
 	// Create ATC service
 	atcService, err := atc.New(cfgPath, fScheds, airports)
 	if err != nil {
-		if logger.Log != nil {
-			logger.Log.Info("failed to create ATC service, exiting")
-		}
+		logger.Log.Info("failed to create ATC service, exiting")
 		return
 	}
 
