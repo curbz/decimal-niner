@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
@@ -29,7 +30,7 @@ const (
 	FP_Unknown  int = iota - 1
 	FP_Cruise               // 0 - Normal cruise phase.
 	FP_Approach             // 1 - Positioning from cruise to the runway.
-	FP_FinalFinal                // 2 - Gear down on final approach.
+	FP_Final                // 2 - Gear down on final approach.
 	FP_TaxiIn               // 3 - Any ground movement after touchdown.
 	FP_Shutdown             // 4 - Short period of spooling down engines/electrics.
 	FP_Parked               // 5 - Long period parked.
@@ -65,6 +66,51 @@ var (
 
 func New(cfgPath string) (traffic.Engine, error) {
 
+	var setFlightPhaseValue = func(dr *xpapimodel.Dataref, newValue any) {
+
+		values := newValue.([]int)
+		intArray := make([]int, len(values))
+
+		for i, v := range values {
+			var d9fp int
+			switch v {
+			case FP_Unknown:
+				d9fp = flightphase.Unknown.Index()
+			case FP_Parked:
+				d9fp = flightphase.Parked.Index()
+			case FP_Startup:
+				d9fp = flightphase.Startup.Index()
+			case FP_TaxiOut:
+				d9fp = flightphase.TaxiOut.Index()
+			case FP_Depart:
+				d9fp = flightphase.Depart.Index()
+			case FP_Climbout:
+				d9fp = flightphase.Climbout.Index()
+			case FP_Cruise:
+				d9fp = flightphase.Cruise.Index()
+			case FP_Holding:
+				d9fp = flightphase.Cruise.Index()
+			case FP_Approach:
+				d9fp = flightphase.Approach.Index()
+			case FP_Final:
+				d9fp = flightphase.Final.Index()
+			case FP_GoAround:
+				d9fp = flightphase.GoAround.Index()
+			case FP_Braking:
+				d9fp = flightphase.Braking.Index()
+			case FP_TaxiIn:
+				d9fp = flightphase.TaxiIn.Index()
+			case FP_Shutdown:
+				d9fp = flightphase.Shutdown.Index()
+			default:
+				d9fp = flightphase.Unknown.Index()
+			}
+			intArray[i] = d9fp
+		}
+
+		dr.Value = intArray
+	}
+			
 	cfg, err := util.LoadConfig[TGconfig](cfgPath)
 	if err != nil {
 		logger.Log.Errorf("Error reading configuration file: %v", err)
@@ -107,10 +153,7 @@ func New(cfgPath string) (traffic.Engine, error) {
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "base64_string_array"},
 		{Name: simdata.DRTrafficEngineAIFlightPhase, // Int array of phase type (FlightPhase enum) <-- [5,5,5]
 			APIInfo: xpapimodel.DatarefInfo{}, Value: nil, DecodedDataType: "int_array", 
-			SetValue: func(dr *xpapimodel.Dataref, newValue any) {
-				dr.Value = newValue
-			},
-		},
+			SetValue: setFlightPhaseValue},
 		// The runway is the designator at the source airport if the flight phase is one of:
 		//   FP_TaxiOut, FP_Depart, FP_Climbout
 		// ... and at the destination airport if the flight phase is one of:
