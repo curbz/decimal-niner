@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"golang.org/x/text/runes"
@@ -624,11 +625,11 @@ func normaliseRunway(rw string) string {
 
 func getAirportICAObyPhaseClass(ac *Aircraft) string {
 	switch ac.Flight.Phase.Class {
-	case PreflightParked, Departing:
+	case flightclass.PreflightParked, flightclass.Departing:
 		return ac.Flight.Origin
-	case Cruising:
+	case flightclass.Cruising:
 		return ""
-	case Arriving, PostflightParked:
+	case flightclass.Arriving, flightclass.PostflightParked:
 		return ac.Flight.Destination
 	default:
 		return ""

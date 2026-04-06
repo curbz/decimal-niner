@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/curbz/decimal-niner/internal/flightclass"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 )
 
 // Helper to create a VoiceManager with mock data for testing
@@ -300,21 +303,21 @@ func TestConvertIcaoToIso(t *testing.T) {
 func TestInferCommsCountryCode(t *testing.T) {
 	tests := []struct {
 		name        string
-		class       PhaseClass
+		class       flightclass.PhaseClass
 		origin      string
 		dest        string
 		defaultCode string
 		want        string
 	}{
-		{"departing uses origin", Departing, "KJFK", "EGLL", "XX", "KJ"},
-		{"arriving uses destination", Arriving, "KJFK", "EGLL", "ZZ", "EG"},
-		{"fallback to default when short origin", Departing, "US", "EGLL", "DF", "DF"},
-		{"non depart/arrive uses default", Cruising, "KJFK", "EGLL", "AA", "AA"},
+		{"departing uses origin", flightclass.Departing, "KJFK", "EGLL", "XX", "KJ"},
+		{"arriving uses destination", flightclass.Arriving, "KJFK", "EGLL", "ZZ", "EG"},
+		{"fallback to default when short origin", flightclass.Departing, "US", "EGLL", "DF", "DF"},
+		{"non depart/arrive uses default", flightclass.Cruising, "KJFK", "EGLL", "AA", "AA"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ac := &Aircraft{Flight: Flight{Origin: tt.origin, Destination: tt.dest, Phase: Phase{Class: tt.class}, Comms: Comms{}}}
+			ac := &Aircraft{Flight: Flight{Origin: tt.origin, Destination: tt.dest, Phase: flightphase.Phase{Class: tt.class}, Comms: Comms{}}}
 			inferCommsCountryCode(ac, tt.defaultCode)
 			if ac.Flight.Comms.CountryCode != tt.want {
 				t.Fatalf("inferCommsCountryCode -> country = %q; want %q", ac.Flight.Comms.CountryCode, tt.want)

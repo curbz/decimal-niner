@@ -25,6 +25,21 @@ const (
 
 	ALIGN_SEARCH_MAX      = 128
 	INVALID_LEG_TOLERANCE = 2
+
+	FP_Unknown  int = iota - 1
+	FP_Cruise               // 0 - Normal cruise phase.
+	FP_Approach             // 1 - Positioning from cruise to the runway.
+	FP_FinalFinal                // 2 - Gear down on final approach.
+	FP_TaxiIn               // 3 - Any ground movement after touchdown.
+	FP_Shutdown             // 4 - Short period of spooling down engines/electrics.
+	FP_Parked               // 5 - Long period parked.
+	FP_Startup              // 6 - Short period of spooling up engines/electrics.
+	FP_TaxiOut              // 7 - Any ground movement from the gate to the runway.
+	FP_Depart               // 8 - Initial ground roll and first part of climb.
+	FP_GoAround             // 9 - Unplanned transition from approach to cruise.
+	FP_Climbout             // 10 - Remainder of climb, gear up.
+	FP_Braking              // 11 - Short period from touchdown to when fast-taxi speed is reached.
+	FP_Holding              // 12 - Holding (waiting for a flow to complete changing)
 )
 
 var icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)

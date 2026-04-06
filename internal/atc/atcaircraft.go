@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/pkg/geometry"
@@ -31,7 +32,7 @@ type Flight struct {
 	TaxiRoute           string
 	Origin              string
 	Destination         string
-	Phase               Phase
+	Phase               flightphase.Phase
 	Comms               Comms
 	CruiseAlt           int
 	AssignedParking     string
@@ -46,35 +47,6 @@ type Position struct {
 	Long     float64
 	Altitude float64
 	Heading  float64
-}
-
-type Phase struct {
-	Class      PhaseClass
-	Current    int
-	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
-	Transition time.Time
-}
-
-type PhaseClass int
-
-const (
-	Unknown          PhaseClass = iota - 1 // -1
-	PreflightParked                        // 0
-	Departing                              // 1 = all flight phases from startup to climb out
-	Cruising                               // 2
-	Arriving                               // 3 = all flight phases from approach to shutdown
-	PostflightParked                       // 4
-)
-
-func (fc PhaseClass) String() string {
-	return [...]string{
-		"Unknown",
-		"PreflightParked",
-		"Departing",
-		"Cruising",
-		"Arriving",
-		"PostflightParked",
-	}[fc+1]
 }
 
 type AirlineInfo struct {
@@ -100,7 +72,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
-	if ac.Flight.Phase.Class == PostflightParked {
+	if ac.Flight.Phase.Class == flightclass.PostflightParked {
 		return
 	}
 
@@ -333,12 +305,12 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 
 	// infer what we can from current location
 	switch ac.Flight.Phase.Class {
-	case Departing:
+	case flightclass.Departing:
 		if ac.Flight.Origin == "" {
 			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign departing flight with origin of %s", closestAirport)
 			ac.Flight.Origin = closestAirport
 		}
-	case Arriving:
+	case flightclass.Arriving:
 		if ac.Flight.Destination == "" {
 			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign arriving flight with destination of %s", closestAirport)
 			ac.Flight.Destination = closestAirport
@@ -357,7 +329,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 	// 1. STICKY GUARD:
 	// If we've already assigned a specific class (like Preflight or Postflight),
 	// and the Sim phase hasn't actually changed, don't re-run the heavy logic.
-	if ph.Class != Unknown && ph.Current == ph.Previous {
+	if ph.Class != flightclass.Unknown && ph.Current == ph.Previous {
 		return
 	}
 
@@ -370,28 +342,28 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
 				util.LogWarnWithLabel(ac.Registration, "no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
-				ph.Class = Unknown
+				ph.Class = flightclass.Unknown
 				return
 			}
 			currAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 4.0)
 			if ac.Flight.Destination == currAirport {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
-				ph.Class = PostflightParked
+				ph.Class = flightclass.PostflightParked
 				return
 			} else {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at origin airport %s", ac.Flight.Number, ac.Flight.Origin)
-				ph.Class = PreflightParked
+				ph.Class = flightclass.PreflightParked
 				return
 			}
 		} else {
-			ph.Class = PostflightParked
+			ph.Class = flightclass.PostflightParked
 			return
 		}
 	case flightphase.Startup.Index(),
 		flightphase.TaxiOut.Index(),
 		flightphase.Depart.Index(),
 		flightphase.Climbout.Index():
-		ph.Class = Departing
+		ph.Class = flightclass.Departing
 		return
 	case flightphase.Approach.Index(),
 		flightphase.Holding.Index(),
@@ -399,13 +371,13 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 		flightphase.GoAround.Index(),
 		flightphase.Braking.Index(),
 		flightphase.TaxiIn.Index():
-		ph.Class = Arriving
+		ph.Class = flightclass.Arriving
 		return
 	case flightphase.Cruise.Index():
-		ph.Class = Cruising
+		ph.Class = flightclass.Cruising
 		return
 	default:
-		ph.Class = Unknown
+		ph.Class = flightclass.Unknown
 	}
 }
 

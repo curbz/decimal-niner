@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
@@ -892,8 +893,8 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 			Number: flightNumber,
 			// Squawk random number between 1200 and 6999
 			Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
-			Phase: atc.Phase{
-				Class:      atc.Unknown,
+			Phase: flightphase.Phase{
+				Class:      flightclass.Unknown,
 				Current:    fpUnknown.Index(),
 				Previous:   fpUnknown.Index(),
 				Transition: time.Now()},

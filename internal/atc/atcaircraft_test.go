@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/pkg/geometry"
@@ -18,15 +19,15 @@ func TestInferFlightPlan(t *testing.T) {
 	inferTests := []struct {
 		name       string
 		mockReturn string
-		phaseClass PhaseClass
+		phaseClass flightclass.PhaseClass
 		initOrigin string
 		initDest   string
 		wantOrigin string
 		wantDest   string
 	}{
-		{name: "departing sets origin", mockReturn: "EGLL", phaseClass: Departing, initOrigin: "", initDest: "", wantOrigin: "EGLL", wantDest: ""},
-		{name: "arriving sets destination", mockReturn: "KJFK", phaseClass: Arriving, initOrigin: "", initDest: "", wantOrigin: "", wantDest: "KJFK"},
-		{name: "does not overwrite existing origin/dest", mockReturn: "ZZZZ", phaseClass: Departing, initOrigin: "EXIST", initDest: "DEST", wantOrigin: "EXIST", wantDest: "DEST"},
+		{name: "departing sets origin", mockReturn: "EGLL", phaseClass: flightclass.Departing, initOrigin: "", initDest: "", wantOrigin: "EGLL", wantDest: ""},
+		{name: "arriving sets destination", mockReturn: "KJFK", phaseClass: flightclass.Arriving, initOrigin: "", initDest: "", wantOrigin: "", wantDest: "KJFK"},
+		{name: "does not overwrite existing origin/dest", mockReturn: "ZZZZ", phaseClass: flightclass.Departing, initOrigin: "EXIST", initDest: "DEST", wantOrigin: "EXIST", wantDest: "DEST"},
 	}
 
 	for _, tt := range inferTests {
@@ -330,7 +331,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 		origin        string
 		dest          string
 		closest       string
-		expectedClass PhaseClass
+		expectedClass flightclass.PhaseClass
 	}{
 		{
 			name:          "Unknown -> Parked at Origin (Preflight)",
@@ -339,7 +340,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EGKK",
-			expectedClass: PreflightParked,
+			expectedClass: flightclass.PreflightParked,
 		},
 		{
 			name:          "Unknown -> Parked at Destination (Postflight)",
@@ -348,13 +349,13 @@ func TestSetFlightPhaseClass(t *testing.T) {
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EHAM",
-			expectedClass: PostflightParked,
+			expectedClass: flightclass.PostflightParked,
 		},
 		{
 			name:          "Shutdown -> Parked (Standard Arrival)",
 			prevPhase:     flightphase.Shutdown.Index(),
 			currPhase:     flightphase.Parked.Index(),
-			expectedClass: PostflightParked,
+			expectedClass: flightclass.PostflightParked,
 		},
 		{
 			name:          "Sticky Guard (No change if already classified)",
@@ -363,7 +364,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EGKK",
-			expectedClass: PreflightParked, // Should stay what it was
+			expectedClass: flightclass.PreflightParked, // Should stay what it was
 		},
 	}
 
@@ -376,7 +377,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 				Flight: Flight{
 					Origin:      tt.origin,
 					Destination: tt.dest,
-					Phase: Phase{
+					Phase: flightphase.Phase{
 						Previous: tt.prevPhase,
 						Current:  tt.currPhase,
 						Class:    tt.expectedClass, // Pre-set for sticky test
@@ -386,7 +387,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 
 			// For non-sticky tests, ensure class starts at Unknown
 			if tt.name != "Sticky Guard (No change if already classified)" {
-				ac.Flight.Phase.Class = Unknown
+				ac.Flight.Phase.Class = flightclass.Unknown
 			}
 
 			s.setFlightPhaseClass(ac)

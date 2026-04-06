@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/text/runes"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/pcl"
@@ -453,7 +454,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			transAlt := s.getTransistionAltitude(ac)
 			transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
 			clearance := ac.Flight.CruiseAlt
-			if ac.Flight.Phase.Class == Arriving && rwy != nil {
+			if ac.Flight.Phase.Class == flightclass.Arriving && rwy != nil {
 				clearance = rwy.FAFalt
 				util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
 			}
@@ -782,7 +783,7 @@ func formatBaro(pascals float64, isNorthAmerica bool) string {
 	return fmt.Sprintf("%s %s", prefix, digits)
 }
 
-func formatAltitude(rawAlt float64, transitionLevel int, phase Phase) string {
+func formatAltitude(rawAlt float64, transitionLevel int, phase flightphase.Phase) string {
 
 	scaledAlt, flightLevelScale := scaleAltitude(rawAlt, transitionLevel, phase)
 
@@ -807,7 +808,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase Phase) string {
 
 // generateAltClearance builds an altitude clearance phrase
 // one of "descend to", "maintain", "climb to" or ""
-func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase Phase) string {
+func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase flightphase.Phase) string {
 
 	instruction := ""
 	phrase := ""
@@ -847,7 +848,7 @@ func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase 
 
 // scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
 // is true when the scale is flight levels and false when the returned value is an altitude in feet
-func scaleAltitude(rawAlt float64, transitionLevel int, phase Phase) (int, bool) {
+func scaleAltitude(rawAlt float64, transitionLevel int, phase flightphase.Phase) (int, bool) {
 
 	var roundedAlt int
 	alt := int(rawAlt)

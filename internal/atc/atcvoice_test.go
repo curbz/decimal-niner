@@ -63,7 +63,7 @@ func TestScaleAltitude(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			gotVal, gotFL := scaleAltitude(tt.rawAlt, tt.transitionLevel, ph)
 			if gotVal != tt.wantVal || gotFL != tt.wantIsFL {
 				t.Fatalf("%s: scaleAltitude(%v,%d,phase) = (%d,%v); want (%d,%v)", tt.name, tt.rawAlt, tt.transitionLevel, gotVal, gotFL, tt.wantVal, tt.wantIsFL)
@@ -202,7 +202,7 @@ func TestGenerateAltClearance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			got := generateAltClearance(tt.rawAlt, tt.transitionLevel, tt.clearance, ph)
 			if !strings.HasPrefix(got, tt.wantPrefix) {
 				t.Fatalf("%s: generateAltClearance -> %q; want prefix %q", tt.name, got, tt.wantPrefix)
@@ -270,7 +270,7 @@ func TestGenerateHandoffPhraseAndValediction(t *testing.T) {
 	ctrl := &Controller{ICAO: "NEXT", Name: "NextCtrl", RoleID: 4, IsPoint: true, Lat: 51.0, Lon: -0.1, Freqs: []int{118500}}
 	s.Controllers = []*Controller{ctrl}
 
-	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: Phase{Current: flightphase.Depart.Index()}}}
+	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: flightphase.Phase{Current: flightphase.Depart.Index()}}}
 
 	ph := s.generateHandoffPhrase(ac)
 	if ph == "" {
@@ -463,7 +463,7 @@ func TestFormatAltitude(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			got := formatAltitude(tt.rawAlt, tt.transitionLevel, ph)
 			if got != tt.want {
 				t.Fatalf("%s: formatAltitude(...) = %q; want %q", tt.name, got, tt.want)
@@ -511,7 +511,7 @@ func TestPCL_StressFallbacks(t *testing.T) {
 				Controller: nil, // This is the primary panic risk
 			},
 			Position: Position{Lat: 51.47, Long: -0.45, Altitude: 2000, Heading: 270},
-			Phase:    Phase{Current: 0}, // Pre-flight/Shutdown
+			Phase:    flightphase.Phase{Current: 0}, // Pre-flight/Shutdown
 		},
 	}
 

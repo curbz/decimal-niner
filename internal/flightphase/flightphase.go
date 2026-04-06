@@ -1,5 +1,11 @@
 package flightphase
 
+import (
+	"time"
+
+	"github.com/curbz/decimal-niner/internal/flightclass"
+)
+
 type FlightPhase int
 
 const (
@@ -40,4 +46,12 @@ func (fp FlightPhase) String() string {
 
 func (fp FlightPhase) Index() int {
 	return int(fp)
+}
+
+
+type Phase struct {
+	Class      flightclass.PhaseClass
+	Current    int
+	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
+	Transition time.Time
 }
