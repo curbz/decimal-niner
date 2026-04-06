@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 )
 
 func TestScaleAltitude(t *testing.T) {
@@ -22,7 +22,7 @@ func TestScaleAltitude(t *testing.T) {
 			name:            "approach rounds to hundreds and returns feet",
 			rawAlt:          2412,
 			transitionLevel: 200, // 200*100 = 20000 threshold
-			phaseCurrent:    trafficglobal.Approach.Index(),
+			phaseCurrent:    flightphase.Approach.Index(),
 			wantVal:         2400,
 			wantIsFL:        false,
 		},
@@ -30,7 +30,7 @@ func TestScaleAltitude(t *testing.T) {
 			name:            "default rounds to thousands and remains feet below transition",
 			rawAlt:          3240,
 			transitionLevel: 200, // 20000
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantVal:         3000,
 			wantIsFL:        false,
 		},
@@ -38,7 +38,7 @@ func TestScaleAltitude(t *testing.T) {
 			name:            "default rounds to thousands and becomes flight level above transition",
 			rawAlt:          33240,
 			transitionLevel: 200, // 20000
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantVal:         330, // 33000 -> /100 = 330
 			wantIsFL:        true,
 		},
@@ -46,7 +46,7 @@ func TestScaleAltitude(t *testing.T) {
 			name:            ">=18000 becomes flight level even if transition is higher",
 			rawAlt:          18001,
 			transitionLevel: 500, // 50000 so threshold not reached, but 18000 rule applies
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantVal:         180, // 18000 -> /100
 			wantIsFL:        true,
 		},
@@ -54,7 +54,7 @@ func TestScaleAltitude(t *testing.T) {
 			name:            "cruise flight level is a multiple of 10",
 			rawAlt:          33499,
 			transitionLevel: 200,
-			phaseCurrent:    trafficglobal.Cruise.Index(),
+			phaseCurrent:    flightphase.Cruise.Index(),
 			// rounded -> ((33499+500)/1000)*1000 = 33000 -> fl 330 (already multiple of 10)
 			wantVal:  330,
 			wantIsFL: true,
@@ -63,7 +63,7 @@ func TestScaleAltitude(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			gotVal, gotFL := scaleAltitude(tt.rawAlt, tt.transitionLevel, ph)
 			if gotVal != tt.wantVal || gotFL != tt.wantIsFL {
 				t.Fatalf("%s: scaleAltitude(%v,%d,phase) = (%d,%v); want (%d,%v)", tt.name, tt.rawAlt, tt.transitionLevel, gotVal, gotFL, tt.wantVal, tt.wantIsFL)
@@ -140,7 +140,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          1000,
 			transitionLevel: 200,
 			clearance:       3000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "climb to",
 			wantContains:    "thousand",
 		},
@@ -149,7 +149,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          3000,
 			transitionLevel: 200,
 			clearance:       3000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "maintain",
 			wantContains:    "thousand",
 		},
@@ -158,7 +158,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          3000,
 			transitionLevel: 200,
 			clearance:       2000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "descend to",
 			wantContains:    "thousand",
 		},
@@ -167,7 +167,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          33240,
 			transitionLevel: 200,
 			clearance:       33000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "maintain",
 			wantContains:    "flight level",
 		},
@@ -176,7 +176,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          35000,
 			transitionLevel: 200,
 			clearance:       33000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "descend to",
 			wantContains:    "flight level",
 		},
@@ -185,7 +185,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          5000,
 			transitionLevel: 200,
 			clearance:       33000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "climb to",
 			wantContains:    "flight level",
 		},
@@ -194,7 +194,7 @@ func TestGenerateAltClearance(t *testing.T) {
 			rawAlt:          33000,
 			transitionLevel: 200,
 			clearance:       5000,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			wantPrefix:      "descend to",
 			wantContains:    "thousand",
 		},
@@ -202,7 +202,7 @@ func TestGenerateAltClearance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			got := generateAltClearance(tt.rawAlt, tt.transitionLevel, tt.clearance, ph)
 			if !strings.HasPrefix(got, tt.wantPrefix) {
 				t.Fatalf("%s: generateAltClearance -> %q; want prefix %q", tt.name, got, tt.wantPrefix)
@@ -270,7 +270,7 @@ func TestGenerateHandoffPhraseAndValediction(t *testing.T) {
 	ctrl := &Controller{ICAO: "NEXT", Name: "NextCtrl", RoleID: 4, IsPoint: true, Lat: 51.0, Lon: -0.1, Freqs: []int{118500}}
 	s.Controllers = []*Controller{ctrl}
 
-	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: Phase{Current: trafficglobal.Depart.Index()}}}
+	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: flightphase.Phase{Current: flightphase.Depart.Index()}}}
 
 	ph := s.generateHandoffPhrase(ac)
 	if ph == "" {
@@ -435,35 +435,35 @@ func TestFormatAltitude(t *testing.T) {
 			name:            "flight level above transition",
 			rawAlt:          33240,
 			transitionLevel: 200,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			want:            "flight level 330",
 		},
 		{
 			name:            "feet clean thousand",
 			rawAlt:          5000,
 			transitionLevel: 200,
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			want:            "5 thousand",
 		},
 		{
 			name:            "approach split hundreds",
 			rawAlt:          2412,
 			transitionLevel: 200,
-			phaseCurrent:    trafficglobal.Approach.Index(),
+			phaseCurrent:    flightphase.Approach.Index(),
 			want:            "2 thousand 4 hundred",
 		},
 		{
 			name:            "below transition remains feet",
 			rawAlt:          3240,
 			transitionLevel: 400, // higher transition so stays feet
-			phaseCurrent:    trafficglobal.Unknown.Index(),
+			phaseCurrent:    flightphase.Unknown.Index(),
 			want:            "3 thousand",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ph := Phase{Current: tt.phaseCurrent}
+			ph := flightphase.Phase{Current: tt.phaseCurrent}
 			got := formatAltitude(tt.rawAlt, tt.transitionLevel, ph)
 			if got != tt.want {
 				t.Fatalf("%s: formatAltitude(...) = %q; want %q", tt.name, got, tt.want)
@@ -507,11 +507,11 @@ func TestPCL_StressFallbacks(t *testing.T) {
 		Registration: "G-HOST",
 		Flight: Flight{
 			Comms: Comms{
-				Callsign: "GHOST1",
+				Callsign:   "GHOST1",
 				Controller: nil, // This is the primary panic risk
 			},
 			Position: Position{Lat: 51.47, Long: -0.45, Altitude: 2000, Heading: 270},
-			Phase:    Phase{Current: 0}, // Pre-flight/Shutdown
+			Phase:    flightphase.Phase{Current: flightphase.Parked.Index()},
 		},
 	}
 
@@ -538,7 +538,7 @@ func TestPCL_StressFallbacks(t *testing.T) {
 		Registration: "N123",
 		Flight: Flight{
 			Comms: Comms{
-				Controller: nil,
+				Controller:     nil,
 				NextController: &Controller{ICAO: "EGLL", Name: "London"},
 			},
 		},
@@ -546,7 +546,7 @@ func TestPCL_StressFallbacks(t *testing.T) {
 
 	t.Run("Handoff Logic Safety", func(t *testing.T) {
 		ctx := s.newPCLContext(acHandoff, "PILOT")
-		
+
 		// Ensure $FACILITY handles nil Current Controller
 		facilityFunc := ctx["$FACILITY"]
 		if facilityFunc() != "" {

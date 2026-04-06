@@ -48,10 +48,10 @@
     { "initiator": "atc", "pilot": "Cleared to {@HOLD_FIX}, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to {@HOLD_FIX}, {@ALTITUDE}." }
   ],
   "approach": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {$APPROACH_TYPE} approach, {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {$APPROACH_TYPE}, runway {@RUNWAY}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {$APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
-    { "initiator": "atc", "pilot": "Heading {$HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, fly heading {$HEADING}, descend and maintain {@ALTITUDE}, cleared for the {$APPROACH_TYPE} approach." }
+    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE} approach, {@ALT_CLEARANCE}." },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {@APPROACH_TYPE}, runway {@RUNWAY}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {@APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
+    { "initiator": "atc", "pilot": "Heading {$HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, fly heading {$HEADING}, descend and maintain {@ALTITUDE}, cleared for the {@APPROACH_TYPE} approach." }
   ],
   "final": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared to land[, wind {@WIND}]." },

@@ -1,6 +1,11 @@
 package atc
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/curbz/decimal-niner/internal/flightclass"
+	"github.com/curbz/decimal-niner/internal/flightphase"
+)
 
 func TestCleanAirportName(t *testing.T) {
 	tests := []struct {
@@ -112,20 +117,20 @@ func TestGetAirportRunway(t *testing.T) {
 func TestGetAirportICAObyPhaseClass(t *testing.T) {
 	tests := []struct {
 		name         string
-		class        PhaseClass
+		class        flightclass.PhaseClass
 		origin, dest string
 		want         string
 	}{
-		{"preflight", PreflightParked, "AAA", "BBB", "AAA"},
-		{"departing", Departing, "AAA", "BBB", "AAA"},
-		{"cruising", Cruising, "AAA", "BBB", ""},
-		{"arriving", Arriving, "AAA", "BBB", "BBB"},
-		{"postflight", PostflightParked, "AAA", "BBB", "BBB"},
+		{"preflight", flightclass.PreflightParked, "AAA", "BBB", "AAA"},
+		{"departing", flightclass.Departing, "AAA", "BBB", "AAA"},
+		{"cruising", flightclass.Cruising, "AAA", "BBB", ""},
+		{"arriving", flightclass.Arriving, "AAA", "BBB", "BBB"},
+		{"postflight", flightclass.PostflightParked, "AAA", "BBB", "BBB"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ac := &Aircraft{Flight: Flight{Origin: tt.origin, Destination: tt.dest, Phase: Phase{Class: tt.class}}}
+			ac := &Aircraft{Flight: Flight{Origin: tt.origin, Destination: tt.dest, Phase: flightphase.Phase{Class: tt.class}}}
 			got := getAirportICAObyPhaseClass(ac)
 			if got != tt.want {
 				t.Fatalf("getAirportICAObyPhaseClass() = %q; want %q", got, tt.want)

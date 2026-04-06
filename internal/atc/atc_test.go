@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 )
 
@@ -114,17 +115,19 @@ func TestIsAirborne(t *testing.T) {
 		phase int
 		want  bool
 	}{
-		{phase: 0, want: true},
-		{phase: 1, want: true},
-		{phase: 2, want: true},
-		{phase: 9, want: true},
-		{phase: 10, want: true},
-		{phase: 12, want: true},
-		{phase: 3, want: false},
-		{phase: 4, want: false},
-		{phase: 5, want: false},
-		{phase: 11, want: false},
-		{phase: -1, want: false},
+		{phase: flightphase.Parked.Index(), want: false},
+		{phase: flightphase.Startup.Index(), want: false},
+		{phase: flightphase.TaxiOut.Index(), want: false},
+		{phase: flightphase.Depart.Index(), want: true},
+		{phase: flightphase.Climbout.Index(), want: true},
+		{phase: flightphase.Cruise.Index(), want: true},
+		{phase: flightphase.Approach.Index(), want: true},
+		{phase: flightphase.Holding.Index(), want: true},
+		{phase: flightphase.Final.Index(), want: true},
+		{phase: flightphase.Braking.Index(), want: false},
+		{phase: flightphase.TaxiIn.Index(), want: false},
+		{phase: flightphase.Shutdown.Index(), want: false},
+		{phase: flightphase.Unknown.Index(), want: false},
 		{phase: 99, want: false},
 	}
 

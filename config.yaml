@@ -1,6 +1,7 @@
 # D9
 d9:
   logging_level: "info"
+  traffic_engine: "trafficglobal"
 
 # X-Plane Connection Settings
 xplane_api:

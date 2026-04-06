@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
@@ -18,15 +19,15 @@ func TestInferFlightPlan(t *testing.T) {
 	inferTests := []struct {
 		name       string
 		mockReturn string
-		phaseClass PhaseClass
+		phaseClass flightclass.PhaseClass
 		initOrigin string
 		initDest   string
 		wantOrigin string
 		wantDest   string
 	}{
-		{name: "departing sets origin", mockReturn: "EGLL", phaseClass: Departing, initOrigin: "", initDest: "", wantOrigin: "EGLL", wantDest: ""},
-		{name: "arriving sets destination", mockReturn: "KJFK", phaseClass: Arriving, initOrigin: "", initDest: "", wantOrigin: "", wantDest: "KJFK"},
-		{name: "does not overwrite existing origin/dest", mockReturn: "ZZZZ", phaseClass: Departing, initOrigin: "EXIST", initDest: "DEST", wantOrigin: "EXIST", wantDest: "DEST"},
+		{name: "departing sets origin", mockReturn: "EGLL", phaseClass: flightclass.Departing, initOrigin: "", initDest: "", wantOrigin: "EGLL", wantDest: ""},
+		{name: "arriving sets destination", mockReturn: "KJFK", phaseClass: flightclass.Arriving, initOrigin: "", initDest: "", wantOrigin: "", wantDest: "KJFK"},
+		{name: "does not overwrite existing origin/dest", mockReturn: "ZZZZ", phaseClass: flightclass.Departing, initOrigin: "EXIST", initDest: "DEST", wantOrigin: "EXIST", wantDest: "DEST"},
 	}
 
 	for _, tt := range inferTests {
@@ -36,6 +37,8 @@ func TestInferFlightPlan(t *testing.T) {
 			ac.Flight.Phase.Class = tt.phaseClass
 			ac.Flight.Origin = tt.initOrigin
 			ac.Flight.Destination = tt.initDest
+			// position cannot be empty otherwise inferFlightPlan will return with no action
+			ac.Flight.Position = Position{ Altitude: 1.0 }
 
 			s.inferFlightPlan(ac)
 
@@ -289,7 +292,7 @@ func TestAddFlightPlan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			atcService := New("config.yaml", tt.schedules, make(map[string]bool))
+			atcService, _ := New("config.yaml", tt.schedules, make(map[string]bool))
 
 			ac := &Aircraft{
 				Registration: tt.registration,
@@ -328,31 +331,31 @@ func TestSetFlightPhaseClass(t *testing.T) {
 		origin        string
 		dest          string
 		closest       string
-		expectedClass PhaseClass
+		expectedClass flightclass.PhaseClass
 	}{
 		{
 			name:          "Unknown -> Parked at Origin (Preflight)",
-			prevPhase:     trafficglobal.Unknown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
+			prevPhase:     flightphase.Unknown.Index(),
+			currPhase:     flightphase.Parked.Index(),
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EGKK",
-			expectedClass: PreflightParked,
+			expectedClass: flightclass.PreflightParked,
 		},
 		{
 			name:          "Unknown -> Parked at Destination (Postflight)",
-			prevPhase:     trafficglobal.Unknown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
+			prevPhase:     flightphase.Unknown.Index(),
+			currPhase:     flightphase.Parked.Index(),
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EHAM",
-			expectedClass: PostflightParked,
+			expectedClass: flightclass.PostflightParked,
 		},
 		{
 			name:          "Shutdown -> Parked (Standard Arrival)",
-			prevPhase:     trafficglobal.Shutdown.Index(),
-			currPhase:     trafficglobal.Parked.Index(),
-			expectedClass: PostflightParked,
+			prevPhase:     flightphase.Shutdown.Index(),
+			currPhase:     flightphase.Parked.Index(),
+			expectedClass: flightclass.PostflightParked,
 		},
 		{
 			name:          "Sticky Guard (No change if already classified)",
@@ -361,7 +364,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 			origin:        "EGKK",
 			dest:          "EHAM",
 			closest:       "EGKK",
-			expectedClass: PreflightParked, // Should stay what it was
+			expectedClass: flightclass.PreflightParked, // Should stay what it was
 		},
 	}
 
@@ -374,7 +377,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 				Flight: Flight{
 					Origin:      tt.origin,
 					Destination: tt.dest,
-					Phase: Phase{
+					Phase: flightphase.Phase{
 						Previous: tt.prevPhase,
 						Current:  tt.currPhase,
 						Class:    tt.expectedClass, // Pre-set for sticky test
@@ -384,7 +387,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 
 			// For non-sticky tests, ensure class starts at Unknown
 			if tt.name != "Sticky Guard (No change if already classified)" {
-				ac.Flight.Phase.Class = Unknown
+				ac.Flight.Phase.Class = flightclass.Unknown
 			}
 
 			s.setFlightPhaseClass(ac)
@@ -407,7 +410,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Parked.Index()
+				ac.Flight.Phase.Current = flightphase.Parked.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
 				ac.Flight.Position = Position{Lat: 51.0, Long: -0.1}
 				return s, ac
@@ -419,7 +422,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 0, Long: 0}
 				ac.Flight.Position = Position{Lat: 51.5, Long: -0.2}
 				return s, ac
@@ -431,7 +434,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 51.0000, Long: -0.1000}
 				ac.Flight.Position = Position{Lat: 51.00005, Long: -0.10005} // ~ few meters
 				ac.Flight.Comms.Controller = &Controller{}
@@ -445,7 +448,7 @@ func TestCheckForCruiseSectorChange(t *testing.T) {
 			setup: func() (*Service, *Aircraft) {
 				s := &Service{}
 				ac := &Aircraft{}
-				ac.Flight.Phase.Current = trafficglobal.Cruise.Index()
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
 				ac.Flight.LastCheckedPosition = Position{Lat: 51.0, Long: -0.1}
 				ac.Flight.Position = Position{Lat: 51.2, Long: -0.1} // ~0.2 deg lat ~= 12 NM
 				ac.Flight.Comms.Controller = &Controller{}
@@ -485,13 +488,13 @@ func (m *mockAirportProviderForTrans) GetClosestAirport(lat, long, maxRangeNm fl
 
 func TestGetTransistionAltitude(t *testing.T) {
 	tests := []struct {
-		name             string
-		airports         map[string]*Airport
-		airportService   *mockAirportProviderForTrans
-		controllerICAO    string
-		positionLat      float64
-		positionLong     float64
-		want             int
+		name           string
+		airports       map[string]*Airport
+		airportService *mockAirportProviderForTrans
+		controllerICAO string
+		positionLat    float64
+		positionLong   float64
+		want           int
 	}{
 		{
 			name: "controller ICAO with TransAlt",
@@ -512,15 +515,15 @@ func TestGetTransistionAltitude(t *testing.T) {
 			want:           6000,
 		},
 		{
-			name: "regional default when nearest ICAO starts with E",
-			airports: map[string]*Airport{},
+			name:           "regional default when nearest ICAO starts with E",
+			airports:       map[string]*Airport{},
 			airportService: &mockAirportProviderForTrans{ret: "EHXX"},
 			controllerICAO: "EGTT",
 			want:           6000,
 		},
 		{
-			name: "global default when nothing found",
-			airports: map[string]*Airport{},
+			name:           "global default when nothing found",
+			airports:       map[string]*Airport{},
 			airportService: &mockAirportProviderForTrans{ret: ""},
 			controllerICAO: "EGTT",
 			want:           18000,

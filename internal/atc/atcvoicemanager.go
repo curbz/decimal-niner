@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -628,10 +629,10 @@ func convertIcaoToIso(icao string) (string, error) {
 // infer the comms country code from flight data for use when other methods of setting the comms country code have failed
 func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
 	countrySource := ""
-	if ac.Flight.Phase.Class == Departing {
+	if ac.Flight.Phase.Class == flightclass.Departing {
 		countrySource = ac.Flight.Origin
 	}
-	if ac.Flight.Phase.Class == Arriving {
+	if ac.Flight.Phase.Class == flightclass.Arriving {
 		countrySource = ac.Flight.Destination
 	}
 	if len(countrySource) > 2 {

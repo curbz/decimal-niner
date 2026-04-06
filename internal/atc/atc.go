@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
@@ -72,14 +73,14 @@ type config struct {
 	} `yaml:"atc"`
 }
 
-func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requiredAirports map[string]bool) *Service {
+func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requiredAirports map[string]bool) (*Service, error) {
 
 	logger.Log.Info("Starting ATC service - loading all configurations")
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
 		logger.Log.Errorf("Error reading configuration file: %v", err)
-		return nil
+		return nil, err
 	}
 
 	if cfg.ATC.Voices.SayAgainFactor <= 0 {
@@ -95,7 +96,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
 		logger.Log.Errorf("Error loading hold data: %v", err)
-		return nil
+		return nil, err
 	}
 	logger.Log.Infof("Holds data loaded: seeded %d holds\n", len(globalHolds))
 
@@ -103,18 +104,18 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		logger.Log.Errorf("Error parsing airports data file: %v", err)
-		return nil
+		return nil, err
 	}
 	atcControllers, err := parseATCdatFiles(cfg.ATC.AtcDataFile, false, requiredAirports)
 	if err != nil {
 		logger.Log.Errorf("Error parsing ATC data file: %v", err)
-		return nil
+		return nil, err
 	}
 	db := append(atcControllers, arptControllers...)
 	regionControllers, err := parseATCdatFiles(cfg.ATC.AtcRegionsFile, true, requiredAirports)
 	if err != nil {
 		logger.Log.Errorf("Error parsing ATC regions file: %v", err)
-		return nil
+		return nil, err
 	}
 	db = append(db, regionControllers...)
 
@@ -124,7 +125,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
 	if err != nil {
 		logger.Log.Errorf("Error loading airport data from CIFP files: %v", err)
-		return nil
+		return nil, err
 	}
 	logger.Log.Info("Airport data loaded: seeded ", len(airports), " airports")
 
@@ -136,14 +137,14 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	airlinesFile, err := os.Open(cfg.ATC.AirlinesFile)
 	if err != nil {
 		logger.Log.Errorf("Could not open airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
-		return nil
+		return nil, err
 	}
 	defer airlinesFile.Close()
 
 	airlinesBytes, err := io.ReadAll(airlinesFile)
 	if err != nil {
 		logger.Log.Errorf("Could not read airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
-		return nil
+		return nil, err
 	}
 
 	var airlinesData map[string]AirlineInfo
@@ -151,7 +152,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	err = json.Unmarshal(airlinesBytes, &airlinesData)
 	if err != nil {
 		logger.Log.Errorf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
-		return nil
+		return nil, err
 	}
 	logger.Log.Infof("Airlines loaded successfully (%d)", len(airlinesData))
 
@@ -179,7 +180,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 		FlightSchedules: fScheds,
 		Weather:         &Weather{Wind: &Wind{}, Baro: &Baro{ Sealevel: 101325, Flight: 101325 }},
 		VoiceManager:    vm,
-	}
+	}, nil
 }
 
 func (s *Service) Run() {
@@ -242,13 +243,10 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 	}
 }
 
+// isAirborne returns true if the phase is considered an airbourne phase. The Depart phase is considered
+// airbourne although technically during the takeoff roll portion the aircraft is not airborne
 func isAirborne(phase int) bool {
-	switch phase {
-	case 0,1,2,9,10,12:
-		return true
-	default:
-		return false
-	}
+	return phase >= flightphase.Depart.Index() && phase < flightphase.Braking.Index()
 }
 
 func GetCountryFromRegistration(reg string) string {

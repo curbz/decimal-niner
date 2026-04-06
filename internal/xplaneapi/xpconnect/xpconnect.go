@@ -21,9 +21,10 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/flightclass"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 
 	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	util "github.com/curbz/decimal-niner/pkg/util"
@@ -88,7 +89,7 @@ func (xpc *XPConnect) Start() {
 	}
 	xpc.atcService.SetSimTime(simInitTime, time.Now())
 
-	logger.Log.Info("get traffic global dataref incides from x-plane web api")
+	logger.Log.Info("get dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
 	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {
@@ -264,6 +265,7 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 					APIInfo:         dataref,
 					Value:           nil,
 					DecodedDataType: dr.DecodedDataType,
+					SetValue: dr.SetValue,
 				}
 				break
 			}
@@ -478,7 +480,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value has wrong type: %T", dr.APIInfo.Name, dr.APIInfo.ID, value)
 		}
 		if decoded, err := util.DecodeNullTerminatedString(s); err == nil && len(decoded) > 0 {
-			dr.Value = decoded
+			if dr.SetValue != nil {
+				dr.SetValue(dr, decoded)
+			} else {
+				dr.Value = decoded
+			}
 		} else {
 			return fmt.Errorf("error decoding null terminated string: DataRef %s id: %d raw value: %v error: %v", dr.APIInfo.Name, dr.APIInfo.ID, value, err)
 		}
@@ -495,7 +501,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			strArray[i] = util.DecodeUint32(uint32(f))
 		}
-		dr.Value = strArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, strArray)
+		} else {
+			dr.Value = strArray
+		}
 	case "float_array":
 		arr, ok := value.([]any)
 		if !ok {
@@ -509,7 +519,11 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			floatArray[i] = f
 		}
-		dr.Value = floatArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, floatArray)
+		} else {
+			dr.Value = floatArray
+		}
 	case "int_array":
 		arr, ok := value.([]any)
 		if !ok {
@@ -523,9 +537,17 @@ func (xpc *XPConnect) updateMemDatarefValue(dr *xpapimodel.Dataref, value any) e
 			}
 			intArray[i] = int(f)
 		}
-		dr.Value = intArray
+		if dr.SetValue != nil {
+			dr.SetValue(dr, intArray)
+		} else {
+			dr.Value = intArray
+		}
 	default:
-		dr.Value = value
+		if dr.SetValue != nil {
+			dr.SetValue(dr, value)
+		} else {
+			dr.Value = value
+		}
 	}
 
 	return nil
@@ -614,7 +636,7 @@ func (xpc *XPConnect) updateUserData() {
 	// convert to target types
 	ca1, caOk1 := com1ActivityVal.(float64)
 	ca2, caOk2 := com2ActivityVal.(float64)
-	if !caOk1 || !caOk2  {
+	if !caOk1 || !caOk2 {
 		logger.Log.Error("unexpected types for com radio activity datarefs")
 		return
 	}
@@ -714,7 +736,7 @@ func (xpc *XPConnect) updateUserData() {
 func (xpc *XPConnect) updateAircraftData() {
 
 	// get tail numbers/registrations
-	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAITailNumber)
+	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAITailNumber)
 	if tailNumbersDR == nil {
 		logger.Log.Error("error: tail number dataref not found")
 		return
@@ -727,8 +749,8 @@ func (xpc *XPConnect) updateAircraftData() {
 
 	airlineCodes := []string{}
 	flightNums := []int{}
-	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIAirlineCode)
-	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightNum)
+	airlineCodesDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIAirlineCode)
+	flightNumsDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIFlightNum)
 	if airlineCodesDR == nil || flightNumsDR == nil {
 		logger.Log.Error("error: airline code or flight number dataref not found")
 	} else {
@@ -760,7 +782,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update aircraft flight phase
-		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIFlightPhase, index)
+		flightPhase, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIFlightPhase, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -774,10 +796,10 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// Update position
-			lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLat, index)
-			lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionLong, index)
-			alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionElev, index)
-			hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIPositionHeading, index)
+		lat, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionLat, index)
+		lng, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionLong, index)
+		alt, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionElev, index)
+		hdg, errHdg := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIPositionHeading, index)
 		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
 			logErrors(errLat, errLng, errAlt, errHdg)
 			return
@@ -798,7 +820,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update parking
-		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIParking, index)
+		parking, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIParking, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -810,7 +832,7 @@ func (xpc *XPConnect) updateAircraftData() {
 		}
 
 		// update assigned runway
-		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIRunway, index)
+		runway, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIRunway, index)
 		if err != nil {
 			logger.Log.Error(err)
 			return
@@ -837,8 +859,8 @@ func (xpc *XPConnect) updateAircraftData() {
 				util.LogWithLabel(ac.Registration,
 					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d",
 					ac.Flight.Number,
-					trafficglobal.FlightPhase(ac.Flight.Phase.Previous).String(),
-					trafficglobal.FlightPhase(ac.Flight.Phase.Current).String(),
+					flightphase.FlightPhase(ac.Flight.Phase.Previous).String(),
+					flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
 					ac.Flight.Position.Lat,
 					ac.Flight.Position.Long,
 					ac.Flight.Position.Altitude,
@@ -864,15 +886,15 @@ func (xpc *XPConnect) updateAircraftData() {
 func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
 
 	// set flight phase to unknown initially
-	fpUnknown := trafficglobal.FlightPhase(trafficglobal.Unknown.Index())
+	fpUnknown := flightphase.FlightPhase(flightphase.Unknown.Index())
 	aircraft := &atc.Aircraft{
 		Registration: registration,
 		Flight: atc.Flight{
 			Number: flightNumber,
 			// Squawk random number between 1200 and 6999
 			Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
-			Phase: atc.Phase{
-				Class:      atc.Unknown,
+			Phase: flightphase.Phase{
+				Class:      flightclass.Unknown,
 				Current:    fpUnknown.Index(),
 				Previous:   fpUnknown.Index(),
 				Transition: time.Now()},
@@ -882,7 +904,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 	util.LogWithLabel(registration, "New aircraft detected registration %s flight number %d", registration, flightNumber)
 
 	// get aircraft class
-	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficGlobalAIClass, index)
+	class, err := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAIClass, index)
 	sizeClass := class.(int)
 	if err != nil || sizeClass > 5 {
 		logger.Log.Error(err)
@@ -897,6 +919,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 		if airlineInfo != nil {
 			callsign = airlineInfo.Callsign
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+			aircraft.Flight.AirlineName = airlineInfo.AirlineName
 		} else {
 			util.LogWarnWithLabel(aircraft.Registration, "no airline information found for code %s", airlineCode)
 			// if we don't have airline info, we also won't have country code, so use tail number as fallback

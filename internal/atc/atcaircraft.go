@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
-	"github.com/curbz/decimal-niner/internal/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
@@ -31,13 +32,14 @@ type Flight struct {
 	TaxiRoute           string
 	Origin              string
 	Destination         string
-	Phase               Phase
+	Phase               flightphase.Phase
 	Comms               Comms
 	CruiseAlt           int
 	AssignedParking     string
 	AssignedRunway      string
 	Squawk              string
 	PlanAssigned        bool
+	AirlineName         string
 }
 
 type Position struct {
@@ -45,35 +47,6 @@ type Position struct {
 	Long     float64
 	Altitude float64
 	Heading  float64
-}
-
-type Phase struct {
-	Class      PhaseClass
-	Current    int
-	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
-	Transition time.Time
-}
-
-type PhaseClass int
-
-const (
-	Unknown          PhaseClass = iota - 1 // -1
-	PreflightParked                        // 0
-	Departing                              // 1 = all flight phases from startup to climb out
-	Cruising                               // 2
-	Arriving                               // 3 = all flight phases from approach to shutdown
-	PostflightParked                       // 4
-)
-
-func (fc PhaseClass) String() string {
-	return [...]string{
-		"Unknown",
-		"PreflightParked",
-		"Departing",
-		"Cruising",
-		"Arriving",
-		"PostflightParked",
-	}[fc+1]
 }
 
 type AirlineInfo struct {
@@ -95,11 +68,11 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	s.setFlightPhaseClass(ac)
 	util.LogWithLabel(ac.Registration, "flight %d phase %s classified as %s",
 		ac.Flight.Number,
-		trafficglobal.FlightPhase(ac.Flight.Phase.Current),
+		flightphase.FlightPhase(ac.Flight.Phase.Current),
 		ac.Flight.Phase.Class.String())
 
 	// for a new aircraft in a post-flight context, there is nothing to do
-	if ac.Flight.Phase.Class == PostflightParked {
+	if ac.Flight.Phase.Class == flightclass.PostflightParked {
 		return
 	}
 
@@ -172,7 +145,7 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 
 	// if we are not in cruise, there is no need to check for sector changes
-	if ac.Flight.Phase.Current != trafficglobal.Cruise.Index() {
+	if ac.Flight.Phase.Current != flightphase.Cruise.Index() {
 		return
 	}
 
@@ -306,6 +279,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
 	ac.Flight.Destination = candidateScheds[0].IcaoDest
 	ac.Flight.CruiseAlt = candidateScheds[0].CruiseAlt * 100
+	ac.Flight.AirlineName = candidateScheds[0].AirlineName
 
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
@@ -331,12 +305,12 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 
 	// infer what we can from current location
 	switch ac.Flight.Phase.Class {
-	case Departing:
+	case flightclass.Departing:
 		if ac.Flight.Origin == "" {
 			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign departing flight with origin of %s", closestAirport)
 			ac.Flight.Origin = closestAirport
 		}
-	case Arriving:
+	case flightclass.Arriving:
 		if ac.Flight.Destination == "" {
 			util.LogWithLabel(ac.Registration, "no flight plan - inference used to assign arriving flight with destination of %s", closestAirport)
 			ac.Flight.Destination = closestAirport
@@ -344,7 +318,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 		// Origin can safely remain empty is this scenario as it is unlikely to be referenced by ATC at this stage of flight
 	}
 
-	// we don't check Cruising phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
+	// we don't check Cruise phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
 	// we also do not set Flight.PlanAssigned to true
 }
 
@@ -352,87 +326,86 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
-	// 1. STICKY GUARD:
 	// If we've already assigned a specific class (like Preflight or Postflight),
-	// and the Sim phase hasn't actually changed, don't re-run the heavy logic.
-	if ph.Class != Unknown && ph.Current == ph.Previous {
+	// and the Sim phase hasn't actually changed, we are done here and can return
+	if ph.Class != flightclass.Unknown && ph.Current == ph.Previous {
 		return
 	}
 
 	switch ph.Current {
-	// we include Shutdown here as there has been scenarios observed in the traffic global
-	// plugin whereby the aircraft has been assigned a new flight plan whilst still in
-	// the shutdown state
-	case trafficglobal.Parked.Index(), trafficglobal.Shutdown.Index():
-		if ph.Previous == trafficglobal.Unknown.Index() {
+	case flightphase.Parked.Index(), flightphase.Shutdown.Index():
+	// in this case we include Shutdown as there has been scenarios observed in the traffic global plugi
+		// whereby the aircraft has been assigned a new flight plan whilst still in the shutdown state
+		if ph.Previous == flightphase.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {
 				util.LogWarnWithLabel(ac.Registration, "no origin/destination for parked aircraft flight %d - unable to determine flight phase classification", ac.Flight.Number)
-				ph.Class = Unknown
+				ph.Class = flightclass.Unknown
 				return
 			}
 			currAirport := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 4.0)
 			if ac.Flight.Destination == currAirport {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at destination airport %s", ac.Flight.Number, ac.Flight.Destination)
-				ph.Class = PostflightParked
+				ph.Class = flightclass.PostflightParked
 				return
 			} else {
 				util.LogWithLabel(ac.Registration, "flight %d is parked at origin airport %s", ac.Flight.Number, ac.Flight.Origin)
-				ph.Class = PreflightParked
+				ph.Class = flightclass.PreflightParked
 				return
 			}
 		} else {
-			ph.Class = PostflightParked
+			ph.Class = flightclass.PostflightParked
 			return
 		}
-	case trafficglobal.Startup.Index(),
-		trafficglobal.TaxiOut.Index(),
-		trafficglobal.Depart.Index(),
-		trafficglobal.Climbout.Index():
-		ph.Class = Departing
+	case flightphase.Startup.Index(),
+		flightphase.TaxiOut.Index(),
+		flightphase.Depart.Index(),
+		flightphase.Climbout.Index():
+		ph.Class = flightclass.Departing
 		return
-	case trafficglobal.Approach.Index(),
-		trafficglobal.Holding.Index(),
-		trafficglobal.Final.Index(),
-		trafficglobal.GoAround.Index(),
-		trafficglobal.Braking.Index(),
-		trafficglobal.TaxiIn.Index():
-		ph.Class = Arriving
+	case flightphase.Approach.Index(),
+		flightphase.Holding.Index(),
+		flightphase.Final.Index(),
+		flightphase.GoAround.Index(),
+		flightphase.Braking.Index(),
+		flightphase.TaxiIn.Index():
+		ph.Class = flightclass.Arriving
 		return
-	case trafficglobal.Cruise.Index():
-		ph.Class = Cruising
+	case flightphase.Cruise.Index():
+		ph.Class = flightclass.Cruising
 		return
 	default:
-		ph.Class = Unknown
+		ph.Class = flightclass.Unknown
 	}
 }
 
 func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
-	
+
 	// 1. Try the Controller's ICAO first (works for Tower/Approach)
 
 	if ac.Flight.Comms.Controller != nil {
 		cIcao := ac.Flight.Comms.Controller.ICAO
 		if ap, ok := s.Airports[cIcao]; ok && ap.TransAlt > 0 {
-			transitionAlt = ap.TransAlt
-		}		
+			return ap.TransAlt
+		}
+	}
+
+	// 2. FALLBACK: Look at the nearest airport under the plane
+	// This is crucial for Center controllers who don't have a TransAlt
+	nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)
+	if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
+		transitionAlt = nearAp.TransAlt
 	} else {
-        // 2. FALLBACK: Look at the nearest airport under the plane
-        // This is crucial for Center controllers who don't have a TransAlt
-        nearICAO := s.AirportService.GetClosestAirport(ac.Flight.Position.Lat, ac.Flight.Position.Long, 30.0)
-        if nearAp, ok := s.Airports[nearICAO]; ok && nearAp.TransAlt > 0 {
-            transitionAlt = nearAp.TransAlt
-        } else {
-            // 3. FINAL FALLBACK: Continental Standards
-            // If ICAO starts with E or L (Europe), use 6000, otherwise 18000
-            if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
-                transitionAlt = 6000
-            } else {
-                transitionAlt = 18000
-            }
-        }
-    }
-	return
+		// 3. FINAL FALLBACK: Continental Standards
+		// If ICAO starts with E or L (Europe), use 6000, otherwise 18000
+		if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
+			transitionAlt = 6000
+		} else {
+			transitionAlt = 18000
+		}
+	}
+
+	return transitionAlt
 }
 
 func calculateDistance(pos1, pos2 Position) float64 {
