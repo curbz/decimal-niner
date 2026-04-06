@@ -7,7 +7,7 @@ const (
 	PreflightParked                        // 0
 	Departing                              // 1 = all flight phases from startup to climb out
 	Cruising                               // 2
-	Arriving                               // 3 = all flight phases from approach to shutdown
+	Arriving                               // 3 = all flight phases from approach to shutdown (includes holding)
 	PostflightParked                       // 4
 )
 

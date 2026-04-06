@@ -511,7 +511,7 @@ func TestPCL_StressFallbacks(t *testing.T) {
 				Controller: nil, // This is the primary panic risk
 			},
 			Position: Position{Lat: 51.47, Long: -0.45, Altitude: 2000, Heading: 270},
-			Phase:    flightphase.Phase{Current: 0}, // Pre-flight/Shutdown
+			Phase:    flightphase.Phase{Current: flightphase.Parked.Index()},
 		},
 	}
 

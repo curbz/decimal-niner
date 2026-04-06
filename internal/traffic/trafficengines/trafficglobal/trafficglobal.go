@@ -26,7 +26,9 @@ const (
 
 	ALIGN_SEARCH_MAX      = 128
 	INVALID_LEG_TOLERANCE = 2
+)
 
+const (
 	FP_Unknown  int = iota - 1
 	FP_Cruise               // 0 - Normal cruise phase.
 	FP_Approach             // 1 - Positioning from cruise to the runway.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
+	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/gorilla/websocket"
 )
@@ -376,17 +377,17 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	case simdata.DRTrafficEngineAIFlightPhase:
 		// Provide deterministic transitions per-iteration for the three sample aircraft:
-		// G-AOWK (index 0): Parked -> Startup -> TaxiOut  (5, 6, 7)
-		// G-BCOL (index 1): TaxiOut -> Depart -> Climbout (7, 8, 10)
-		// G-ARBD (index 2): Approach -> Final -> Braking (1, 2, 11)
+		// G-AOWK Speedbird 138 Heavy (index 0): Parked -> Startup -> TaxiOut  
+		// G-BCOL Easy 599			  (index 1): TaxiOut -> Depart -> Climbout
+		// G-ARBD Virgin 342 Heavy    (index 2): Approach -> Final -> Braking
 		mod := iter % 3
 		switch mod {
 		case 0:
-			return []int{5, 7, 1}
+			return []int{trafficglobal.FP_Parked, trafficglobal.FP_TaxiOut, trafficglobal.FP_Approach}
 		case 1:
-			return []int{6, 8, 2}
+			return []int{trafficglobal.FP_Startup, trafficglobal.FP_Depart, trafficglobal.FP_Final}
 		default:
-			return []int{7, 10, 11}
+			return []int{trafficglobal.FP_TaxiOut, trafficglobal.FP_Climbout, trafficglobal.FP_Braking}
 		}
 
 	case simdata.DRTrafficEngineAIRunway:

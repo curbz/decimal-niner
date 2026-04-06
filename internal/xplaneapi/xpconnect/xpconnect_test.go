@@ -109,7 +109,7 @@ func TestUnknownTransitionPreserved(t *testing.T) {
 	xpc.updateAircraftData()
 
 	// In xpconnect_test.go
-	expectedUnknown := int(flightphase.Unknown.Index()) // This should be -1 based on your fail
+	expectedUnknown := int(flightphase.Unknown.Index()) 
 
 	if mockATC.ReceivedPreviousPhase != expectedUnknown {
 		t.Errorf("Logic Error: ATC service saw Previous Phase as %d, expected %d",

@@ -318,7 +318,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 		// Origin can safely remain empty is this scenario as it is unlikely to be referenced by ATC at this stage of flight
 	}
 
-	// we don't check Cruising phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
+	// we don't check Cruise phase as there is nothing we can infer - we can call again after transition to approach (Arriving phase)
 	// we also do not set Flight.PlanAssigned to true
 }
 
@@ -326,18 +326,16 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
-	// 1. STICKY GUARD:
 	// If we've already assigned a specific class (like Preflight or Postflight),
-	// and the Sim phase hasn't actually changed, don't re-run the heavy logic.
+	// and the Sim phase hasn't actually changed, we are done here and can return
 	if ph.Class != flightclass.Unknown && ph.Current == ph.Previous {
 		return
 	}
 
 	switch ph.Current {
-	// we include Shutdown here as there has been scenarios observed in the traffic global
-	// plugin whereby the aircraft has been assigned a new flight plan whilst still in
-	// the shutdown state
 	case flightphase.Parked.Index(), flightphase.Shutdown.Index():
+	// in this case we include Shutdown as there has been scenarios observed in the traffic global plugi
+		// whereby the aircraft has been assigned a new flight plan whilst still in the shutdown state
 		if ph.Previous == flightphase.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
 			if ac.Flight.Origin == "" || ac.Flight.Destination == "" {

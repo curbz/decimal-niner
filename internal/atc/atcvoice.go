@@ -223,7 +223,9 @@ func (s *Service) startComms() {
 				}
 			}
 
-			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no further communications and this allows for quicker recycling of voices in busy airspaces. For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
+			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no 
+			// further communications and this allows for quicker recycling of voices in busy airspaces. 
+			// For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
 			if ac.Flight.Phase.Current == flightphase.Shutdown.Index() {
 				s.VoiceManager.ReleaseSession(ac)
 			}
@@ -408,6 +410,14 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		},
 
 		// --- DEPARTURE & ARRIVAL ---
+		"@APPROACH_TYPE": func(args ...string) interface{} {
+			res := ""
+			if rwy != nil {
+				util.LogDebugWithLabel(ac.Registration, "controller says highest precision approach is %s", rwy.HighestPrecisionApproach)
+				res = rwy.HighestPrecisionApproach
+			} 
+			return strings.TrimSpace(res + " approach")
+		},
 		"@DESTINATION": func(args ...string) interface{} {
 			if ac.Flight.Destination == "" {
 				return "as filed"
@@ -729,14 +739,7 @@ func RadioPlayer(soxPath string) {
 
 func noiseType(role string, flightPhase int) string {
 	if role == "PILOT" {
-		if flightPhase == flightphase.Cruise.Index() ||
-			flightPhase == flightphase.Climbout.Index() ||
-			flightPhase == flightphase.Depart.Index() ||
-			flightPhase == flightphase.GoAround.Index() ||
-			flightPhase == flightphase.Approach.Index() ||
-			flightPhase == flightphase.Final.Index() ||
-			flightPhase == flightphase.Braking.Index() ||
-			flightPhase == flightphase.Holding.Index() {
+		if isAirborne(flightPhase) {
 			return "pinknoise"
 		}
 	}

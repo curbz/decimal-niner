@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
@@ -242,13 +243,10 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 	}
 }
 
+// isAirborne returns true if the phase is considered an airbourne phase. The Depart phase is considered
+// airbourne although technically during the takeoff roll portion the aircraft is not airborne
 func isAirborne(phase int) bool {
-	switch phase {
-	case 0,1,2,9,10,12:
-		return true
-	default:
-		return false
-	}
+	return phase >= flightphase.Depart.Index() && phase < flightphase.Braking.Index()
 }
 
 func GetCountryFromRegistration(reg string) string {

@@ -10,19 +10,19 @@ type FlightPhase int
 
 const (
 	Unknown  FlightPhase = iota - 1
-	Parked               //0 5 - Long period parked.
-	Startup              //1 6 - Short period of spooling up engines/electrics.
-	TaxiOut              //2 7 - Any ground movement from the gate to the runway.
-	Depart               //3 8 - Initial ground roll and first part of climb.
-	Climbout             //4 10 - Remainder of climb, gear up.
-	Cruise               //5 0 - Normal cruise phase.
-	Holding              //6 12 - Holding (waiting for a flow to complete changing)
-	Approach             //7 1 -Positioning from cruise to the runway.
-	Final                //8 2 - Gear down on final approach.
-	GoAround             //9 9 - Unplanned transition from approach to cruise.
-	Braking              //10 11 - Short period from touchdown to when fast-taxi speed is reached.
-	TaxiIn               //11 3 - Any ground movement after touchdown.
-	Shutdown             //12 4 - Short period of spooling down engines/electrics.
+	Parked               //0 - Long period parked.
+	Startup              //1 - Short period of spooling up engines/electrics.
+	TaxiOut              //2 - Any ground movement from the gate to the runway.
+	Depart               //3 - Initial ground roll and first part of climb.
+	Climbout             //4 - Remainder of climb, gear up.
+	Cruise               //5 - Normal cruise phase.
+	Holding              //6 - Holding
+	Approach             //7 - Approach
+	Final                //8 - Gear down on final approach.
+	GoAround             //9 - Unplanned transition from approach to cruise.
+	Braking              //10 - Short period from touchdown to when fast-taxi speed is reached.
+	TaxiIn               //11 - Any ground movement after touchdown.
+	Shutdown             //12 - Short period of spooling down engines/electrics.
 )
 
 func (fp FlightPhase) String() string {
