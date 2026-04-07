@@ -3,12 +3,14 @@ package atc
 import (
 	"testing"
 
+	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 )
 
 func TestLocateController(t *testing.T) {
 
 	requiredAirports := map[string]bool{"EGLL": true, "EGKA": true, "EGNX": true, "EGHI": true}
+	d9.Resources = "resources"
 	atcService, _ := New("config.yaml", make(map[string][]flightplan.ScheduledFlight), requiredAirports)
 
 	tests := []struct {

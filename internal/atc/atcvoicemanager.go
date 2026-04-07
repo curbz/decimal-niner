@@ -141,21 +141,25 @@ func (vm *VoiceManager) LoadDictionaries() {
         return
     }
 
-    for _, file := range files {
-        if !file.IsDir() && strings.HasSuffix(file.Name(), "-dictionary.json") {
-            isoCode := strings.Split(file.Name(), "-")[0]
-            
-            fullPath := filepath.Join(d9.Resources, file.Name())
-            engine, err := NewPhoneticEngine(d9.Resources, fullPath)
-			if err != nil {
-				logger.Log.Errorf("error loading pronunciation dictionary %s: %v", fullPath, err)
-				return
-			}
-            
-            vm.dictionaries[isoCode] = engine
-            logger.Log.Infof("loaded pronunciation dictionary for %s", isoCode)
-        }
-    }
+	for _, file := range files {
+		// Only process files like "en-dictionary.json" or "en_GB-dictionary.json"
+		if file.IsDir() || !strings.HasSuffix(file.Name(), "-dictionary.json") {
+			continue
+		}
+
+		// Key will be "en" or "en_GB"
+		isoCode := strings.Split(file.Name(), "-")[0]
+		
+		fullPath := filepath.Join(d9.Resources, file.Name())
+		engine, err := NewPhoneticEngine(fullPath)
+		if err != nil {
+			logger.Log.Errorf("error loading pronunciation dictionary %s: %v", file.Name(), err)
+			continue
+		}
+		
+		vm.dictionaries[strings.ToUpper(isoCode)] = engine
+		logger.Log.Infof("Registered pronunciation dictionary: %s", isoCode)
+	}
 }
 
 func (vm *VoiceManager) initialisePools() error {

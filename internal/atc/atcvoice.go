@@ -560,10 +560,21 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		}
 		vLock.Lock()
 
-		// final phrase manipulation - translate words in dictionary to phonetic spelling
-		isoCode := strings.Split(voice, "-")[0] // e.g., "en_GB"
-		if phoneticEngine, exists := vm.dictionaries[isoCode]; exists {
-			msg.Text = phoneticEngine.Apply(msg.Text)
+		// final phrase manipulation - translate words in dictionaries to phonetic spelling
+		baseLang := strings.ToUpper(voice[0:2])
+		localeCode := strings.ToUpper(voice[0:5])
+
+		// global/base language replacements 
+		if baseEngine, ok := vm.dictionaries[baseLang]; ok {
+			msg.Text = baseEngine.Apply(msg.Text)
+		}
+
+		// country replacements
+		// will only run if the locale is specific and exists
+		if localeCode != baseLang {
+			if localeEngine, ok := vm.dictionaries[localeCode]; ok {
+				msg.Text = localeEngine.Apply(msg.Text)
+			}
 		}
 
 		cmd := exec.Command(piperPath,
