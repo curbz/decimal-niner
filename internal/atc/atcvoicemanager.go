@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
@@ -59,9 +60,9 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 		regionVoicePools:  make(map[string][]string),
 	}
 
-	vm.loadPhrases(cfg)
+	vm.loadPhrases()
 	vm.loadSpeakerConfig(cfg.ATC.Voices.Piper)
-	vm.LoadDictionaries(vm.voiceDir)
+	vm.LoadDictionaries()
 
 	// loadvoice pools
 	if err := vm.initialisePools(); err != nil {
@@ -71,7 +72,7 @@ func NewVoiceManager(cfg *config) *VoiceManager {
 	return vm
 }
 
-func (vm *VoiceManager) loadPhrases(cfg *config) {
+func (vm *VoiceManager) loadPhrases() {
 	// ... [Previous binary and directory checks remain unchanged] ...
 
 	// Helper to load and validate a phrase map
@@ -108,16 +109,18 @@ func (vm *VoiceManager) loadPhrases(cfg *config) {
 	}
 
 	// Process Main Phrases
-	phrases, err := loadAndValidate(cfg.ATC.Voices.PhrasesFile)
+	phraseFile := filepath.Join(d9.Resources, "phrases.json")
+	phrases, err := loadAndValidate(phraseFile)
 	if err != nil {
-		logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.PhrasesFile, err)
+		logger.Log.Fatalf("PCL Syntax Error in %s: %v", phraseFile, err)
 		return
 	}
 
 	// Process Unicom Phrases
-	unicomPhrases, err := loadAndValidate(cfg.ATC.Voices.UnicomPhrasesFile)
+	unicomPhraseFile := filepath.Join(d9.Resources, "phrases_unicom.json")
+	unicomPhrases, err := loadAndValidate(unicomPhraseFile)
 	if err != nil {
-		logger.Log.Fatalf("PCL Syntax Error in %s: %v", cfg.ATC.Voices.UnicomPhrasesFile, err)
+		logger.Log.Fatalf("PCL Syntax Error in %s: %v", unicomPhraseFile, err)
 		return
 	}
 
@@ -129,12 +132,12 @@ func (vm *VoiceManager) loadPhrases(cfg *config) {
 	logger.Log.Info("VoiceManager: All phrase files loaded and PCL syntax validated successfully.")
 }
 
-func (vm *VoiceManager) LoadDictionaries(dirPath string) {
+func (vm *VoiceManager) LoadDictionaries() {
     vm.dictionaries = make(map[string]*PhoneticEngine)
     
-    files, err := os.ReadDir(dirPath)
+    files, err := os.ReadDir(d9.Resources)
     if err != nil {
-        logger.Log.Errorf("error: failed to scan voices directory for dictionaries: %v", err)
+        logger.Log.Errorf("error: failed to scan resources directory %s, for dictionaries: %v", d9.Resources, err)
         return
     }
 
@@ -142,10 +145,11 @@ func (vm *VoiceManager) LoadDictionaries(dirPath string) {
         if !file.IsDir() && strings.HasSuffix(file.Name(), "-dictionary.json") {
             isoCode := strings.Split(file.Name(), "-")[0]
             
-            fullPath := filepath.Join(dirPath, file.Name())
-            engine, err := NewPhoneticEngine(fullPath)
+            fullPath := filepath.Join(d9.Resources, file.Name())
+            engine, err := NewPhoneticEngine(d9.Resources, fullPath)
 			if err != nil {
-				continue
+				logger.Log.Errorf("error loading pronunciation dictionary %s: %v", fullPath, err)
+				return
 			}
             
             vm.dictionaries[isoCode] = engine

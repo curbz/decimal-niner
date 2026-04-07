@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"time"
 
+	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
@@ -18,8 +19,9 @@ import (
 
 type d9config struct {
 	D9 struct {
-		LoggingLevel string `yaml:"logging_level"`
-		TrafficEngine string `yaml:"traffic_engine"`
+		LoggingLevel 	string `yaml:"logging_level"`
+		TrafficEngine 	string `yaml:"traffic_engine"`
+		Resources 		string `yaml:"resources_path"`
 	} `yaml:"d9"`
 }
 
@@ -52,6 +54,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error reading configuration file: %v\n", err)
 	}
+	d9.Resources = cfg.D9.Resources
 
 	// Initialize the logger once at start
 	logger.Init(cfg.D9.LoggingLevel)
