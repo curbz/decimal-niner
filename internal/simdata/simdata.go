@@ -1,6 +1,10 @@
 package simdata
 
-import "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
+import (
+	"time"
+
+	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
+)
 
 type SimDataProvider interface {
 	GetSimTime() (XPlaneTime, error)
@@ -107,3 +111,32 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 }
 
+// GetZuluDateTime converts sim datarefs into a standard Go time.Time object
+func GetZuluDateTime(xpt XPlaneTime) time.Time {
+	// 1. Establish the Year. XP doesn't provide this, so we use current system year.
+	currentYear := time.Now().Year()
+
+	// 2. Create the Local Date.
+	// Jan 1st of current year + local_date_days.
+	// We use 00:00:00 as the starting point for this date.
+	localDate := time.Date(currentYear, time.January, 1, 0, 0, 0, 0, time.UTC).
+		AddDate(0, 0, xpt.LocalDateDays)
+
+	// 3. Combine Local Date with Local Time to get a full "Local Timestamp"
+	localFull := localDate.Add(time.Duration(xpt.LocalTimeSecs) * time.Second)
+
+	// 4. Calculate the Offset (Local - Zulu)
+	// We handle the midnight rollover by checking if the diff exceeds 12 hours.
+	diff := xpt.LocalTimeSecs - xpt.ZuluTimeSecs
+	if diff > 43200 {
+		diff -= 86400
+	} else if diff < -43200 {
+		diff += 86400
+	}
+
+	// 5. Subtract the offset from the Local Timestamp to get the Zulu Timestamp
+	// If Local is 5 hours ahead of Zulu, subtracting 5 hours gives us Zulu.
+	zuluDateTime := localFull.Add(time.Duration(-diff) * time.Second)
+
+	return zuluDateTime
+}

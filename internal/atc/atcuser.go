@@ -7,7 +7,7 @@ import (
 )
 
 type UserState struct {
-	NearestICAO        string
+	NearestAirport     *Airport
 	Position           Position
 	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
 	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
@@ -45,11 +45,17 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
-			s.UserState.NearestICAO = controller.ICAO
 			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "Controller found for user on COM%d %d: %s %s Role: %s (%d)", idx, uFreq,
 				controller.Name, controller.ICAO, roleNameMap[controller.RoleID], controller.RoleID)
 		} else {
 			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "No nearby controller found for user on COM%d %d", idx, uFreq)
 		}
+	}
+
+	nearestICAO := s.AirportService.GetClosestAirport(pos.Lat, pos.Long, 1000)
+	if apt, found := s.Airports[nearestICAO]; found {
+		s.UserState.NearestAirport = apt
+	} else {
+		s.UserState.NearestAirport = nil
 	}
 }

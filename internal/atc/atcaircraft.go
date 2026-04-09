@@ -40,6 +40,7 @@ type Flight struct {
 	Squawk              string
 	PlanAssigned        bool
 	AirlineName         string
+	Schedule 			flightplan.ScheduledFlight
 }
 
 type Position struct {
@@ -65,7 +66,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	}
 
 	// set flight phase classification
-	s.setFlightPhaseClass(ac)
+	s.SetFlightPhaseClass(ac)
 	util.LogWithLabel(ac.Registration, "flight %d phase %s classified as %s",
 		ac.Flight.Number,
 		flightphase.FlightPhase(ac.Flight.Phase.Current),
@@ -284,6 +285,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
 
+	ac.Flight.Schedule = candidateScheds[0]
 	ac.Flight.PlanAssigned = true
 
 	return ac.Flight.PlanAssigned
@@ -322,7 +324,7 @@ func (s *Service) inferFlightPlan(ac *Aircraft) {
 	// we also do not set Flight.PlanAssigned to true
 }
 
-func (s *Service) setFlightPhaseClass(ac *Aircraft) {
+func (s *Service) SetFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
@@ -334,7 +336,7 @@ func (s *Service) setFlightPhaseClass(ac *Aircraft) {
 
 	switch ph.Current {
 	case flightphase.Parked.Index(), flightphase.Shutdown.Index():
-	// in this case we include Shutdown as there has been scenarios observed in the traffic global plugi
+		// in this case we include Shutdown as there has been scenarios observed in the traffic global plugi
 		// whereby the aircraft has been assigned a new flight plan whilst still in the shutdown state
 		if ph.Previous == flightphase.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight

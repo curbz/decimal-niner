@@ -12,6 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/traffic"
+	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/d9traffic"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -93,6 +94,8 @@ func main() {
 	switch cfg.D9.TrafficEngine {
 	case "trafficglobal":
 		te, teErr = trafficglobal.New(cfgPath)
+	case "d9traffic":
+		te, teErr = d9traffic.New(cfgPath)
 	default:
 		logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
 		return
@@ -114,11 +117,14 @@ func main() {
 
 	// set the airport service provider
 	atcService.AirportService = atcService
+
+	te.SetATCService(atcService)
 	
 	atcService.Run()
+	te.Start()
 
 	// Connect to X-Plane
-	xpc := xpconnect.New(cfgPath, atcService)
+	xpc := xpconnect.New(cfgPath, atcService, te.RequiresAircraftData())
 	atcService.SetDataProvider(xpc)
 	if xpc == nil {
 		logger.Log.Fatal("failed to create xpconnect")

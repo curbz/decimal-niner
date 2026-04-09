@@ -39,6 +39,7 @@ type XPConnect struct {
 	aircraftMap                 map[string]*atc.Aircraft
 	atcService                  atc.ServiceInterface
 	initialised                 bool
+	readAircraftData            bool
 }
 
 type XPConnectInterface interface {
@@ -54,7 +55,7 @@ type config struct {
 	} `yaml:"xplane_api"`
 }
 
-func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
+func New(cfgPath string, atcService atc.ServiceInterface, readAircraftData bool) XPConnectInterface {
 
 	cfg, err := util.LoadConfig[config](cfgPath)
 	if err != nil {
@@ -70,6 +71,7 @@ func New(cfgPath string, atcService atc.ServiceInterface) XPConnectInterface {
 		aircraftMap:        make(map[string]*atc.Aircraft),
 		atcService:         atcService,
 		memDataRefIndexMap: make(map[int]*xpapimodel.Dataref),
+		readAircraftData: 	readAircraftData,
 		config:             *cfg,
 	}
 
@@ -185,7 +187,7 @@ func (xpc *XPConnect) initSimTime() (time.Time, error) {
 		return time.Time{}, err
 	}
 
-	zuluResult := getZuluDateTime(xpTime)
+	zuluResult := simdata.GetZuluDateTime(xpTime)
 
 	fmt.Println("--- X-Plane Time Conversion ---")
 	fmt.Printf("Sim Local Date Days: %d\n", xpTime.LocalDateDays)
@@ -450,8 +452,15 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 	}
 
 	xpc.updateUserData()
-	xpc.updateAircraftData()
+	if xpc.readAircraftData {
+		xpc.updateAircraftData()
+	}
 	xpc.updateWeatherData()
+
+	if !xpc.initialised {
+		xpc.initialised = true
+		logger.Log.Infof("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
+	}
 }
 
 func (xpc *XPConnect) updateMemDatarefValueInMap(datarefIndicesMap map[int]*xpapimodel.Dataref, id int, value any) error {
@@ -876,11 +885,6 @@ func (xpc *XPConnect) updateAircraftData() {
 			xpc.atcService.CheckForCruiseSectorChange(ac)
 		}
 	}
-
-	if !xpc.initialised {
-		xpc.initialised = true
-		logger.Log.Infof("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
-	}
 }
 
 func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
@@ -1013,36 +1017,6 @@ func buildURLWithFilters(urlStr string, drefs []xpapimodel.Dataref) (string, err
 	u.RawQuery = q.Encode()
 
 	return u.String(), nil
-}
-
-// GetZuluDateTime converts sim datarefs into a standard Go time.Time object
-func getZuluDateTime(xp simdata.XPlaneTime) time.Time {
-	// 1. Establish the Year. XP doesn't provide this, so we use current system year.
-	currentYear := time.Now().Year()
-
-	// 2. Create the Local Date.
-	// Jan 1st of current year + local_date_days.
-	// We use 00:00:00 as the starting point for this date.
-	localDate := time.Date(currentYear, time.January, 1, 0, 0, 0, 0, time.UTC).
-		AddDate(0, 0, xp.LocalDateDays)
-
-	// 3. Combine Local Date with Local Time to get a full "Local Timestamp"
-	localFull := localDate.Add(time.Duration(xp.LocalTimeSecs) * time.Second)
-
-	// 4. Calculate the Offset (Local - Zulu)
-	// We handle the midnight rollover by checking if the diff exceeds 12 hours.
-	diff := xp.LocalTimeSecs - xp.ZuluTimeSecs
-	if diff > 43200 {
-		diff -= 86400
-	} else if diff < -43200 {
-		diff += 86400
-	}
-
-	// 5. Subtract the offset from the Local Timestamp to get the Zulu Timestamp
-	// If Local is 5 hours ahead of Zulu, subtracting 5 hours gives us Zulu.
-	zuluDateTime := localFull.Add(time.Duration(-diff) * time.Second)
-
-	return zuluDateTime
 }
 
 func logErrors(errors ...error) {

@@ -30,6 +30,7 @@ type Airport struct {
 	Runways     map[string]*Runway // keyed by "09L", "27R"
 	Holds       []*Hold
 	Controllers []*Controller
+	Parking     []ParkingSpot
 }
 
 type Runway struct {
@@ -50,6 +51,15 @@ type Fix struct {
 
 type aptPoint struct {
 	Lat, Lon float64
+}
+
+type ParkingSpot struct {
+    Name       string
+    Lat, Lon   float64
+    Heading    float64
+    Type       string // Gate, Tie-down, Hangar
+    WidthClass string // A, B, C, D, E, F (ICAO standard)
+    IsOccupied bool
 }
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -166,6 +176,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	var isRequiredAirport bool
 	var batchStartIdx int
 	var airportPoints []aptPoint
+	var curParking *ParkingSpot // Temporary pointer to the spot being built
 
 	roleMap := map[string]int{
 		"1050": 7, // Information (Weather)
@@ -212,6 +223,35 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			continue
 		}
 
+		// 1300: PARKING LOCATION
+		if code == "1300" && curAirport != nil {
+			if len(p) >= 5 {
+				lat, _ := strconv.ParseFloat(p[1], 64)
+				lon, _ := strconv.ParseFloat(p[2], 64)
+				hdg, _ := strconv.ParseFloat(p[3], 64)
+				
+				curParking = &ParkingSpot{
+					Lat:     lat,
+					Lon:     lon,
+					Heading: hdg,
+					Type:    p[4],
+				}
+				// We don't add it to curAirport.Parking yet; we wait for metadata (1301)
+			}
+			continue
+		}
+
+		// 1301: PARKING METADATA (Follows a 1300)
+		if code == "1301" && curParking != nil && curAirport != nil {
+			if len(p) >= 4 {
+				curParking.WidthClass = p[1] // Size class (e.g., "D")
+				curParking.Name = strings.Join(p[3:], " ")
+				
+				curAirport.Parking = append(curAirport.Parking, *curParking)
+			}
+			curParking = nil // Reset for next spot
+			continue
+		}
 		// 2. GEOGRAPHY & METADATA (Universal Parsing)
 		if code == "1302" && len(p) == 3 {
 			switch p[1] {

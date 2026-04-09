@@ -16,21 +16,26 @@ func TestNotifyUserStateChange(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		mockReturn string
 		pos        Position
 		tunedFreqs map[int]int
 		tunedRoles map[int]int
 		wantActive bool
 		wantICAO   string
 	}{
-		{"match_present", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 11805}, map[int]int{1: 2}, true, "TEST"},
-		{"no_match", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 12190}, map[int]int{1: 2}, false, ""},
-		{"role_zero_converted", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 11805}, map[int]int{1: 0}, true, "TEST"},
+		{"match_present", "TEST", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 11805}, map[int]int{1: 2}, true, "TEST"},
+		{"no_match", "EGLL", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 12190}, map[int]int{1: 2}, false, ""},
+		{"role_zero_converted", "TEST", Position{Lat: 10.0, Long: 20.0, Altitude: 1000}, map[int]int{1: 11805}, map[int]int{1: 0}, true, "TEST"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Service{
 				Controllers: []*Controller{ctrl},
+				AirportService: &MockAirportProvider{MockReturn: tt.mockReturn},
+				Airports: map[string]*Airport{
+					"TEST": {ICAO: "TEST"},
+				},
 			}
 
 			s.NotifyUserStateChange(tt.pos, tt.tunedFreqs, tt.tunedRoles)
@@ -43,8 +48,8 @@ func TestNotifyUserStateChange(t *testing.T) {
 				if !ok || c == nil {
 					t.Fatalf("expected active facility at index 1")
 				}
-				if s.UserState.NearestICAO != tt.wantICAO {
-					t.Fatalf("NearestICAO = %q; want %q", s.UserState.NearestICAO, tt.wantICAO)
+				if s.UserState.NearestAirport.ICAO != tt.wantICAO {
+					t.Fatalf("Nearest airport ICAO = %q; want %q", s.UserState.NearestAirport.ICAO, tt.wantICAO)
 				}
 			} else {
 				if s.UserState.ActiveFacilities != nil {
@@ -52,8 +57,8 @@ func TestNotifyUserStateChange(t *testing.T) {
 						t.Fatalf("expected no active facility for index 1")
 					}
 				}
-				if s.UserState.NearestICAO != "" {
-					t.Fatalf("expected NearestICAO to be empty; got %q", s.UserState.NearestICAO)
+				if s.UserState.NearestAirport != nil {
+					t.Fatalf("expected NearestICAO to be nil; got %v", s.UserState.NearestAirport)
 				}
 			}
 		})

@@ -2,7 +2,7 @@
 d9:
   resources_path: "resources"
   logging_level: "info"
-  traffic_engine: "trafficglobal"
+  traffic_engine: "d9traffic"  # trafficglobal or d9traffic currently supported
 
 # X-Plane Connection Settings
 xplane_api:
@@ -38,3 +38,5 @@ atc:
 trafficglobal:
   #plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
   plugin_directory: "/home/dmorris/decimal-niner/X-Plane"
+d9traffic:
+  flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane"

@@ -38,7 +38,7 @@ func TestInferFlightPlan(t *testing.T) {
 			ac.Flight.Origin = tt.initOrigin
 			ac.Flight.Destination = tt.initDest
 			// position cannot be empty otherwise inferFlightPlan will return with no action
-			ac.Flight.Position = Position{ Altitude: 1.0 }
+			ac.Flight.Position = Position{Altitude: 1.0}
 
 			s.inferFlightPlan(ac)
 
@@ -390,7 +390,7 @@ func TestSetFlightPhaseClass(t *testing.T) {
 				ac.Flight.Phase.Class = flightclass.Unknown
 			}
 
-			s.setFlightPhaseClass(ac)
+			s.SetFlightPhaseClass(ac)
 
 			if ac.Flight.Phase.Class != tt.expectedClass {
 				t.Errorf("%s: expected %v, got %v", tt.name, tt.expectedClass, ac.Flight.Phase.Class)

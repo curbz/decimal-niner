@@ -1,4 +1,4 @@
-package trafficglobal
+package flightplan
 
 import (
 	"testing"
