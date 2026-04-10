@@ -1,9 +1,10 @@
 package d9traffic
 
 import (
-	"fmt"
 	"sort"
 	"time"
+	"fmt"
+	"math/rand"
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
@@ -21,6 +22,7 @@ type D9TrafficEngine struct {
 	atcService       *atc.Service
 	FlightPlanPath   string
 	Spawned          map[string]bool // TailNumber -> bool
+	initialised		 bool
 }
 
 type D9TrafficConfig struct {
@@ -81,8 +83,10 @@ func (e *D9TrafficEngine) Start() {
 			// 3. Run the Spawn Check
 			e.CheckForNewSpawns(userNearestAirport.ICAO, day, hour, min)
 
-			// 4. Update existing aircraft (Phase transitions)
+			// 4. Update existing aircraft (Phase transitions
 			e.UpdateActiveAircraft(day, hour, min)
+
+			logger.Log.Infof("total spawned: %d", len(e.Spawned))
 		}
 	}()
 }
@@ -212,16 +216,28 @@ func (e *D9TrafficEngine) TrySpawnGroundTraffic(f flightplan.ScheduledFlight) {
 
 	// 'occupied' comes from your logic to find the user/other AI
 	occupied := e.GetOccupiedSpots()
-
+	// TODO: is this the right place to be looking for parking as it could be that this flight is already in taxi/departure?
+	// TODO: spot.Name is listing airline codes
 	spot := e.FindAvailableParking(airport, reqWidth, occupied)
+	
 	if spot != nil {
 		// Create the "Live" entity
+		// TODO figure out airline code and classign - see callsign logic in xpconnect
+		//aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+		//aircraft.Flight.AirlineName = airlineInfo.AirlineName
+		//aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
 		newAc := &atc.Aircraft{
 			Registration: f.AircraftRegistration,
+			//TODO set correct sizeclass
+			SizeClass: atc.SizeClass[3], 
 			Flight: atc.Flight{
 				Number:      f.Number,
 				Origin:      f.IcaoOrigin,
 				Destination: f.IcaoDest,
+				Schedule: f,
+				// Squawk random number between 1200 and 6999
+				Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
+				PlanAssigned: true,
 				Phase: flightphase.Phase{
 					Current:    flightphase.Parked.Index(),
 					Previous:   flightphase.Unknown.Index(),
@@ -234,8 +250,7 @@ func (e *D9TrafficEngine) TrySpawnGroundTraffic(f flightplan.ScheduledFlight) {
 					//TODO: parse airport elevation from relevant xplane nav data
 					//Altitude: airport.Elevation,
 				},
-				AssignedParking: spot.Name,
-				Schedule: f,
+				AssignedParking: spot.Name, 
 			},
 		}
 		e.atcService.SetFlightPhaseClass(newAc)
@@ -300,18 +315,36 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
         case diff <= 15 && diff > 5:
             // Trigger Startup Radio Call if not already done
             if ac.Flight.Phase.Current == flightphase.Parked.Index() {
-				fmt.Println("*** STARTUP ****")
-                //ac.UpdatePhase(flightphase.Startup)
-                // Trigger the actual ATC call logic here
+                ac.Flight.Phase.Current = flightphase.Startup.Index()
             }
         case diff <= 5 && diff > 0:
-            // Trigger Pushback
-			fmt.Println("*** PUSHBACK ****")
+			ac.Flight.Phase.Current = flightphase.TaxiOut.Index()		
         case diff <= 0:
-            // Taxi / Depart
-			fmt.Println("*** TAXI ****")
+			ac.Flight.Phase.Current = flightphase.Depart.Index()
         }
+
+		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
+			if e.initialised{
+				// Notify ATC service of flight phase change
+				e.atcService.NotifyFlightPhaseChange(ac)
+
+				util.LogWithLabel(ac.Registration,
+					"flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d",
+					ac.Flight.Number,
+					flightphase.FlightPhase(ac.Flight.Phase.Previous).String(),
+					flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
+					ac.Flight.Position.Lat,
+					ac.Flight.Position.Long,
+					ac.Flight.Position.Altitude,
+					int(ac.Flight.Position.Heading))
+			} 
+
+			ac.Flight.Phase.Previous = ac.Flight.Phase.Current
+			ac.Flight.Phase.Transition = time.Now()
+		}
     }
+
+	e.initialised = true
 }
 
 func GetWidthClass(radiusMeters float64) string {
