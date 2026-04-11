@@ -285,6 +285,8 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // matches what the client expects for that type (e.g., numeric arrays or
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
+	now := time.Now()
+	hours, minutes, seconds := now.Clock()
 	switch name {
 	// com active datarefs
 	case simdata.DRSimATCCom1Active:
@@ -314,11 +316,11 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	// --- Sim Time ---
 	case simdata.DRSimTimeLocalDateDays:
-		return 15 // Example: days since Jan 1
+		return now.YearDay() - 1  //15 // days since Jan 1 (16th Jan)
 	case simdata.DRSimTimeLocalTimeSec:
-		return 39600.0 + float64(iter) // 11:00:00 am local time
+		return hours*3600 + minutes*60 + seconds  //39600.0 + float64(iter) // 11:00:00 am local time
 	case simdata.DRSimTimeZuluTimeSec:
-		return 39600.0 + float64(iter) // 12:00:00 Zulu
+		return hours*3600 + minutes*60 + seconds  //39600.0 + float64(iter) // 12:00:00 Zulu
 
 	// --- Weather ---
 	case simdata.DRSimWeatherAircraftBarometer:
