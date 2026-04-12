@@ -12,6 +12,7 @@ type UserState struct {
 	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
 	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
 	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
+	AssignedParking    ParkingSpot
 }
 
 func (s *Service) GetUserState() UserState {

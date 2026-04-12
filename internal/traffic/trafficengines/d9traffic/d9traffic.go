@@ -13,7 +13,6 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/traffic"
-	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -24,6 +23,7 @@ type D9TrafficEngine struct {
 	FlightPlanPath   string
 	Spawned          map[string]bool // TailNumber -> bool
 	initialised		 bool
+	OccupiedParking map[string]string
 }
 
 type D9TrafficConfig struct {
@@ -281,11 +281,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 
 				// Defaulting to "C" (Airliner)
 				reqWidth := 15.0
-
-				// 'occupied' comes from your logic to find the user/other AI
-				occupied := e.GetOccupiedSpots()
-				// TODO: spot.Name is listing airline codes
-				spot := e.FindAvailableParking(airport, reqWidth, occupied)
+        		spot := e.FindAvailableParking(airport, reqWidth)
 				
 				if spot == nil {
 					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for flight %s at airport %s - cannot spawn",
@@ -301,7 +297,12 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 					//Altitude: airport.Elevation,
 				}
 				ac.Flight.AssignedParking = spot.Name 
+				
+				// LEASE: Track that this spot is taken by this aircraft
+				key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+            	e.OccupiedParking[key] = ac.Registration
 				spot.IsOccupied = true 
+
 				ac.Flight.Phase.Class = flightclass.Departing
 			}
         case diff > 15 && diff <= 20:
@@ -310,6 +311,11 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
         case diff > 0 && diff <= 15:
 			ac.Flight.Phase.Current = flightphase.TaxiOut.Index()	
 			ac.Flight.Phase.Class = flightclass.Departing
+			if ac.Flight.AssignedParking != "" {
+				e.ReleaseParking(f.IcaoOrigin, ac.Flight.AssignedParking)
+				// We keep the string name in AssignedParking for ATC ref, 
+				// but the physical spot is now free for others.
+			}
         case diff >= 5 && diff <= 0:
 			ac.Flight.Phase.Current = flightphase.Depart.Index()
 			ac.Flight.Phase.Class = flightclass.Departing
@@ -350,42 +356,37 @@ func (e *D9TrafficEngine) GetOccupiedSpots() []OccupiedSpot {
 	return []OccupiedSpot{}
 }
 
-func (e *D9TrafficEngine) FindAvailableParking(airport *atc.Airport, reqRadius float64, occupied []OccupiedSpot) *atc.ParkingSpot {
-	reqClass := GetWidthClass(reqRadius)
+func (e *D9TrafficEngine) FindAvailableParking(airport *atc.Airport, reqRadius float64) *atc.ParkingSpot {
+    reqClass := GetWidthClass(reqRadius)
 
-	for i := range airport.Parking {
-		spot := &airport.Parking[i]
+    for i := range airport.Parking {
+        spot := &airport.Parking[i]
+        
+        // 1. Check size class
+        if spot.WidthClass < reqClass { continue }
 
-		// 1. Is the gate big enough?
-		// (Alphabetical check: 'D' is bigger than 'C', so req <= spot)
-		if spot.WidthClass < reqClass {
-			continue
-		}
+        // 2. Check the "Global Map" using a composite key
+        key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+        if _, occupied := e.OccupiedParking[key]; occupied {
+            continue
+        }
 
-		// 2. Is it internally occupied by our engine?
-		if spot.IsOccupied {
-			continue
-		}
+        // 3. Check if user is at this specific spot
+        if e.atcService.UserState.NearestAirport.ICAO == airport.ICAO && 
+			e.atcService.UserState.AssignedParking.Name == spot.Name {
+            continue
+        }
 
-		// 3. Is it occupied by the 'forbidden' list (User or X-Plane AI)?
-		isBlocked := false
-		for _, occ := range occupied {
-			dist := geometry.DistNM(spot.Lat, spot.Lon, occ.Lat, occ.Lon)
-			// If the distance is less than a reasonable threshold (e.g., 20m)
-			if dist < 0.010 { // Approx 20 meters in NM
-				isBlocked = true
-				break
-			}
-		}
-
-		if !isBlocked {
-			return spot
-		}
-	}
-	return nil
+        return spot
+    }
+    return nil
 }
 
-
+func (e *D9TrafficEngine) ReleaseParking(icao, spotName string) {
+    key := fmt.Sprintf("%s_%s", icao, spotName)
+    delete(e.OccupiedParking, key)
+    logger.Log.Debugf("Parking spot %s at %s is now vacant.", spotName, icao)
+}
 
 func GetWidthClass(radiusMeters float64) string {
 	switch {
