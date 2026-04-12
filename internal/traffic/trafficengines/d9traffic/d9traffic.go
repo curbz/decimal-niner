@@ -74,17 +74,13 @@ func (e *D9TrafficEngine) Start() {
 			hour := zuluDateTime.Hour()
 			min := zuluDateTime.Minute()
 
-			// 2. Get User Location (Dataref: sim/flightmodel/position/latitude etc)
-			userNearestAirport := e.atcService.UserState.NearestAirport
-			if userNearestAirport == nil {
-				util.LogWarnWithLabel("D9TRAFFIC", "user nearest airport is nil - skipping traffic tick")
-				return
+			// 2. Run the Spawn Check for all relevant airports
+			relevantICAOs := e.GetRelevantICAOs()
+			for _, icao := range relevantICAOs {
+				e.CheckForNewSpawns(icao, day, hour, min)
 			}
 
-			// 3. Run the Spawn Check
-			e.CheckForNewSpawns(userNearestAirport.ICAO, day, hour, min)
-
-			// 4. Update existing aircraft (Phase transitions)
+			// 3. Update existing aircraft (Phase transitions)
 			e.UpdateActiveAircraft(day, hour, min)
 
 			logger.Log.Infof("total spawned: %d", len(e.Spawned))
@@ -157,6 +153,29 @@ func (e *D9TrafficEngine) SortSchedules() {
 			return timeI < timeJ
 		})
 	}
+}
+
+func (e *D9TrafficEngine) GetRelevantICAOs() []string {
+    icaoMap := make(map[string]bool)
+    
+    for _, ctrl := range e.atcService.UserState.ActiveFacilities {
+        // We only care about airport-specific controllers (TWR, GND, DEL, etc.)
+        // Center/Approach might not have a single ICAO, so we filter.
+        if ctrl.ICAO != "" {
+            icaoMap[ctrl.ICAO] = true
+        }
+    }
+    
+    // Always include the nearest airport as a fallback for visual/proximity traffic
+    if e.atcService.UserState.NearestAirport != nil {
+        icaoMap[e.atcService.UserState.NearestAirport.ICAO] = true
+    }
+
+    var result []string
+    for icao := range icaoMap {
+        result = append(result, icao)
+    }
+    return result
 }
 
 func (e *D9TrafficEngine) CheckForNewSpawns(icao string, day, h, m int) {
