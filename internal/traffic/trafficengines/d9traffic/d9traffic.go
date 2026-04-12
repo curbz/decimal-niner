@@ -1,12 +1,13 @@
 package d9traffic
 
 import (
-	"sort"
-	"time"
 	"fmt"
 	"math/rand"
+	"sort"
+	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
@@ -256,44 +257,47 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
         switch {
 		case diff > 20:
 			// Parked
-			airport := e.atcService.Airports[f.IcaoOrigin]
+			if ac.Flight.AssignedParking == "" {
+				airport := e.atcService.Airports[f.IcaoOrigin]
 
-			// Defaulting to "C" (Airliner)
-			reqWidth := 15.0
+				// Defaulting to "C" (Airliner)
+				reqWidth := 15.0
 
-			// 'occupied' comes from your logic to find the user/other AI
-			occupied := e.GetOccupiedSpots()
-			// TODO: spot.Name is listing airline codes
-			spot := e.FindAvailableParking(airport, reqWidth, occupied)
-			
-			if spot == nil {
-				util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for flight %s at airport %s - cannot spawn",
-					ac.Registration, airport.ICAO)
-				continue
+				// 'occupied' comes from your logic to find the user/other AI
+				occupied := e.GetOccupiedSpots()
+				// TODO: spot.Name is listing airline codes
+				spot := e.FindAvailableParking(airport, reqWidth, occupied)
+				
+				if spot == nil {
+					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for flight %s at airport %s - cannot spawn",
+						ac.Registration, airport.ICAO)
+					continue
+				}
+
+				ac.Flight.Position = atc.Position{
+					Lat:     spot.Lat,
+					Long:    spot.Lon,
+					Heading: spot.Heading,
+					//TODO: parse airport elevation from relevant xplane nav data
+					//Altitude: airport.Elevation,
+				}
+				ac.Flight.AssignedParking = spot.Name 
+				spot.IsOccupied = true 
+				ac.Flight.Phase.Class = flightclass.Departing
 			}
-
-			ac.Flight.Position = atc.Position{
-				Lat:     spot.Lat,
-				Long:    spot.Lon,
-				Heading: spot.Heading,
-				//TODO: parse airport elevation from relevant xplane nav data
-				//Altitude: airport.Elevation,
-			}
-			ac.Flight.AssignedParking = spot.Name 
-			spot.IsOccupied = true 
-
         case diff > 15 && diff <= 20:
-        	ac.Flight.Phase.Current = flightphase.Startup.Index()     
+        	ac.Flight.Phase.Current = flightphase.Startup.Index()
+			ac.Flight.Phase.Class = flightclass.Departing     
         case diff > 0 && diff <= 15:
 			ac.Flight.Phase.Current = flightphase.TaxiOut.Index()	
+			ac.Flight.Phase.Class = flightclass.Departing
         case diff >= 5 && diff <= 0:
 			ac.Flight.Phase.Current = flightphase.Depart.Index()
+			ac.Flight.Phase.Class = flightclass.Departing
 		default: 
 			continue
         }
-		
-		e.atcService.SetFlightPhaseClass(ac)
-		
+				
 		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
 
 			logMsg := ""
