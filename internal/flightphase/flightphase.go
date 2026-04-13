@@ -49,8 +49,9 @@ func (fp FlightPhase) Index() int {
 }
 
 type Phase struct {
-	Class      flightclass.PhaseClass
-	Current    int
-	Previous   int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
-	Transition time.Time
+	Class                   flightclass.PhaseClass
+	Current                 int
+	Previous                int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
+	Transition              time.Time
+	EstimatedNextTransition time.Time	// used by d9 traffic engine to estimate when the next phase transition will occur
 }

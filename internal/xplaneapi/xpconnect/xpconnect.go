@@ -876,7 +876,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			// ALWAYS commit the state.
 			// If initialised is false, this "silently" syncs the starting state.
 			ac.Flight.Phase.Previous = ac.Flight.Phase.Current
-			ac.Flight.Phase.Transition = time.Now()
+			ac.Flight.Phase.Transition = xpc.atcService.GetCurrentZuluTime()
 		} else {
 			// check for possible sector change
 			xpc.atcService.CheckForCruiseSectorChange(ac)
@@ -898,7 +898,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 				Class:      flightclass.Unknown,
 				Current:    fpUnknown.Index(),
 				Previous:   fpUnknown.Index(),
-				Transition: time.Now()},
+				Transition: xpc.atcService.GetCurrentZuluTime()},
 		},
 	}
 	xpc.aircraftMap[acKey] = aircraft
