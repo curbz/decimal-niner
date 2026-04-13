@@ -3,6 +3,7 @@ package atc
 import (
 	"fmt"
 
+	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -12,7 +13,9 @@ type UserState struct {
 	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
 	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
 	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
+	//TODO: new fields, requires populating and updating
 	AssignedParking    ParkingSpot
+	FlightPhase 	   flightphase.FlightPhase
 }
 
 func (s *Service) GetUserState() UserState {
@@ -59,4 +62,7 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	} else {
 		s.UserState.NearestAirport = nil
 	}
+
+	//TODO determine flight phase
+	s.UserState.FlightPhase = flightphase.Parked
 }

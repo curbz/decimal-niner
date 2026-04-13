@@ -184,7 +184,7 @@ func (s *Service) startComms() {
 				// if not unicom then ATC responds
 				if ac.Flight.Comms.Controller.RoleID != 0 {
 					// randomised 'say again'
-					if isAirborne(ac.Flight.Phase.Current) && rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
+					if IsAirborne(ac.Flight.Phase.Current, true) && rand.Intn(s.Config.ATC.Voices.SayAgainFactor) == 0 && !didSayAgain {
 						// atc asks pilot to repeat request
 						s.preparePhrase("{$CALLSIGN} say again", roleNameMap[phaseFacility.roleId], ac)
 						// pilot repeats phrase
@@ -750,7 +750,7 @@ func RadioPlayer(soxPath string) {
 
 func noiseType(role string, flightPhase int) string {
 	if role == "PILOT" {
-		if isAirborne(flightPhase) {
+		if IsAirborne(flightPhase, true) {
 			return "pinknoise"
 		}
 	}

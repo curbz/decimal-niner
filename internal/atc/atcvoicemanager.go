@@ -567,7 +567,7 @@ func (vm *VoiceManager) startCleaner(interval time.Duration, getUserPos func() (
 		}
 
 		if evicted > 0 {
-			logger.Log.Info("VoiceManager: Evicted", evicted, "stale sessions")
+			logger.Log.Info("VoiceManager: Evicted ", evicted, " stale sessions")
 		}
 		logger.Log.Infof("VoiceManager: Cleanup complete, current sessions: %d", len(vm.sessions))
 		vm.mu.Unlock()

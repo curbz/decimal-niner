@@ -54,12 +54,14 @@ type aptPoint struct {
 }
 
 type ParkingSpot struct {
-    Name       string
-    Lat, Lon   float64
-    Heading    float64
-    Type       string // Gate, Tie-down, Hangar
-    WidthClass string // A, B, C, D, E, F (ICAO standard)
-    IsOccupied bool
+    Name       		string
+	AirlineCodes 	string // space-separated list of 3 letter airline codes that can use this spot (e.g., "baw klm"), or empty for any
+    Lat, Lon   		float64
+    Heading    		float64
+    Type       		string // Gate, Tie-down, Hangar
+    WidthClass 		string // A, B, C, D, E, F (ICAO standard)
+	SizeType 		string // airline / general_aviation 
+    IsOccupied 		bool
 }
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -224,8 +226,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}
 
 		// 1300: PARKING LOCATION
+		// 1300 51.469151 -0.446896 -92.6 gate heavy|jets 218L
 		if code == "1300" && curAirport != nil {
-			if len(p) >= 5 {
+			if len(p) >= 7 {
 				lat, _ := strconv.ParseFloat(p[1], 64)
 				lon, _ := strconv.ParseFloat(p[2], 64)
 				hdg, _ := strconv.ParseFloat(p[3], 64)
@@ -235,6 +238,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					Lon:     lon,
 					Heading: hdg,
 					Type:    p[4],
+					Name:	 strings.Join(p[6:], " "),
 				}
 				// We don't add it to curAirport.Parking yet; we wait for metadata (1301)
 			}
@@ -242,16 +246,23 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}
 
 		// 1301: PARKING METADATA (Follows a 1300)
+		//1301 C airline baw afr klm dlh vir sas aza ibe sva ber ryr vlg ezy
 		if code == "1301" && curParking != nil && curAirport != nil {
-			if len(p) >= 4 {
+			airlineCodes := ""
+			if len(p) >= 3 {
 				curParking.WidthClass = p[1] // Size class (e.g., "D")
-				curParking.Name = strings.Join(p[3:], " ")
-				
+				curParking.SizeType = p[2] // airline / general_aviation
 				curAirport.Parking = append(curAirport.Parking, *curParking)
+			} else {
+				if len(p) >= 4 {
+					airlineCodes = strings.Join(p[3:], " ")
+				}
 			}
+			curParking.AirlineCodes = airlineCodes
 			curParking = nil // Reset for next spot
 			continue
 		}
+		
 		// 2. GEOGRAPHY & METADATA (Universal Parsing)
 		if code == "1302" && len(p) == 3 {
 			switch p[1] {

@@ -27,8 +27,8 @@ type Service struct {
 	FlightSchedules map[string][]flightplan.ScheduledFlight
 	Weather         *Weather
 	DataProvider    simdata.SimDataProvider
-	SimInitTime     time.Time
-	SessionInitTime time.Time
+	SimInitTime     time.Time		// the date/time within the sim
+	SessionInitTime time.Time		// the real-world date/time when the SimInitTime was synced, used to calculate current sim time and elapsed time in sim
 	VoiceManager    *VoiceManager
 }
 
@@ -42,7 +42,7 @@ type ServiceInterface interface {
 	GetWeatherState() *Weather
 	AddFlightPlan(ac *Aircraft, simTime time.Time) bool
 	AssignController(ac *Aircraft) *Controller
-	SetSimTime(init time.Time, session time.Time)
+	SyncSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
 	SetDataProvider(simdata.SimDataProvider)
 	CheckForCruiseSectorChange(ac *Aircraft)
@@ -201,7 +201,7 @@ func (s *Service) GetCurrentZuluTime() time.Time {
 	return s.SimInitTime.Add(time.Since(s.SessionInitTime))
 }
 
-func (s *Service) SetSimTime(init time.Time, session time.Time) {
+func (s *Service) SyncSimTime(init time.Time, session time.Time) {
 	s.SimInitTime = init
 	s.SessionInitTime = session
 }
@@ -243,10 +243,15 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 	}
 }
 
-// isAirborne returns true if the phase is considered an airbourne phase. The Depart phase is considered
-// airbourne although technically during the takeoff roll portion the aircraft is not airborne
-func isAirborne(phase int) bool {
-	return phase >= flightphase.Depart.Index() && phase < flightphase.Braking.Index()
+// IsAirborne returns true if the phase is considered an airbourne phase. depatIsAirborne can be used to control whether
+// the Depart phase is considered airborne or not given that technically, during the takeoff roll portion, the aircraft 
+// is not physically airborne
+func IsAirborne(phase int, departIsAirborne bool) bool {
+	beginPhase := flightphase.Depart
+	if !departIsAirborne {
+		beginPhase = flightphase.Climbout
+	}
+	return phase >= beginPhase.Index() && phase < flightphase.Braking.Index()
 }
 
 func GetCountryFromRegistration(reg string) string {

@@ -89,7 +89,7 @@ func (xpc *XPConnect) Start() {
 		logger.Log.Errorf("Could not get sim time: %v", err)
 		return
 	}
-	xpc.atcService.SetSimTime(simInitTime, time.Now())
+	xpc.atcService.SyncSimTime(simInitTime, time.Now())
 
 	logger.Log.Info("get dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
@@ -188,10 +188,7 @@ func (xpc *XPConnect) initSimTime() (time.Time, error) {
 	}
 
 	zuluResult := simdata.GetZuluDateTime(xpTime)
-
-	fmt.Println("--- X-Plane Time Conversion ---")
-	fmt.Printf("Sim Local Date Days: %d\n", xpTime.LocalDateDays)
-	fmt.Printf("Calculated Zulu:     %s\n", zuluResult.Format("2006-01-02 15:04:05"))
+	logger.Log.Infof("calculated zulu time:     %s\n", zuluResult.Format("2006-01-02 15:04:05"))
 
 	return zuluResult, nil
 }

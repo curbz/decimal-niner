@@ -132,7 +132,8 @@ func TestIsAirborne(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		got := isAirborne(tc.phase)
+		//TODO add tests for isAirborne(tc.phase, false)
+		got := IsAirborne(tc.phase, true)
 		if got != tc.want {
 			t.Errorf("isAirborne(%d) = %v; want %v", tc.phase, got, tc.want)
 		}

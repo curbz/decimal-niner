@@ -40,7 +40,7 @@ type Flight struct {
 	Squawk              string
 	PlanAssigned        bool
 	AirlineName         string
-	Schedule 			flightplan.ScheduledFlight
+	Schedule 			*flightplan.ScheduledFlight
 }
 
 type Position struct {
@@ -276,16 +276,19 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 		}
 	}
 
-	// use remaining candidate i.e. [0]
-	ac.Flight.Origin = candidateScheds[0].IcaoOrigin
-	ac.Flight.Destination = candidateScheds[0].IcaoDest
-	ac.Flight.CruiseAlt = candidateScheds[0].CruiseAlt * 100
-	ac.Flight.AirlineName = candidateScheds[0].AirlineName
+	// use remaining candidate as flight schedule.
+	// important: we copy the data through assignment to a new variable (sched) to ensure that if  we later modified the candidates array and it were to reallocate,
+	// then the memory address of the flight plan assigned to the aircraft would not be affected (as would be the case if we directly assigned the pointer to the candidateScheds[0] element)
+	sched := candidateScheds[0]
+	ac.Flight.Schedule = &sched
+	ac.Flight.Origin = sched.IcaoOrigin
+	ac.Flight.Destination = sched.IcaoDest
+	ac.Flight.CruiseAlt = sched.CruiseAlt * 100
+	ac.Flight.AirlineName = sched.AirlineName
 
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
 
-	ac.Flight.Schedule = candidateScheds[0]
 	ac.Flight.PlanAssigned = true
 
 	return ac.Flight.PlanAssigned

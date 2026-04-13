@@ -111,7 +111,9 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 }
 
-// GetZuluDateTime converts sim datarefs into a standard Go time.Time object
+// GetZuluDateTime converts sim datarefs into a standard Go time.Time object. 
+// Generally this should be used at application startup only. Use the atc service's
+// GetGetCurrentZuluTime function instead for an immediate response.
 func GetZuluDateTime(xpt XPlaneTime) time.Time {
 	// 1. Establish the Year. XP doesn't provide this, so we use current system year.
 	currentYear := time.Now().Year()
@@ -135,7 +137,7 @@ func GetZuluDateTime(xpt XPlaneTime) time.Time {
 	}
 
 	// 5. Subtract the offset from the Local Timestamp to get the Zulu Timestamp
-	// If Local is 5 hours ahead of Zulu, subtracting 5 hours gives us Zulu.
+	// e.g. if Local is 5 hours ahead of Zulu, subtracting 5 hours gives us Zulu.
 	zuluDateTime := localFull.Add(time.Duration(-diff) * time.Second)
 
 	return zuluDateTime

@@ -24,7 +24,7 @@ func (m *MockATC) NotifyFlightPhaseChange(ac *atc.Aircraft) {
 }
 
 // Implement other interface methods as NOPs
-func (m *MockATC) SetSimTime(t1, t2 time.Time)                         {}
+func (m *MockATC) SyncSimTime(t1, t2 time.Time)                         {}
 func (m *MockATC) GetAirline(c string) *atc.AirlineInfo                { return nil }
 func (m *MockATC) GetUserState() atc.UserState                         { return atc.UserState{} }
 func (m *MockATC) GetWeatherState() *atc.Weather                       { return &atc.Weather{} }

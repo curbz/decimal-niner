@@ -11,7 +11,6 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
-	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -42,6 +41,15 @@ type OccupiedSpot struct {
 	Radius   float64 // To ensure we don't spawn a ghost touching another plane
 }
 
+const (
+	DMINUS_PARKED_MINS 		= 30
+	DMINUS_STARTUP_MINS 	= 15
+	DMINUS_TAXIOUT_MINS 	= 10
+	DMINUS_DEPART_MINS 		= 0
+	DMINUS_CLIMBOUT_MINS 	= -10
+	DMINUS_CRUISE 			= -20
+)
+
 func New(cfgPath string) (traffic.Engine, error) {
 	cfg, err := util.LoadConfig[D9TrafficConfig](cfgPath)
 	if err != nil {
@@ -52,6 +60,7 @@ func New(cfgPath string) (traffic.Engine, error) {
 	return &D9TrafficEngine{
 		FlightPlanPath: cfg.D9Traffic.FlightPlanPath,
 		Spawned:        make(map[string]bool),
+		OccupiedParking: make(map[string]string),
 	}, nil
 }
 
@@ -63,16 +72,13 @@ func (e *D9TrafficEngine) Start() {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
 		for range ticker.C {
-			// 1. Get current Sim Time (this should come from your X-Plane Datarefs)
-			curTime, err := e.atcService.DataProvider.GetSimTime()
-			if err != nil {
-				logger.Log.Errorf("error getting sim time: %v", err)
-				return
-			}
-			zuluDateTime := simdata.GetZuluDateTime(curTime)
-			day := int(zuluDateTime.Weekday()) 
-			hour := zuluDateTime.Hour()
-			min := zuluDateTime.Minute()
+			
+			logger.Log.Infof("d9traffic ticker started. current spawned: %d", len(e.Spawned))
+
+			currSimZTime := e.atcService.GetCurrentZuluTime()
+			day := int(currSimZTime.Weekday()) 
+			hour := currSimZTime.Hour()
+			min := currSimZTime.Minute()
 
 			// 2. Run the Spawn Check for all relevant airports
 			relevantICAOs := e.GetRelevantICAOs()
@@ -166,8 +172,8 @@ func (e *D9TrafficEngine) GetRelevantICAOs() []string {
         }
     }
     
-    // Always include the nearest airport as a fallback for visual/proximity traffic
-    if e.atcService.UserState.NearestAirport != nil {
+    // if the user is on the ground, include the nearest airport as a fallback for visual/proximity traffic
+    if e.atcService.UserState.NearestAirport != nil && atc.IsAirborne(e.atcService.UserState.FlightPhase.Index(), false) {
         icaoMap[e.atcService.UserState.NearestAirport.ICAO] = true
     }
 
@@ -211,7 +217,7 @@ func (e *D9TrafficEngine) CheckForNewSpawns(icao string, day, h, m int) {
 			// If the flight is in the future window [now, now + 30]
 			if compareMins >= nowMins && compareMins <= nowMins+lookahead {
 				if !e.IsCurrentlyActive(f.AircraftRegistration) {
-					e.TrySpawnGroundTraffic(f)
+					e.TrySpawnGroundTraffic(&f)
 				}
 			}
 
@@ -228,54 +234,73 @@ func (e *D9TrafficEngine) IsCurrentlyActive(registration string) bool {
     return exists && active
 }
 
-func (e *D9TrafficEngine) TrySpawnGroundTraffic(f flightplan.ScheduledFlight) {
+func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int {
+	// Calculate diff at spawn time
+	currSimZTime := e.atcService.GetCurrentZuluTime()
+	h, m, _ := currSimZTime.Clock()
+	nowMins := h*60 + m
+    depMins := (f.DepatureHour * 60) + f.DepartureMin
+    diff := depMins - nowMins
+	return diff
+}
 
-		// Create the "Live" entity
-		// TODO figure out airline code and classign - see callsign logic in xpconnect
-		//aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
-		//aircraft.Flight.AirlineName = airlineInfo.AirlineName
-		//aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
-		// TODO: assign runway - based on weather/wind and runway availability
-		newAc := &atc.Aircraft{
-			Registration: f.AircraftRegistration,
-			//TODO set correct sizeclass
-			SizeClass: atc.SizeClass[3], 
-			Flight: atc.Flight{
-				Number:      f.Number,
-				Origin:      f.IcaoOrigin,
-				Destination: f.IcaoDest,
-				Schedule: f,
-				// Squawk random number between 1200 and 6999
-				Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
-				PlanAssigned: true,
-				Phase: flightphase.Phase{
-					Current:    flightphase.Unknown.Index(),
-					Previous:   flightphase.Unknown.Index(),
-					Transition: time.Now(),
-				},
+func (e *D9TrafficEngine) TrySpawnGroundTraffic(f *flightplan.ScheduledFlight) {
+
+	ttd := e.timeDiffToDeparture(f)
+	initialPhase := e.DetermineInitialPhase(ttd)
+    
+    if initialPhase == flightphase.Unknown {
+        return
+    }
+
+	// Create the "Live" entity
+	// TODO figure out airline code and classign - see callsign logic in xpconnect
+	//aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+	//aircraft.Flight.AirlineName = airlineInfo.AirlineName
+	//aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
+	// TODO: assign runway - based on weather/wind and runway availability
+	newAc := &atc.Aircraft{
+		Registration: f.AircraftRegistration,
+		//TODO set correct sizeclass
+		SizeClass: atc.SizeClass[3], 
+		Flight: atc.Flight{
+			Number:      f.Number,
+			Origin:      f.IcaoOrigin,
+			Destination: f.IcaoDest,
+			Schedule: f,
+			// Squawk random number between 1200 and 6999
+			Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
+			PlanAssigned: true,
+			Phase: flightphase.Phase{
+				Current:    initialPhase.Index(),
+				Previous:   flightphase.Unknown.Index(),
+				Transition: time.Now(),
 			},
-		}
+		},
+	}
+	e.atcService.SetFlightPhaseClass(newAc)
 
-        e.Spawned[f.AircraftRegistration] = true
-        e.ActiveAircraft = append(e.ActiveAircraft, newAc)
+	e.Spawned[f.AircraftRegistration] = true
+	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
 
-        logger.Log.Infof("Successfully spawned ghost traffic: %s (%s %d)", 
-            f.AircraftRegistration, f.AirlineName, f.Number)
+	logger.Log.Infof("Successfully spawned ghost traffic: %s (%s %d)", 
+		f.AircraftRegistration, f.AirlineName, f.Number)
     
 }
 
 func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
-    nowMins := (h * 60) + m
-
+    
     for _, ac := range e.ActiveAircraft {
         
 		f := ac.Flight.Schedule
-        depMins := (f.DepatureHour * 60) + f.DepartureMin
-        diff := depMins - nowMins
+        diff := e.timeDiffToDeparture(f)
 
-        switch {
-		case diff > 20:
-			// Parked
+        switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
+		case flightphase.Unknown:
+            // shouldn't be the case that the phase is unknown at this point, but this acts as a safety net
+            ac.Flight.Phase.Current = e.DetermineInitialPhase(diff).Index()
+			continue
+		case flightphase.Parked:
 			if ac.Flight.AssignedParking == "" {
 				airport := e.atcService.Airports[f.IcaoOrigin]
 
@@ -284,9 +309,12 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
         		spot := e.FindAvailableParking(airport, reqWidth)
 				
 				if spot == nil {
-					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for flight %s at airport %s - cannot spawn",
+					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for aircraft %s at airport %s - cannot spawn",
 						ac.Registration, airport.ICAO)
 					continue
+				} else {
+					util.LogWithLabel("D9TRAFFIC", "assigning parking for aircraft %s at airport %s to spot %s",
+						ac.Registration, airport.ICAO, spot.Name)					
 				}
 
 				ac.Flight.Position = atc.Position{
@@ -297,28 +325,34 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 					//Altitude: airport.Elevation,
 				}
 				ac.Flight.AssignedParking = spot.Name 
-				
-				// LEASE: Track that this spot is taken by this aircraft
 				key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
             	e.OccupiedParking[key] = ac.Registration
 				spot.IsOccupied = true 
-
+			}
+			if diff <= DMINUS_STARTUP_MINS {
+				ac.Flight.Phase.Current = flightphase.Startup.Index()
 				ac.Flight.Phase.Class = flightclass.Departing
 			}
-        case diff > 15 && diff <= 20:
-        	ac.Flight.Phase.Current = flightphase.Startup.Index()
-			ac.Flight.Phase.Class = flightclass.Departing     
-        case diff > 0 && diff <= 15:
-			ac.Flight.Phase.Current = flightphase.TaxiOut.Index()	
-			ac.Flight.Phase.Class = flightclass.Departing
-			if ac.Flight.AssignedParking != "" {
-				e.ReleaseParking(f.IcaoOrigin, ac.Flight.AssignedParking)
-				// We keep the string name in AssignedParking for ATC ref, 
-				// but the physical spot is now free for others.
+        case flightphase.Startup:
+			if diff <= DMINUS_TAXIOUT_MINS {
+				ac.Flight.Phase.Current = flightphase.TaxiOut.Index()
+				ac.Flight.Phase.Class = flightclass.Departing
 			}
-        case diff >= 5 && diff <= 0:
-			ac.Flight.Phase.Current = flightphase.Depart.Index()
-			ac.Flight.Phase.Class = flightclass.Departing
+		case flightphase.TaxiOut:
+			if diff <= DMINUS_DEPART_MINS {
+				ac.Flight.Phase.Current = flightphase.Depart.Index()
+				ac.Flight.Phase.Class = flightclass.Departing
+			}
+		case flightphase.Depart:
+			if diff <= DMINUS_CLIMBOUT_MINS {
+				ac.Flight.Phase.Current = flightphase.Climbout.Index()
+				ac.Flight.Phase.Class = flightclass.Departing
+			}
+		case flightphase.Climbout:
+			if diff <= DMINUS_CRUISE {
+				ac.Flight.Phase.Current = flightphase.Cruise.Index()
+				ac.Flight.Phase.Class = flightclass.Cruising
+			}
 		default: 
 			continue
         }
@@ -331,7 +365,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 				e.atcService.NotifyFlightPhaseChange(ac)
 				logMsg = "flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d"
 			} else {
-				logMsg = "flight %d silently initialised with current phase %s and previous phase %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d"
+				logMsg = "flight %d silently initialised with previous phase %s and current phase %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d"
 			}
 
 			util.LogWithLabel(ac.Registration,
@@ -352,8 +386,21 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 	e.initialised = true
 }
 
-func (e *D9TrafficEngine) GetOccupiedSpots() []OccupiedSpot {
-	return []OccupiedSpot{}
+func (e *D9TrafficEngine) DetermineInitialPhase(diff int) flightphase.FlightPhase {
+    switch {
+    case diff > DMINUS_PARKED_MINS:
+        return flightphase.Parked
+    case diff > DMINUS_STARTUP_MINS && diff <= DMINUS_PARKED_MINS:
+        return flightphase.Parked 
+    case diff > DMINUS_TAXIOUT_MINS && diff <= DMINUS_STARTUP_MINS:
+        return flightphase.Startup
+    case diff > DMINUS_DEPART_MINS && diff <= DMINUS_TAXIOUT_MINS:
+        return flightphase.TaxiOut
+    case diff <= DMINUS_DEPART_MINS && diff >= DMINUS_CLIMBOUT_MINS:
+        return flightphase.Depart
+    default:
+        return flightphase.Cruise
+    }
 }
 
 func (e *D9TrafficEngine) FindAvailableParking(airport *atc.Airport, reqRadius float64) *atc.ParkingSpot {
