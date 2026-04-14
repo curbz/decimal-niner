@@ -250,7 +250,7 @@ func (s *Service) AssignController(ac *Aircraft) *Controller {
 		return nil
 	}
 
-	util.LogWithLabel(ac.Registration, "Controller found: %s %s Role: %s (%d)",
+	util.LogWithLabel(ac.Registration, "controller found: %s %s Role: %s (%d)",
 		aiFac.Name, aiFac.ICAO, roleNameMap[aiFac.RoleID], aiFac.RoleID)
 
 	return aiFac
@@ -268,7 +268,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 	closestPointDist := searchLimit
 
-	util.LogWithLabel(label, "Searching controllers at lat %f, lng %f, elev %f. Target Role: %s (%d) Tuned Freq: %d Target ICAO: %s",
+	util.LogWithLabel(label, "searching controllers at lat %f, lng %f, elev %f. Target Role: %s (%d) Tuned Freq: %d Target ICAO: %s",
 		uLa, uLo, uAl, roleNameMap[tRole], tRole, tFreq, targetICAO)
 
 	// --- TIER 0: THE TARGET ICAO SHORTCUT ---

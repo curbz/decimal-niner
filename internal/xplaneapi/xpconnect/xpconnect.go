@@ -695,15 +695,16 @@ func (xpc *XPConnect) updateUserData() {
 	latVal, errLat := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionLatitude, 0)
 	lngVal, errLng := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionLongitude, 0)
 	altVal, errAlt := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightmodelPositionElevation, 0)
+	isOnGroundVal, errOnGround := xpc.getMemDataRefValue(xpc.memSubscribeDataRefIndexMap, simdata.DRSimFlightModelIsOnGround, 0)
 
 	// check for errors
-	if errLat != nil || errLng != nil || errAlt != nil {
-		logErrors(errLat, errLng, errAlt)
+	if errLat != nil || errLng != nil || errAlt != nil || errOnGround != nil {
+		logErrors(errLat, errLng, errAlt, errOnGround)
 		return
 	}
 
 	// check we got values
-	if latVal == nil || lngVal == nil || altVal == nil {
+	if latVal == nil || lngVal == nil || altVal == nil || isOnGroundVal == nil {
 		logger.Log.Warn("couldn't update user state as positional dataref values are not available")
 		return
 	}
@@ -720,6 +721,15 @@ func (xpc *XPConnect) updateUserData() {
 	lng := lngF
 	alt := altF * 3.28084
 
+	isOnGround := 0
+	if isOnGroundInt, ok := isOnGroundVal.(int); ok {
+		isOnGround = isOnGroundInt
+	} else if isOnGroundFl, okf := isOnGroundVal.(float64); okf {
+		isOnGround = int(isOnGroundFl)
+	} else {
+		logger.Log.Errorf("unexpected type for isOnGround - wanted: int or float64, got: %T", isOnGroundVal)
+	}
+
 	// check for changes
 	posChanged := false
 	// no need to include altitude in change detection
@@ -733,7 +743,10 @@ func (xpc *XPConnect) updateUserData() {
 			Lat:      lat,
 			Long:     lng,
 			Altitude: alt,
-		}, map[int]int{1: com1Freq, 2: com2Freq}, map[int]int{1: com1Facility, 2: com2Facility})
+		}, 
+		map[int]int{1: com1Freq, 2: com2Freq}, 
+		map[int]int{1: com1Facility, 2: com2Facility}, 
+		isOnGround==1)
 	}
 
 }

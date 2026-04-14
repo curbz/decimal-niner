@@ -40,6 +40,7 @@ var (
 		simdata.DRSimFlightmodelPositionLongitude: "double",
 		simdata.DRSimFlightmodelPositionElevation: "double",
 		simdata.DRSimFlightmodelPositionPsi:       "float",
+		simdata.DRSimFlightModelIsOnGround: 	   "int",
 
 		simdata.DRSimCockpitRadiosCom1FreqHz: "int",
 		simdata.DRSimCockpitRadiosCom2FreqHz: "int",
@@ -303,6 +304,8 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return 25.0 //+ float64(iter) // // <-- uncommment to simulate user position changing
 	case simdata.DRSimFlightmodelPositionPsi:
 		return 270.5 // Facing West towards Runway 27R
+	case simdata.DRSimFlightModelIsOnGround:
+		return int(1) // on ground
 
 	// --- User Radios (Heathrow Frequencies) ---
 	case simdata.DRSimCockpitRadiosCom1FreqHz:

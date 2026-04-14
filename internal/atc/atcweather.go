@@ -21,7 +21,7 @@ type Baro struct {
 	Sealevel float64
 }
 
-func (s *Service) GetWeatherState() *Weather {
+func (s *Service) GetWeatherState() *Weather { 
 	return s.Weather
 }
 

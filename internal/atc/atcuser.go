@@ -3,7 +3,6 @@ package atc
 import (
 	"fmt"
 
-	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -13,22 +12,21 @@ type UserState struct {
 	ActiveFacilities   map[int]*Controller // Key: 1 for COM1, 2 for COM2
 	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
 	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
-	//TODO: new fields, requires populating and updating
 	AssignedParking    ParkingSpot
-	FlightPhase 	   flightphase.FlightPhase
+	IsOnGround 	   	   bool
 }
 
 func (s *Service) GetUserState() UserState {
 	return s.UserState
 }
 
-func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityRoles map[int]int) {
+func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityRoles map[int]int, isOnGround bool) {
 
 	s.UserState.Position = pos
 	if s.UserState.ActiveFacilities == nil {
 		s.UserState.ActiveFacilities = make(map[int]*Controller)
 	}
-
+	s.UserState.IsOnGround = isOnGround
 	s.UserState.TunedFreqs = tunedFreqs
 	s.UserState.TunedFacilityRoles = tunedFacilityRoles
 
@@ -49,7 +47,7 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 
 		if controller != nil {
 			s.UserState.ActiveFacilities[idx] = controller
-			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "Controller found for user on COM%d %d: %s %s Role: %s (%d)", idx, uFreq,
+			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "controller found for user on COM%d %d: %s %s Role: %s (%d)", idx, uFreq,
 				controller.Name, controller.ICAO, roleNameMap[controller.RoleID], controller.RoleID)
 		} else {
 			util.LogWithLabel(fmt.Sprintf("User_COM%d", idx), "No nearby controller found for user on COM%d %d", idx, uFreq)
@@ -62,7 +60,4 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	} else {
 		s.UserState.NearestAirport = nil
 	}
-
-	//TODO determine flight phase
-	s.UserState.FlightPhase = flightphase.Parked
 }

@@ -1016,11 +1016,11 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 		0, nextRole, pos.Lat, pos.Long, pos.Altitude, searchICAO)
 
 	if nextController == nil {
-		util.LogWithLabel(label, "No controller found for handoff: role=%s (%d), searchICAO=%s",
+		util.LogWithLabel(label, "no controller found for handoff: role=%s (%d), searchICAO=%s",
 			roleNameMap[nextRole], nextRole, searchICAO)
 		return ""
 	} else {
-		util.LogWithLabel(label, "Controller found: %s %s Role ID: %s (%d)",
+		util.LogWithLabel(label, "controller found: %s %s Role ID: %s (%d)",
 			nextController.Name, nextController.ICAO, roleNameMap[nextController.RoleID], nextController.RoleID)
 	}
 

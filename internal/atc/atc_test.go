@@ -113,27 +113,28 @@ func TestIsNorthAmerica(t *testing.T) {
 func TestIsAirborne(t *testing.T) {
 	tests := []struct {
 		phase int
+		departIsAirborne bool
 		want  bool
 	}{
-		{phase: flightphase.Parked.Index(), want: false},
-		{phase: flightphase.Startup.Index(), want: false},
-		{phase: flightphase.TaxiOut.Index(), want: false},
-		{phase: flightphase.Depart.Index(), want: true},
-		{phase: flightphase.Climbout.Index(), want: true},
-		{phase: flightphase.Cruise.Index(), want: true},
-		{phase: flightphase.Approach.Index(), want: true},
-		{phase: flightphase.Holding.Index(), want: true},
-		{phase: flightphase.Final.Index(), want: true},
-		{phase: flightphase.Braking.Index(), want: false},
-		{phase: flightphase.TaxiIn.Index(), want: false},
-		{phase: flightphase.Shutdown.Index(), want: false},
-		{phase: flightphase.Unknown.Index(), want: false},
+		{phase: flightphase.Parked.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Startup.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.TaxiOut.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Depart.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Depart.Index(), departIsAirborne: true, want: true},
+		{phase: flightphase.Climbout.Index(), departIsAirborne: false, want: true},
+		{phase: flightphase.Cruise.Index(), departIsAirborne: false, want: true},
+		{phase: flightphase.Approach.Index(), departIsAirborne: false, want: true},
+		{phase: flightphase.Holding.Index(), departIsAirborne: false, want: true},
+		{phase: flightphase.Final.Index(), departIsAirborne: false, want: true},
+		{phase: flightphase.Braking.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.TaxiIn.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Shutdown.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Unknown.Index(), departIsAirborne: false, want: false},
 		{phase: 99, want: false},
 	}
 
 	for _, tc := range tests {
-		//TODO add tests for isAirborne(tc.phase, false)
-		got := IsAirborne(tc.phase, true)
+		got := IsAirborne(tc.phase, tc.departIsAirborne)
 		if got != tc.want {
 			t.Errorf("isAirborne(%d) = %v; want %v", tc.phase, got, tc.want)
 		}

@@ -71,7 +71,7 @@ func TestNormaliseRunway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			got := normaliseRunway(tt.in)
+			got := normaliseRunwayName(tt.in)
 			if got != tt.want {
 				t.Fatalf("normalizeRunway(%q) = %q; want %q", tt.in, got, tt.want)
 			}
@@ -146,9 +146,9 @@ func TestGetClosestAirport(t *testing.T) {
 	}}
 
 	tests := []struct {
-		name     string
+		name                 string
 		lat, lon, maxRangeNm float64
-		want     string
+		want                 string
 	}{
 		{"near AAA", 9.0, 11.0, 100.0, "AAA"},
 		{"near BBB", 15.0, 30.0, 1200.0, "BBB"},
@@ -164,3 +164,10 @@ func TestGetClosestAirport(t *testing.T) {
 		})
 	}
 }
+
+func TestReciprocal(t *testing.T) {
+    if getReciprocalName("09L") != "27R" { t.Errorf("Fail 09L") }
+    if getReciprocalName("27R") != "09L" { t.Errorf("Fail 27R") }
+    if getReciprocalName("18") != "36" { t.Errorf("Fail 18") }
+}
+

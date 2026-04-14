@@ -38,7 +38,7 @@ func TestNotifyUserStateChange(t *testing.T) {
 				},
 			}
 
-			s.NotifyUserStateChange(tt.pos, tt.tunedFreqs, tt.tunedRoles)
+			s.NotifyUserStateChange(tt.pos, tt.tunedFreqs, tt.tunedRoles, true)
 
 			if tt.wantActive {
 				if s.UserState.ActiveFacilities == nil {

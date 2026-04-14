@@ -25,6 +25,7 @@ type Airport struct {
 	Name        string
 	Lat         float64
 	Lon         float64
+	Elevation   float64 // feet
 	TransAlt    int
 	Region      string
 	Runways     map[string]*Runway // keyed by "09L", "27R"
@@ -34,11 +35,17 @@ type Airport struct {
 }
 
 type Runway struct {
-	FAFalt                   int    // Final approach fix altitude
-	MAalt                    int    // highest missed approach altitude
-	MAHeading                int    // initial MA course (degrees)
-	MAFix                    string // only if HM leg exists
-	HighestPrecisionApproach string // highest precision approach type
+	Name                     string  // e.g., "09L"
+	Lat, Lon                 float64 // The coordinates of the threshold
+	Heading                  float64 // The magnetic or true heading of the runway
+	Length                   float64 // Length in meters
+	Width                    float64 // Width in meters
+	ThresholdElevation       float64 // feet
+	FAFalt                   int     // Final approach fix altitude
+	MAalt                    int     // highest missed approach altitude
+	MAHeading                int     // initial MA course (degrees)
+	MAFix                    string  // only if HM leg exists
+	HighestPrecisionApproach string  // highest precision approach type
 }
 
 type Fix struct {
@@ -54,14 +61,14 @@ type aptPoint struct {
 }
 
 type ParkingSpot struct {
-    Name       		string
-	AirlineCodes 	string // space-separated list of 3 letter airline codes that can use this spot (e.g., "baw klm"), or empty for any
-    Lat, Lon   		float64
-    Heading    		float64
-    Type       		string // Gate, Tie-down, Hangar
-    WidthClass 		string // A, B, C, D, E, F (ICAO standard)
-	SizeType 		string // airline / general_aviation 
-    IsOccupied 		bool
+	Name         string
+	AirlineCodes string // space-separated list of 3 letter airline codes that can use this spot (e.g., "baw klm"), or empty for any
+	Lat, Lon     float64
+	Heading      float64
+	Type         string // Gate, Tie-down, Hangar
+	WidthClass   string // A, B, C, D, E, F (ICAO standard)
+	SizeType     string // airline / general_aviation / military
+	IsOccupied   bool
 }
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -173,7 +180,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	scanner := bufio.NewScanner(file)
 	var curAirport *Airport
 	var curICAO, curName, region string
-	var curLat, curLon float64
+	var curLat, curLon, curElev float64
 	var transAlt int
 	var isRequiredAirport bool
 	var batchStartIdx int
@@ -201,13 +208,17 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		// 1. HEADER RECORD (New Airport Start)
 		if code == "1" || code == "16" || code == "17" {
 			if curICAO != "" {
-				finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO)
+				finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev)
 			}
 
 			if len(p) >= 5 {
 				curICAO = p[4]
 				curName = cleanAirportName(strings.Join(p[5:], " "))
 				curLat, curLon, transAlt, region = 0, 0, 0, ""
+				curElev, err = strconv.ParseFloat(p[1], 0)
+				if err != nil {
+					logger.Log.Warnf("unable to get airport elevation for %s: %v", curICAO, err)
+				}
 				airportPoints = []aptPoint{}
 
 				_, isRequiredAirport = requiredAirports[curICAO]
@@ -216,7 +227,10 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 
 				if isRequiredAirport {
-					curAirport = &Airport{ICAO: curICAO, Name: curName, Controllers: []*Controller{}}
+					curAirport = &Airport{
+						ICAO:        curICAO,
+						Name:        curName,
+						Controllers: []*Controller{}}
 					airports[curICAO] = curAirport
 				} else {
 					curAirport = nil
@@ -232,13 +246,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				lat, _ := strconv.ParseFloat(p[1], 64)
 				lon, _ := strconv.ParseFloat(p[2], 64)
 				hdg, _ := strconv.ParseFloat(p[3], 64)
-				
+
 				curParking = &ParkingSpot{
 					Lat:     lat,
 					Lon:     lon,
 					Heading: hdg,
 					Type:    p[4],
-					Name:	 strings.Join(p[6:], " "),
+					Name:    strings.Join(p[6:], " "),
 				}
 				// We don't add it to curAirport.Parking yet; we wait for metadata (1301)
 			}
@@ -250,8 +264,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		if code == "1301" && curParking != nil && curAirport != nil {
 			airlineCodes := ""
 			if len(p) >= 3 {
+				if p[2] != "airline" { // airline / general_aviation / military
+					// d9traffic is not interested in non-airline parking
+					curParking = nil
+					continue
+				}
 				curParking.WidthClass = p[1] // Size class (e.g., "D")
-				curParking.SizeType = p[2] // airline / general_aviation
+				curParking.SizeType = p[2]
 				curAirport.Parking = append(curAirport.Parking, *curParking)
 			} else {
 				if len(p) >= 4 {
@@ -262,7 +281,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			curParking = nil // Reset for next spot
 			continue
 		}
-		
+
 		// 2. GEOGRAPHY & METADATA (Universal Parsing)
 		if code == "1302" && len(p) == 3 {
 			switch p[1] {
@@ -358,7 +377,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 	// Finalize final block
 	if curICAO != "" {
-		finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO)
+		finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev)
 	}
 
 	// 5. FINAL MBB INITIALIZATION
@@ -376,7 +395,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	return controllers, airports, nil
 }
 
-func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []*Controller, icao string) {
+func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []*Controller, icao string, elevation float64) {
 	var fLat, fLon float64
 
 	// Prioritize Datum, then Centroid
@@ -394,6 +413,7 @@ func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 
 	if a != nil {
 		a.Lat, a.Lon = fLat, fLon
+		a.Elevation = elevation
 	}
 
 	// Retroactive update for any controllers created with 0,0
@@ -449,19 +469,53 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 		line := strings.TrimSpace(scan.Text())
 
 		if strings.HasPrefix(line, "RWY:") {
-			parts := strings.Split(line, ",")
-			if len(parts) >= 1 {
-				// Extract runway name from RWY:RW08
-				rwyTag := strings.TrimPrefix(parts[0], "RWY:")
-				rwy := strings.TrimSpace(rwyTag)
-				rwy = normaliseRunway(rwy)
-				if rwy != "" {
-					// Ensure runway entry exists
-					if _, ok := runways[rwy]; !ok {
-						runways[rwy] = Runway{}
+			parts := strings.Split(line, ";") // The physical data is usually after the semicolon
+			if len(parts) < 2 {
+				continue
+			}
+
+			// Physical Data: N51283900,W000290597,1014;
+			dataFields := strings.Split(parts[1], ",")
+
+			// Metadata Header: RWY:RW09L, , ,00079, ,IAA ,3,
+			metaFields := strings.Split(parts[0], ",")
+
+			rwyName := normaliseRunwayName(strings.TrimPrefix(metaFields[0], "RWY:"))
+
+			// Create or get the existing runway
+			rwEntry := runways[rwyName]
+			rwEntry.Name = rwyName
+
+			if len(metaFields) >= 3 {
+				length, _ := strconv.ParseFloat(strings.TrimSpace(metaFields[1]), 64)
+				width, _ := strconv.ParseFloat(strings.TrimSpace(metaFields[2]), 64)
+				rwEntry.Length = length
+				rwEntry.Width = width
+				if len(metaFields) >= 4 {
+					// 1. Parse Heading (Token 3 in metaFields)
+					if h, err := strconv.Atoi(strings.TrimSpace(metaFields[3])); err == nil {
+						rwEntry.Heading = float64(h) // Already in degrees (e.g., 00079)
 					}
 				}
 			}
+
+			// 2. Parse Coordinates from dataFields
+			if len(dataFields) >= 2 {
+				rwEntry.Lat = ParseCIFPCoord(dataFields[0])
+				rwEntry.Lon = ParseCIFPCoord(dataFields[1])
+			}
+
+			// 3. Parse Threshold Elevation (Token 2 in dataFields)
+			if len(dataFields) >= 3 {
+				// Remove trailing semicolon if present and parse
+				elevStr := strings.TrimRight(dataFields[2], ";")
+				if e, err := strconv.Atoi(elevStr); err == nil {
+					// Note: CIFP elevation is often 1014 meaning 101.4, check your data source!
+					rwEntry.ThresholdElevation = float64(e) / 10.0
+				}
+			}
+
+			runways[rwyName] = rwEntry
 			continue
 		}
 
@@ -518,7 +572,7 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 
 		// Detect runway from RWxx fix
 		if strings.HasPrefix(fix, "RW") {
-			rwy := normaliseRunway(fix)
+			rwy := normaliseRunwayName(fix)
 			if rwy != "" {
 				currentRunway = rwy
 				// Ensure runway entry exists even before merging
@@ -579,6 +633,41 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 
 	// Save last approach
 	saveApproach()
+
+	// --- STEP 2: POST-PROCESSING (Pairing & Geometry) ---
+	for name, rw := range runways {
+		recipName := getReciprocalName(name)
+		recip, exists := runways[recipName]
+
+		if exists {
+			// 1. Calculate Physical Heading (True Heading)
+			// This fixes the "77 vs 79" mirrored data issue
+			rw.Heading = geometry.CalculateBearing(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
+
+			// 2. Calculate Length if missing
+			if rw.Length == 0 {
+				rw.Length = geometry.CalculateDistanceFeet(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
+			}
+
+			// 3. Fallback for Elevation (if end B is 0.0, use end A)
+			if rw.ThresholdElevation == 0 && recip.ThresholdElevation > 0 {
+				rw.ThresholdElevation = recip.ThresholdElevation
+			}
+
+			// 4. Default Width if missing
+			if rw.Width == 0 {
+				// 150ft is the standard for most commercial runways.
+				// We could even scale this based on the length:
+				if rw.Length > 6000 {
+					rw.Width = 150.0 
+				} else {
+					rw.Width = 100.0
+				}
+			}
+
+			runways[name] = rw
+		}
+	}
 
 	return runways, scan.Err()
 }
@@ -649,7 +738,7 @@ func lowestAltitudeOf(at, above, below string) int {
 	return best
 }
 
-func normaliseRunway(rw string) string {
+func normaliseRunwayName(rw string) string {
 	// fix is like "RW27", "RW27L", "RW9", "RW09R"
 	if !strings.HasPrefix(rw, "RW") {
 		return ""
@@ -731,4 +820,56 @@ func cleanAirportName(n string) string {
 	}
 
 	return strings.TrimSpace(n)
+}
+
+func ParseCIFPCoord(coord string) float64 {
+	coord = strings.TrimSpace(coord)
+	if len(coord) < 9 {
+		return 0
+	}
+
+	dir := coord[0]
+	// For Lat (N/S), deg is 2 digits. For Lon (E/W), deg is 3 digits.
+	degLen := 2
+	if dir == 'E' || dir == 'W' {
+		degLen = 3
+	}
+
+	deg, _ := strconv.ParseFloat(coord[1:1+degLen], 64)
+	min, _ := strconv.ParseFloat(coord[1+degLen:3+degLen], 64)
+	sec, _ := strconv.ParseFloat(coord[3+degLen:], 64)
+
+	// DD + MM/60 + SS.ss/3600
+	decimal := deg + (min / 60.0) + (sec / 360000.0)
+
+	if dir == 'S' || dir == 'W' {
+		decimal = -decimal
+	}
+	return decimal
+}
+
+func getReciprocalName(name string) string {
+	// Standard runway names are 2 or 3 chars: 09, 09L, 27R
+	if len(name) < 2 {
+		return ""
+	}
+
+	numStr := name[:2]
+	suffix := name[2:] // L, R, or C
+
+	num, _ := strconv.Atoi(numStr)
+	recipNum := (num + 18)
+	if recipNum > 36 {
+		recipNum -= 36
+	}
+
+	recipSuffix := suffix
+	if suffix == "L" {
+		recipSuffix = "R"
+	}
+	if suffix == "R" {
+		recipSuffix = "L"
+	}
+
+	return fmt.Sprintf("%02d%s", recipNum, recipSuffix)
 }

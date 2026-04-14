@@ -35,7 +35,7 @@ type Service struct {
 type ServiceInterface interface {
 	Run()
 	NotifyFlightPhaseChange(msg *Aircraft)
-	NotifyUserStateChange(pos Position, com1Freq, com2Freq map[int]int)
+	NotifyUserStateChange(pos Position, com1Freq, com2Freq map[int]int, isOnGround bool)
 	NotifyCruisePositionChange(ac *Aircraft)
 	GetAirline(code string) *AirlineInfo
 	GetUserState() UserState
@@ -231,7 +231,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 			// NON-BLOCKING SEND
 			select {
 			case s.Broadcast <- ac:
-				util.LogWithLabel(ac.Registration, "User on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
+				util.LogWithLabel(ac.Registration, "user on same frequency - sending for phrase generation (listen all frequencies is %v)", s.Config.ATC.ListenAllFreqs)
 			default:
 				// drop the message as channel buffer is full
 				util.LogWarnWithLabel(ac.Registration, "voice queue full, dropping transmission")
