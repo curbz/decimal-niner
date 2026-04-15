@@ -66,6 +66,7 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
 			fullPath := filepath.Join(dirPath, file.Name())
 			airlineName := cleanAirlineName(file.Name())
+			fmt.Println(airlineName)
 			err := bglReader(fullPath, airlineName, masterSchedules, masterAirports)
 			if err != nil {
 				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)
@@ -126,6 +127,15 @@ func cleanAirlineName(fileName string) string {
 	// Replaces underscores with spaces (e.g., Aeromexico_Connect -> Aeromexico Connect)
 	result = strings.ReplaceAll(result, "_", " ")
 
+	// Remove group prefixes: AFG, ANA, IAG, JAL, LAG
+	groupPrefixes := []string{"AFG", "ANA", "IAG", "JAL", "LAG"}
+	for _, prefix := range groupPrefixes {
+		if strings.HasPrefix(result, prefix) {
+			result = strings.TrimPrefix(result, prefix)
+			break
+		}
+	}
+	
 	// 4. Final trim for safety
 	return strings.TrimSpace(result)
 }

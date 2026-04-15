@@ -27,8 +27,8 @@ func TestCleanAirlineName(t *testing.T) {
 		},
 		{
 			name:     "Dash and Underscore mix",
-			fileName: "AFG_KLM-MartinairCargo W25.bgl",
-			expected: "AFG KLM-MartinairCargo",
+			fileName: "KLM-Martinair_Cargo W25.bgl",
+			expected: "KLM-Martinair Cargo",
 		},
 		{
 			name:     "Simple Year Suffix",
@@ -59,6 +59,11 @@ func TestCleanAirlineName(t *testing.T) {
 			name:     "Complex Branch name",
 			fileName: "Aeromexico_Connect S24.bgl",
 			expected: "Aeromexico Connect",
+		},
+		{
+			name:     "Remove group prefix",
+			fileName: "IAG_Group_Airline S24.bgl",
+			expected: "Group Airline",
 		},
 	}
 
