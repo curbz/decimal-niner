@@ -29,13 +29,12 @@ import (
 )
 
 type VoicesConfig struct {
-	PhrasesFile              string `yaml:"phrases_file"`
-	UnicomPhrasesFile        string `yaml:"unicom_phrases_file"`
-	Piper                    Piper  `yaml:"piper"`
-	Sox                      Sox    `yaml:"sox"`
-	HandoffValedictionFactor int    `yaml:"handoff_valediction_factor"`
-	SayAgainFactor           int    `yaml:"say_again_factor"`
-	CommsCountryCodeDefault  string `yaml:"comms_country_code_default"`
+	PhrasesFile                string `yaml:"phrases_file"`
+	UnicomPhrasesFile          string `yaml:"unicom_phrases_file"`
+	Piper                      Piper  `yaml:"piper"`
+	Sox                        Sox    `yaml:"sox"`
+	HandoffValedictionFactor   int    `yaml:"handoff_valediction_factor"`
+	SayAgainFactor             int    `yaml:"say_again_factor"`
 }
 
 // +----------------------------------------------------------+
@@ -223,8 +222,8 @@ func (s *Service) startComms() {
 				}
 			}
 
-			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no 
-			// further communications and this allows for quicker recycling of voices in busy airspaces. 
+			// if the flight has reached shutdown phase, we can release the voice session immediately as there will be no
+			// further communications and this allows for quicker recycling of voices in busy airspaces.
 			// For other phases we rely on the periodic cleaner to evict stale sessions after a timeout
 			if ac.Flight.Phase.Current == flightphase.Shutdown.Index() {
 				s.VoiceManager.ReleaseSession(ac)
@@ -415,7 +414,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says highest precision approach is %s", rwy.HighestPrecisionApproach)
 				res = rwy.HighestPrecisionApproach
-			} 
+			}
 			return strings.TrimSpace(res + " approach")
 		},
 		"@DESTINATION": func(args ...string) interface{} {
@@ -564,7 +563,7 @@ func PrepSpeech(piperPath string, vm *VoiceManager) {
 		baseLang := strings.ToUpper(voice[0:2])
 		localeCode := strings.ToUpper(voice[0:5])
 
-		// global/base language replacements 
+		// global/base language replacements
 		if baseEngine, ok := vm.dictionaries[baseLang]; ok {
 			msg.Text = baseEngine.Apply(msg.Text)
 		}

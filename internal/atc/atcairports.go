@@ -32,6 +32,8 @@ type Airport struct {
 	Holds       []*Hold
 	Controllers []*Controller
 	Parking     []ParkingSpot
+	HubWeights  map[string]float64 // Airline ICAO -> Strength (0.0 to 1.0)
+    ClassCounts map[string]int     // "E": 20, "C": 100 (Total gates by size)
 }
 
 type Runway struct {
@@ -414,6 +416,8 @@ func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 	if a != nil {
 		a.Lat, a.Lon = fLat, fLon
 		a.Elevation = elevation
+		// Finalize the hub weights for the airport
+    	finalizeHubWeights(a)
 	}
 
 	// Retroactive update for any controllers created with 0,0
@@ -873,3 +877,30 @@ func getReciprocalName(name string) string {
 
 	return fmt.Sprintf("%02d%s", recipNum, recipSuffix)
 }
+
+// Make sure this is a method on your Airport struct
+func finalizeHubWeights(ap *Airport) {
+    ap.HubWeights = make(map[string]float64)
+    
+    tally := make(map[string]int)
+    totalObservations := 0
+
+    for _, spot := range ap.Parking {
+        // Only count commercial/airline spots
+        if spot.Type == "gate" || spot.Type == "airline" {
+            codes := strings.Fields(spot.AirlineCodes)
+            for _, code := range codes {
+                tally[code]++
+                totalObservations++
+            }
+        }
+    }
+
+    // Convert tallies to percentage weights (0.0 to 1.0)
+    if totalObservations > 0 {
+        for code, count := range tally {
+            ap.HubWeights[code] = float64(count) / float64(totalObservations)
+        }
+    }
+}
+

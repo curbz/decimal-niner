@@ -3,6 +3,7 @@ package atc
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -39,8 +40,8 @@ type Flight struct {
 	AssignedRunway      string
 	Squawk              string
 	PlanAssigned        bool
-	AirlineName         string
-	Schedule 			*flightplan.ScheduledFlight
+	Airline             *AirlineInfo
+	Schedule            *flightplan.ScheduledFlight
 }
 
 type Position struct {
@@ -54,6 +55,7 @@ type AirlineInfo struct {
 	AirlineName string `json:"airline_name"`
 	Callsign    string `json:"callsign"`
 	CountryCode string `json:"icao_country_code"`
+	Tier        string `json:"tier"`
 }
 
 func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
@@ -87,7 +89,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		}
 		// in the unlikely, but possible case that we have not set a comms country code by now, use flight data as a fallback
 		if ac.Flight.Comms.CountryCode == "" {
-			inferCommsCountryCode(ac, s.Config.ATC.Voices.CommsCountryCodeDefault)
+			inferCommsCountryCode(ac, s.Config.ATC.AirlineCountryCodeFallback)
 		}
 	}
 
@@ -171,8 +173,7 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 		return
 	}
 
-	dist := calculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	//fmt.Println("Distance from last cruise check: ", dist, " NM")
+	dist := CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
 	// Only notify if moved more than 5.0 NM
 	if dist > 5.0 {
 		// Trigger the cruise handoff detection logic
@@ -182,12 +183,37 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 	}
 }
 
-func (s *Service) GetAirline(code string) *AirlineInfo {
-	airlineInfo, exists := s.Airlines[code]
+func (s *Service) GetAirlineByCode(code string) *AirlineInfo {
+	airlineInfo, exists := s.AirlineByCode[code]
 	if !exists {
 		return nil
 	}
-	return &airlineInfo
+	return airlineInfo
+}
+
+func (s *Service) GetAirlineByName(name string) *AirlineInfo {
+	// 1. Find the ICAO code from the name index
+	a, exists := s.AirlineCodeByName[name]
+	if !exists {
+		return nil
+	}
+	// 2. Use the code to get the full info
+	return a
+}
+
+func (s *Service) GetRandomAirlineByCountry(countryCode string) string {
+	// 1. Get the list of ICAO codes for this country
+	airlines, exists := s.AirlineCodesByCountry[countryCode]
+
+	// 2. If no airlines found for that specific country,
+	// maybe try a regional fallback or return a default
+	if !exists || len(airlines) == 0 {
+		// TODO: implement regional fallback
+		return ""
+	}
+
+	// 3. Return a random ICAO code from the list
+	return airlines[rand.Intn(len(airlines))]
 }
 
 // AddFlightPan locates the flight plan for this aircraft situation, returns true if flight plan assigned successfully
@@ -284,7 +310,6 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 	ac.Flight.Origin = sched.IcaoOrigin
 	ac.Flight.Destination = sched.IcaoDest
 	ac.Flight.CruiseAlt = sched.CruiseAlt * 100
-	ac.Flight.AirlineName = sched.AirlineName
 
 	util.LogWithLabel(ac.Registration, "flight %d origin %s", ac.Flight.Number, ac.Flight.Origin)
 	util.LogWithLabel(ac.Registration, "flight %d destination %s (cruise alt: %d)", ac.Flight.Number, ac.Flight.Destination, ac.Flight.CruiseAlt)
@@ -413,6 +438,27 @@ func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
 	return transitionAlt
 }
 
-func calculateDistance(pos1, pos2 Position) float64 {
+func (s *Service) GetCountryFromRegistration(reg string) string {
+	// Standard registration format is Prefix-Suffix or Prefix1234
+	// We check the first 1 or 2 characters
+	if len(reg) < 1 {
+		return ""
+	}
+
+	// Check 2-char prefixes first (e.g., XB, EI)
+	if len(reg) >= 2 {
+		if code, ok := RegistrationMap[reg[:2]]; ok {
+			return code
+		}
+	}
+
+	// Check 1-char prefixes (e.g., G, N)
+	if code, ok := RegistrationMap[reg[:1]]; ok {
+		return code
+	}
+	return ""
+}
+
+func CalculateDistance(pos1, pos2 Position) float64 {
 	return geometry.DistNM(pos1.Lat, pos1.Long, pos2.Lat, pos2.Long)
 }

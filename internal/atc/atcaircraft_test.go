@@ -66,7 +66,7 @@ func TestCalculateDistance(t *testing.T) {
 
 	for _, tt := range distTests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := calculateDistance(tt.p1, tt.p2)
+			d := CalculateDistance(tt.p1, tt.p2)
 			const eps = 0.0001
 			if diff := d - tt.want; diff < -eps || diff > eps {
 				t.Fatalf("%s: distance mismatch: got %f want %f", tt.name, d, tt.want)
@@ -539,5 +539,35 @@ func TestGetTransistionAltitude(t *testing.T) {
 				t.Fatalf("%s: got %d want %d", tt.name, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGetCountryFromRegistration(t *testing.T) {
+
+	tests := []struct {
+		reg  string
+		want string
+	}{
+		{"", ""},
+		{"G-ABCD", "EG"}, // 1-char prefix fallback
+		{"G", "EG"},      // single-char
+		{"GBR123", "EG"}, // two-letter not in map -> fallback to 1-char
+		{"XB-ABC", "MM"}, // two-letter match
+		{"XB", "MM"},     // exact two-letter
+		{"EI-XYZ", "EI"}, // two-letter exact
+		{"N12345", "K"},  // 1-char N -> K (USA)
+		{"D-ABCD", "ED"}, // Germany
+		{"F123", "LF"},   // France
+		{"VH-OAA", "YW"}, // Australia (two-letter)
+		{"C-FABC", "CY"}, // Canada
+		{"g-ABCD", ""},   // case-sensitive: lowercase not mapped
+	}
+
+	for _, tc := range tests {
+		s := &Service{}
+		got := s.GetCountryFromRegistration(tc.reg)
+		if got != tc.want {
+			t.Errorf("GetCountryFromRegistration(%q) = %q; want %q", tc.reg, got, tc.want)
+		}
 	}
 }

@@ -1,7 +1,6 @@
 package xpconnect
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ func (m *MockATC) NotifyFlightPhaseChange(ac *atc.Aircraft) {
 
 // Implement other interface methods as NOPs
 func (m *MockATC) SyncSimTime(t1, t2 time.Time)                         {}
-func (m *MockATC) GetAirline(c string) *atc.AirlineInfo                { return nil }
+func (m *MockATC) GetAirlineByCode(c string) *atc.AirlineInfo                { return nil }
 func (m *MockATC) GetUserState() atc.UserState                         { return atc.UserState{} }
 func (m *MockATC) GetWeatherState() *atc.Weather                       { return &atc.Weather{} }
 func (m *MockATC) NotifyUserChange(p atc.Position, f1, f2 map[int]int) {}
@@ -82,7 +81,6 @@ func TestAircraftStateTransition(t *testing.T) {
 	}
 
 	// EXECUTION
-	fmt.Println("Simulating 5 consecutive data updates...")
 	for i := 0; i < 5; i++ {
 		xpc.updateAircraftData()
 	}

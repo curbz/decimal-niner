@@ -71,7 +71,7 @@ func New(cfgPath string, atcService atc.ServiceInterface, readAircraftData bool)
 		aircraftMap:        make(map[string]*atc.Aircraft),
 		atcService:         atcService,
 		memDataRefIndexMap: make(map[int]*xpapimodel.Dataref),
-		readAircraftData: 	readAircraftData,
+		readAircraftData:   readAircraftData,
 		config:             *cfg,
 	}
 
@@ -264,7 +264,7 @@ func (xpc *XPConnect) getDataRefIndices(drefs []xpapimodel.Dataref) (map[int]*xp
 					APIInfo:         dataref,
 					Value:           nil,
 					DecodedDataType: dr.DecodedDataType,
-					SetValue: dr.SetValue,
+					SetValue:        dr.SetValue,
 				}
 				break
 			}
@@ -743,10 +743,10 @@ func (xpc *XPConnect) updateUserData() {
 			Lat:      lat,
 			Long:     lng,
 			Altitude: alt,
-		}, 
-		map[int]int{1: com1Freq, 2: com2Freq}, 
-		map[int]int{1: com1Facility, 2: com2Facility}, 
-		isOnGround==1)
+		},
+			map[int]int{1: com1Freq, 2: com2Freq},
+			map[int]int{1: com1Facility, 2: com2Facility},
+			isOnGround == 1)
 	}
 
 }
@@ -929,17 +929,20 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 	// lookup callsign for airline code, default to airline code value if not found in map
 	callsign := airlineCode
 	if aircraft.Flight.Comms.Callsign == "" {
-		airlineInfo := xpc.atcService.GetAirline(airlineCode)
+		airlineInfo := xpc.atcService.GetAirlineByCode(airlineCode)
 		if airlineInfo != nil {
 			callsign = airlineInfo.Callsign
 			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
-			aircraft.Flight.AirlineName = airlineInfo.AirlineName
+			aircraft.Flight.Airline = airlineInfo
 		} else {
 			util.LogWarnWithLabel(aircraft.Registration, "no airline information found for code %s", airlineCode)
 			// if we don't have airline info, we also won't have country code, so use tail number as fallback
-			if ccode := atc.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
+			if ccode := xpc.atcService.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
 				aircraft.Flight.Comms.CountryCode = ccode
 				util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
+			} else {
+				util.LogWarnWithLabel(aircraft.Registration, "no country code information found for registration %s - using fallback", aircraft.Registration)
+				
 			}
 		}
 	}

@@ -31,34 +31,6 @@ func init() {
 
 }
 
-func TestGetCountryFromRegistration(t *testing.T) {
-	tests := []struct {
-		reg  string
-		want string
-	}{
-		{"", ""},
-		{"G-ABCD", "EG"}, // 1-char prefix fallback
-		{"G", "EG"},      // single-char
-		{"GBR123", "EG"}, // two-letter not in map -> fallback to 1-char
-		{"XB-ABC", "MM"}, // two-letter match
-		{"XB", "MM"},     // exact two-letter
-		{"EI-XYZ", "EI"}, // two-letter exact
-		{"N12345", "K"},  // 1-char N -> K (USA)
-		{"D-ABCD", "ED"}, // Germany
-		{"F123", "LF"},   // France
-		{"VH-OAA", "YW"}, // Australia (two-letter)
-		{"C-FABC", "CY"}, // Canada
-		{"g-ABCD", ""},   // case-sensitive: lowercase not mapped
-	}
-
-	for _, tc := range tests {
-		got := GetCountryFromRegistration(tc.reg)
-		if got != tc.want {
-			t.Errorf("GetCountryFromRegistration(%q) = %q; want %q", tc.reg, got, tc.want)
-		}
-	}
-}
-
 func TestIsNorthAmerica(t *testing.T) {
 	tests := []struct {
 		icao string

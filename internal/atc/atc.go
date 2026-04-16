@@ -16,20 +16,22 @@ import (
 )
 
 type Service struct {
-	Config          *config
-	Broadcast       chan *Aircraft
-	Controllers     []*Controller
-	Holds           map[string]*Hold
-	UserState       UserState
-	Airlines        map[string]AirlineInfo
-	Airports        map[string]*Airport
-	AirportService  AirportProvider
-	FlightSchedules map[string][]flightplan.ScheduledFlight
-	Weather         *Weather
-	DataProvider    simdata.SimDataProvider
-	SimInitTime     time.Time		// the date/time within the sim
-	SessionInitTime time.Time		// the real-world date/time when the SimInitTime was synced, used to calculate current sim time and elapsed time in sim
-	VoiceManager    *VoiceManager
+	Config                *config
+	Broadcast             chan *Aircraft
+	Controllers           []*Controller
+	Holds                 map[string]*Hold
+	UserState             UserState
+	AirlineByCode         map[string]*AirlineInfo
+	AirlineCodeByName     map[string]*AirlineInfo   // Keyed by Name "British Airways" -> "BAW"
+	AirlineCodesByCountry map[string][]string // Keyed by CountryCode (e.g., "GB" -> ["BAW", "EZY"])
+	Airports              map[string]*Airport
+	AirportService        AirportProvider
+	FlightSchedules       map[string][]flightplan.ScheduledFlight
+	Weather               *Weather
+	DataProvider          simdata.SimDataProvider
+	SimInitTime           time.Time // the date/time within the sim
+	SessionInitTime       time.Time // the real-world date/time when the SimInitTime was synced, used to calculate current sim time and elapsed time in sim
+	VoiceManager          *VoiceManager
 }
 
 type ServiceInterface interface {
@@ -37,7 +39,7 @@ type ServiceInterface interface {
 	NotifyFlightPhaseChange(msg *Aircraft)
 	NotifyUserStateChange(pos Position, com1Freq, com2Freq map[int]int, isOnGround bool)
 	NotifyCruisePositionChange(ac *Aircraft)
-	GetAirline(code string) *AirlineInfo
+	GetAirlineByCode(code string) *AirlineInfo
 	GetUserState() UserState
 	GetWeatherState() *Weather
 	AddFlightPlan(ac *Aircraft, simTime time.Time) bool
@@ -48,6 +50,7 @@ type ServiceInterface interface {
 	CheckForCruiseSectorChange(ac *Aircraft)
 	Transmit(userState UserState, ac *Aircraft)
 	SetRadioMute(mute bool)
+	GetCountryFromRegistration(reg string) string
 }
 
 // AirportProvider defines the behavior for finding the nearest airport
@@ -67,6 +70,7 @@ type config struct {
 		AirportCIFPDir        string       `yaml:"airports_cifp_dir"`
 		AirportsDataFile      string       `yaml:"airports_data_file"`
 		AirlinesFile          string       `yaml:"airlines_file"`
+		AirlineCountryCodeFallback string `yaml:"airline_country_code_fallback"`
 		Voices                VoicesConfig `yaml:"voices"`
 		ListenAllFreqs        bool         `yaml:"listen_all_frequencies"`
 		StrictFlightPlanMatch bool         `yaml:"strict_flightplan_matching"`
@@ -147,12 +151,19 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 		return nil, err
 	}
 
-	var airlinesData map[string]AirlineInfo
+	var airlinesData map[string]*AirlineInfo
 	// Unmarshal the JSON into the map
 	err = json.Unmarshal(airlinesBytes, &airlinesData)
 	if err != nil {
 		logger.Log.Errorf("Error unmarshaling JSON for airlines.json (%s): %v", cfg.ATC.AirlinesFile, err)
 		return nil, err
+	}
+
+	AirlineCodeByName := make(map[string]string)
+	airlineCodesByCountry := make(map[string][]string)
+	for code, info := range airlinesData {
+		AirlineCodeByName[info.AirlineName] = code
+		airlineCodesByCountry[info.CountryCode] = append(airlineCodesByCountry[info.CountryCode], code)
 	}
 	logger.Log.Infof("Airlines loaded successfully (%d)", len(airlinesData))
 
@@ -175,10 +186,10 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 		Broadcast:       make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Controllers:     db,
 		Holds:           globalHolds,
-		Airlines:        airlinesData,
+		AirlineByCode:   airlinesData,
 		Airports:        airports,
 		FlightSchedules: fScheds,
-		Weather:         &Weather{Wind: &Wind{}, Baro: &Baro{ Sealevel: 101325, Flight: 101325 }},
+		Weather:         &Weather{Wind: &Wind{}, Baro: &Baro{Sealevel: 101325, Flight: 101325}},
 		VoiceManager:    vm,
 	}, nil
 }
@@ -244,7 +255,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 }
 
 // IsAirborne returns true if the phase is considered an airbourne phase. depatIsAirborne can be used to control whether
-// the Depart phase is considered airborne or not given that technically, during the takeoff roll portion, the aircraft 
+// the Depart phase is considered airborne or not given that technically, during the takeoff roll portion, the aircraft
 // is not physically airborne
 func IsAirborne(phase int, departIsAirborne bool) bool {
 	beginPhase := flightphase.Depart
@@ -254,41 +265,18 @@ func IsAirborne(phase int, departIsAirborne bool) bool {
 	return phase >= beginPhase.Index() && phase < flightphase.Braking.Index()
 }
 
-func GetCountryFromRegistration(reg string) string {
-	// Standard registration format is Prefix-Suffix or Prefix1234
-	// We check the first 1 or 2 characters
-	if len(reg) < 1 {
-		return ""
-	}
-
-	// Check 2-char prefixes first (e.g., XB, EI)
-	if len(reg) >= 2 {
-		if code, ok := registrationMap[reg[:2]]; ok {
-			return code
-		}
-	}
-
-	// Check 1-char prefixes (e.g., G, N)
-	if code, ok := registrationMap[reg[:1]]; ok {
-		return code
-	}
-
-	return ""
-}
-
 func isNorthAmerica(icao string) bool {
-    if len(icao) == 0 {
-        return false // Default to International/ICAO standard
-    }
-    prefix := icao[0]
-    // K = USA, C = Canada
-    if prefix == 'K' || prefix == 'C' {
-        return true
-    }
-    // Also treat Alaska/Hawaii/Mexico as North American conventions 
-    if strings.HasPrefix(icao, "PA") || strings.HasPrefix(icao, "PH") || prefix == 'M' {
-        return true
-    }
-    return false
+	if len(icao) == 0 {
+		return false // Default to International/ICAO standard
+	}
+	prefix := icao[0]
+	// K = USA, C = Canada
+	if prefix == 'K' || prefix == 'C' {
+		return true
+	}
+	// Also treat Alaska/Hawaii/Mexico as North American conventions
+	if strings.HasPrefix(icao, "PA") || strings.HasPrefix(icao, "PH") || prefix == 'M' {
+		return true
+	}
+	return false
 }
-

@@ -66,7 +66,6 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
 			fullPath := filepath.Join(dirPath, file.Name())
 			airlineName := cleanAirlineName(file.Name())
-			fmt.Println(airlineName)
 			err := bglReader(fullPath, airlineName, masterSchedules, masterAirports)
 			if err != nil {
 				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)

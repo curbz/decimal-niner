@@ -243,16 +243,75 @@ var icaoToIsoMap = map[string]string{
 	"ZM": "MN", // Mongolia
 }
 
-var registrationMap = map[string]string{
-	"G":  "EG", // UK
-	"N":  "K",  // USA
-	"XB": "MM", // Mexico
-	"XA": "MM", // Mexico
-	"D":  "ED", // Germany
-	"F":  "LF", // France
-	"EI": "EI", // Ireland
-	"VH": "YW", // Australia
-	"C":  "CY", // Canada
+var RegistrationMap = map[string]string{
+    // North America
+    "N":  "K",  // USA
+    "C":  "CY", // Canada
+    "XA": "MM", // Mexico (Commercial)
+    "XB": "MM", // Mexico (Private)
+    "XC": "MM", // Mexico (Government)
+
+    // Europe (Major)
+    "G":  "EG", // UK
+    "D":  "ED", // Germany
+    "F":  "LF", // France
+    "EI": "EI", // Ireland
+    "I":  "LI", // Italy
+    "EC": "LE", // Spain
+    "CS": "LP", // Portugal
+    "PH": "EH", // Netherlands
+    "OO": "EB", // Belgium
+    "HB": "LS", // Switzerland
+    "OE": "LO", // Austria
+    "SE": "ES", // Sweden
+    "LN": "EN", // Norway
+    "OY": "EK", // Denmark
+    "OH": "EF", // Finland
+    "SX": "LG", // Greece
+    "TC": "LT", // Turkey
+    "UR": "UK", // Ukraine
+    "YL": "EV", // Latvia
+    "ES": "EE", // Estonia
+    "LY": "EY", // Lithuania
+
+    // Asia & Pacific
+    "VH": "YW", // Australia
+    "ZK": "NZ", // New Zealand
+    "B":  "RC", // China / Taiwan (Note: B is shared, check logic)
+    "JA": "RJ", // Japan
+    "HL": "RK", // South Korea
+    "RP": "RP", // Philippines
+    "HS": "VT", // Thailand
+    "9V": "WS", // Singapore
+    "9M": "WM", // Malaysia
+    "PK": "WA", // Indonesia
+    "VT": "VA", // India
+    "AP": "OP", // Pakistan
+
+    // Middle East
+    "A6": "OM", // UAE
+    "A7": "OT", // Qatar
+    "HZ": "OE", // Saudi Arabia
+    "JY": "OJ", // Jordan
+    "OD": "OL", // Lebanon
+    "4X": "LL", // Israel
+
+    // Africa
+    "ZS": "FA", // South Africa
+    "5N": "DN", // Nigeria
+    "SU": "HE", // Egypt
+    "CN": "GM", // Morocco
+    "7T": "DA", // Algeria
+
+    // South/Central America
+    "PP": "SB", // Brazil
+    "PT": "SB", // Brazil
+    "PR": "SB", // Brazil
+    "LV": "SA", // Argentina
+    "CC": "SC", // Chile
+    "HK": "SK", // Colombia
+    "HP": "MP", // Panama
+    "TI": "MR", // Costa Rica
 }
 
 var phoneticMap = map[string]string{

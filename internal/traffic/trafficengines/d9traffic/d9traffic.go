@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
@@ -92,13 +93,13 @@ func (e *D9TrafficEngine) Start() {
 			min := currSimZTime.Minute()
 
 			// 2. Run the Spawn Check for all relevant airports
-			relevantICAOs := e.GetRelevantICAOs()
+			relevantICAOs := e.getRelevantICAOs()
 			for _, icao := range relevantICAOs {
-				e.CheckForNewSpawns(icao, day, hour, min)
+				e.checkForNewSpawns(icao, day, hour, min)
 			}
 
 			// 3. Update existing aircraft (Phase transitions)
-			e.UpdateActiveAircraft(day, hour, min)
+			e.updateActiveAircraft()
 
 			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total spawned aircraft: %d", time.Since(start), len(e.Spawned))
 		}
@@ -117,11 +118,11 @@ func (e *D9TrafficEngine) LoadFlightPlans(path string) (map[string][]flightplan.
 	// For simplicity, we return an empty map here. In a real implementation,
 	// this would read from the specified path and populate the flight plans.
 	fscheds, airports := flightplan.LoadFlightPlans(path)
-	e.IngestSchedules(fscheds)
+	e.ingestSchedules(fscheds)
 	return fscheds, airports
 }
 
-func (e *D9TrafficEngine) IngestSchedules(rawMap map[string][]flightplan.ScheduledFlight) {
+func (e *D9TrafficEngine) ingestSchedules(rawMap map[string][]flightplan.ScheduledFlight) {
 	e.AirportSchedules = make(map[string]*AirportTimeline)
 
 	for _, legs := range rawMap {
@@ -147,12 +148,12 @@ func (e *D9TrafficEngine) IngestSchedules(rawMap map[string][]flightplan.Schedul
 	}
 
 	// 3. Sort the boards for O(log n) or efficient linear lookup
-	e.SortSchedules()
+	e.sortSchedules()
 
 	util.LogWithLabel("D9TRAFFIC", "ingested %d airports from flight schedules", len(e.AirportSchedules))
 }
 
-func (e *D9TrafficEngine) SortSchedules() {
+func (e *D9TrafficEngine) sortSchedules() {
 	for icao := range e.AirportSchedules {
 		timeline := e.AirportSchedules[icao]
 
@@ -172,7 +173,7 @@ func (e *D9TrafficEngine) SortSchedules() {
 	}
 }
 
-func (e *D9TrafficEngine) GetRelevantICAOs() []string {
+func (e *D9TrafficEngine) getRelevantICAOs() []string {
 	icaoMap := make(map[string]bool)
 
 	for _, ctrl := range e.atcService.UserState.ActiveFacilities {
@@ -195,7 +196,7 @@ func (e *D9TrafficEngine) GetRelevantICAOs() []string {
 	return result
 }
 
-func (e *D9TrafficEngine) CheckForNewSpawns(icao string, day, h, m int) {
+func (e *D9TrafficEngine) checkForNewSpawns(icao string, day, h, m int) {
 	timeline, ok := e.AirportSchedules[icao]
 	if !ok {
 		return
@@ -227,8 +228,8 @@ func (e *D9TrafficEngine) CheckForNewSpawns(icao string, day, h, m int) {
 
 			// If the flight is in the future window [now, now + 30]
 			if compareMins >= nowMins && compareMins <= nowMins+lookahead {
-				if !e.IsCurrentlyActive(f.AircraftRegistration) {
-					e.SpawnGroundTraffic(&f)
+				if !e.isCurrentlyActive(f.AircraftRegistration) {
+					e.spawnGroundTraffic(&f)
 				}
 			}
 
@@ -240,7 +241,7 @@ func (e *D9TrafficEngine) CheckForNewSpawns(icao string, day, h, m int) {
 	}
 }
 
-func (e *D9TrafficEngine) IsCurrentlyActive(registration string) bool {
+func (e *D9TrafficEngine) isCurrentlyActive(registration string) bool {
 	active, exists := e.Spawned[registration]
 	return exists && active
 }
@@ -255,10 +256,10 @@ func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int
 	return diff
 }
 
-func (e *D9TrafficEngine) SpawnGroundTraffic(f *flightplan.ScheduledFlight) {
+func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 	ttd := e.timeDiffToDeparture(f)
-	initialPhase, dur := e.DetermineInitialPhase(ttd)
+	initialPhase, dur := e.determineInitialPhase(ttd)
 
 	if initialPhase == flightphase.Unknown {
 		return
@@ -267,20 +268,35 @@ func (e *D9TrafficEngine) SpawnGroundTraffic(f *flightplan.ScheduledFlight) {
 	airport := e.atcService.Airports[f.IcaoOrigin]
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 
+    airline := e.resolveAirline(f) 
+	if airline == nil {
+		util.LogWarnWithLabel("D9TRAFFIC", "unable to resolve airline for flight %s %d - aircraft will not be spawned", f.AirlineName, f.Number)
+		return
+	}	
+	sizeClass := e.determineSizeClass(f, airline)
+	sizeClassStr := ""
+	if sizeClass == "E" || sizeClass == "F" {
+		sizeClassStr = "Heavy"
+	}
+
 	// Create the "Live" entity
-	// TODO figure out airline code and classign - see callsign logic in xpconnect
 	//aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
-	//aircraft.Flight.AirlineName = airlineInfo.AirlineName
-	//aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
+
 	// TODO: assign runway - based on weather/wind and runway availability
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,
 		//TODO set correct sizeclass
-		SizeClass: atc.SizeClass[3],
+		SizeClass: sizeClass,
 		Flight: atc.Flight{
 			Number:      f.Number,
 			Origin:      f.IcaoOrigin,
 			Destination: f.IcaoDest,
+			Airline: airline,
+			AssignedRunway: e.determineActiveRunway(airport).Name,
+			Comms: atc.Comms{
+				CountryCode: airline.CountryCode,
+				Callsign: fmt.Sprintf("%s %d %s", airline.Callsign, f.Number, sizeClassStr),
+			},
 			Position: atc.Position{
 				Lat:  airport.Lat, // initialise to airport center, this will be updated in the first phase transition
 				Long: airport.Lon,
@@ -307,7 +323,7 @@ func (e *D9TrafficEngine) SpawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 }
 
-func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
+func (e *D9TrafficEngine) updateActiveAircraft() {
 
 	for _, ac := range e.ActiveAircraft {
 
@@ -329,7 +345,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 		switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 		case flightphase.Unknown:
 			// shouldn't be the case that the phase is unknown at this point, but this acts as a safety net
-			initialPhase, dur := e.DetermineInitialPhase(diff)
+			initialPhase, dur := e.determineInitialPhase(diff)
 			ac.Flight.Phase.Current = initialPhase.Index()
 			ac.Flight.Phase.Transition = currSimZTime
 			ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second)
@@ -338,10 +354,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 		case flightphase.Parked:
 			if ac.Flight.AssignedParking == "" {
 
-				// TODO: Defaulting to "C" (Airliner) for now
-				reqWidth := 15.0
-				spot := e.FindAvailableParking(airport, reqWidth)
-
+				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.CountryCode)
 				if spot == nil {
 					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for aircraft %s at airport %s - cannot spawn",
 						ac.Registration, airport.ICAO)
@@ -372,7 +385,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 				ac.Flight.Phase.Current = flightphase.TaxiOut.Index()
 				ac.Flight.Phase.Class = flightclass.Departing
 				if ac.Flight.AssignedParking != "" {
-					e.ReleaseParking(f.IcaoOrigin, ac.Flight.AssignedParking)
+					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParking)
 				}
 				dur = DMINUS_TAXIOUT_MINS - DMINUS_DEPART_MINS
 			}
@@ -381,7 +394,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 				ac.Flight.Phase.Current = flightphase.Depart.Index()
 				ac.Flight.Phase.Class = flightclass.Departing
 				dur = DMINUS_DEPART_MINS - DMINUS_CLIMBOUT_MINS
-				if rwy := e.DetermineActiveRunway(airport); rwy != nil {
+				if rwy := e.determineActiveRunway(airport); rwy != nil {
 					ac.Flight.Position.Lat = rwy.Lat
 					ac.Flight.Position.Long = rwy.Lon
 					ac.Flight.Position.Heading = rwy.Heading
@@ -459,7 +472,7 @@ func (e *D9TrafficEngine) UpdateActiveAircraft(day, h, m int) {
 
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
 // of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time
-func (e *D9TrafficEngine) DetermineInitialPhase(diff int) (flightphase.FlightPhase, int) {
+func (e *D9TrafficEngine) determineInitialPhase(diff int) (flightphase.FlightPhase, int) {
 	switch {
 	case diff > DMINUS_PARKED_MINS:
 		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
@@ -482,41 +495,54 @@ func (e *D9TrafficEngine) DetermineInitialPhase(diff int) (flightphase.FlightPha
 	}
 }
 
-func (e *D9TrafficEngine) FindAvailableParking(airport *atc.Airport, reqRadius float64) *atc.ParkingSpot {
-	reqClass := GetWidthClass(reqRadius)
+func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass string, airlineICAO string) *atc.ParkingSpot {
+    // We run two passes: 
+    // Pass 0: Try to find a match for Size AND Airline
+    // Pass 1: Fallback to any spot that fits the Size
+    for pass := 0; pass < 2; pass++ {
+        for i := range airport.Parking {
+            spot := &airport.Parking[i]
 
-	for i := range airport.Parking {
-		spot := &airport.Parking[i]
+            // 1. Physical constraint: Must be at least as big as the aircraft
+            if spot.WidthClass < reqClass {
+                continue
+            }
 
-		// 1. Check size class
-		if spot.WidthClass < reqClass {
-			continue
-		}
+            // 2. Occupancy check (Global map)
+            key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+            if _, occupied := e.OccupiedParking[key]; occupied {
+                continue
+            }
 
-		// 2. Check the "Global Map" using a composite key
-		key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
-		if _, occupied := e.OccupiedParking[key]; occupied {
-			continue
-		}
+            // 3. User proximity check
+            if e.atcService.UserState.NearestAirport.ICAO == airport.ICAO &&
+                e.atcService.UserState.AssignedParking.Name == spot.Name {
+                continue
+            }
 
-		// 3. Check if user is at this specific spot
-		if e.atcService.UserState.NearestAirport.ICAO == airport.ICAO &&
-			e.atcService.UserState.AssignedParking.Name == spot.Name {
-			continue
-		}
+            // 4. Airline Preference (Pass 0 only)
+            if pass == 0 && airlineICAO != "" {
+                // spot.AirlineCodes is usually space-separated: "BAW VIR BEE"
+                if !strings.Contains(spot.AirlineCodes, airlineICAO) {
+                    continue
+                }
+            }
 
-		return spot
-	}
-	return nil
+            // If we are in Pass 1, or we found an airline match in Pass 0, return it
+            return spot
+        }
+    }
+
+    return nil
 }
 
-func (e *D9TrafficEngine) ReleaseParking(icao, spotName string) {
+func (e *D9TrafficEngine) releaseParking(icao, spotName string) {
 	key := fmt.Sprintf("%s_%s", icao, spotName)
 	delete(e.OccupiedParking, key)
 	util.LogWithLabel("D9TRAFFIC", "Parking spot %s at %s is now vacant.", spotName, icao)
 }
 
-func (e *D9TrafficEngine) DetermineActiveRunway(airport *atc.Airport) *atc.Runway {
+func (e *D9TrafficEngine) determineActiveRunway(airport *atc.Airport) *atc.Runway {
 
 	// 1. Get current weather for the airport
 	// This assumes your atcService can provide wind dir/speed
@@ -550,6 +576,185 @@ func (e *D9TrafficEngine) DetermineActiveRunway(airport *atc.Airport) *atc.Runwa
 	}
 
 	return bestRunway
+}
+
+func (e *D9TrafficEngine) determineSizeClass(f *flightplan.ScheduledFlight, info *atc.AirlineInfo) string {
+    // 1. Calculate the Distance Baseline
+    distNM := e.calculateFlightDistance(f.IcaoOrigin, f.IcaoDest)
+    
+    // 2. Initial estimate based on distance
+    size := "C" 
+    switch {
+    case distNM < 450:  size = "B"
+    case distNM > 2800: size = "E" // Heavy
+    }
+
+    // 3. Apply Tier Constraints
+    if info != nil {
+        switch info.Tier {
+        case "international": 
+            // Flag carriers can be anything, keep distance estimate
+        case "budget":
+            // Budget airlines almost never fly Heavies (E/F)
+            // Even if the distance is long, cap it at 'C'
+            if size == "E" || size == "F" {
+                size = "C"
+            }
+        case "regional":
+            // Regional airlines are capped at 'B' or 'C'
+            if size == "E" || size == "F" {
+                size = "B"
+            }
+        }
+    }
+
+    // 4. Final Physical Check
+    // If the origin airport doesn't even have an 'E' gate, 
+    // we must downgrade to the largest available.
+    return e.clampSizeToAirportCapability(f.IcaoOrigin, size)
+}
+
+func (e *D9TrafficEngine) clampSizeToAirportCapability(icao string, estimatedSize string) string {
+    ap, ok := e.atcService.Airports[icao]
+    if !ok {
+        return estimatedSize
+    }
+
+    // Find the largest gate available at this airport
+    maxClass := "A"
+    for _, spot := range ap.Parking {
+        if spot.WidthClass > maxClass {
+            maxClass = spot.WidthClass
+        }
+    }
+
+    // If our estimated size is bigger than the biggest gate, downgrade it
+    if estimatedSize > maxClass {
+        return maxClass
+    }
+
+    return estimatedSize
+}
+
+func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.AirlineInfo {
+    // 1. Direct Match: The most efficient path.
+    if info := e.atcService.GetAirlineByName(f.AirlineName); info != nil {
+        return info
+    }
+
+    // --- FALLBACKS ---
+    // At this point, we know we don't have a name match.
+    // We will now find a code and immediately return its full info struct.
+
+    origin := e.atcService.Airports[f.IcaoOrigin]
+    dest := e.atcService.Airports[f.IcaoDest]
+
+    // 2. Matching Pairs (Airlines at both ends)
+    if origin != nil && dest != nil {
+        if code := getWeightedCommonAirline(origin, dest); code != "" {
+            return e.atcService.GetAirlineByCode(code)
+        }
+    }
+
+    // 3. Origin Hub Weighted Selection
+    if origin != nil && len(origin.HubWeights) > 0 {
+        code := getWeightedRandomAirline(origin.HubWeights)
+        return e.atcService.GetAirlineByCode(code)
+    }
+
+    // 4. Registration Country Fallback
+    countryCode :=  e.atcService.GetCountryFromRegistration(f.AircraftRegistration)
+	if countryCode == "" {
+		countryCode = e.atcService.Config.ATC. AirlineCountryCodeFallback
+	}
+	if countryCode != "" {
+		code := getWeightedRandomAirline(map[string]float64{countryCode: 1.0})
+		return e.atcService.GetAirlineByCode(code)
+	}
+	
+	return nil
+}
+
+func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) float64 {
+    origin, okO := e.atcService.Airports[originICAO]
+    dest, okD := e.atcService.Airports[destICAO]
+
+    // If we don't have coordinate data for both airports, 
+    // return a medium distance as a safe fallback for the size heuristic.
+    if !okO || !okD {
+        return 500.0 
+    }
+
+    // Convert degrees to radians
+    lat1 := origin.Lat * math.Pi / 180
+    lon1 := origin.Lon * math.Pi / 180
+    lat2 := dest.Lat * math.Pi / 180
+    lon2 := dest.Lon * math.Pi / 180
+
+    // Haversine formula
+    diffLat := lat2 - lat1
+    diffLon := lon2 - lon1
+
+    a := math.Sin(diffLat/2)*math.Sin(diffLat/2) +
+        math.Cos(lat1)*math.Cos(lat2)*
+        math.Sin(diffLon/2)*math.Sin(diffLon/2)
+    
+    c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+    // Earth's radius in Nautical Miles is approximately 3440.065
+    const earthRadiusNM = 3440.065
+    return earthRadiusNM * c
+}
+
+func getWeightedCommonAirline(origin, dest *atc.Airport) string {
+    // 1. Find airlines that exist in BOTH hub weight maps
+    commonWeights := make(map[string]float64)
+    
+    for code, originWeight := range origin.HubWeights {
+        if destWeight, exists := dest.HubWeights[code]; exists {
+            // We average the weights to find a "mutual" probability.
+            // If BA is 80% at LHR and 10% at JFK, their mutual weight is 45%.
+            commonWeights[code] = (originWeight + destWeight) / 2.0
+        }
+    }
+
+    // 2. If no common airlines found, return empty so the cascade continues
+    if len(commonWeights) == 0 {
+        return ""
+    }
+
+    // 3. Use the Weighted Random selector we wrote previously
+    return getWeightedRandomAirline(commonWeights)
+}
+
+func getWeightedRandomAirline(weights map[string]float64) string {
+    if len(weights) == 0 {
+        return ""
+    }
+
+    // 1. Calculate the total sum of weights
+    var totalWeight float64
+    for _, w := range weights {
+        totalWeight += w
+    }
+
+    // 2. Pick a random number in the range [0.0, totalWeight)
+    r := rand.Float64() * totalWeight
+
+    // 3. Iterate and subtract until we find the winner
+    var cumulative float64
+    for code, weight := range weights {
+        cumulative += weight
+        if r <= cumulative {
+            return code
+        }
+    }
+
+    // Fallback to a random key if logic fails
+    for code := range weights {
+        return code
+    }
+    return ""
 }
 
 func GetWidthClass(radiusMeters float64) string {

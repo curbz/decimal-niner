@@ -2,1166 +2,1399 @@
   "40M": {
     "airline_name": "40 Mile Air",
     "callsign": "Forty Mile",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "9AJ": {
     "airline_name": "9 Air",
     "callsign": "Trans Jade",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "budget"
   },
   "AAB": {
     "airline_name": "AB Aviation",
     "callsign": "Ab Aviation",
-    "icao_country_code": "D6"
+    "icao_country_code": "D6",
+    "tier": "regional"
   },
   "AAL": {
     "airline_name": "American Airlines",
     "callsign": "American",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "AAY": {
     "airline_name": "Allegiant Air",
     "callsign": "Allegiant",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "budget"
   },
   "ABA": {
     "airline_name": "AB Aviation",
     "callsign": "Ab Aviation",
-    "icao_country_code": "LI"
+    "icao_country_code": "LI",
+    "tier": "regional"
   },
   "ABY": {
     "airline_name": "Air Arabia",
     "callsign": "Arabia",
-    "icao_country_code": "A6"
+    "icao_country_code": "A6",
+    "tier": "budget"
   },
   "ACA": {
     "airline_name": "Air Canada",
     "callsign": "Air Canada",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "international"
   },
   "ACI": {
     "airline_name": "Aircalin",
     "callsign": "Air Calin",
-    "icao_country_code": "NW"
+    "icao_country_code": "NW",
+    "tier": "international"
   },
   "ADR": {
     "airline_name": "Adria Airways",
     "callsign": "Adria",
-    "icao_country_code": "S5"
+    "icao_country_code": "S5",
+    "tier": "regional"
   },
   "ADV": {
     "airline_name": "Advanced Air",
     "callsign": "Wingman",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "AEA": {
     "airline_name": "Air Europa",
     "callsign": "Europa",
-    "icao_country_code": "LE"
+    "icao_country_code": "LE",
+    "tier": "international"
   },
   "AEE": {
     "airline_name": "Aegean Airlines",
     "callsign": "Aegean",
-    "icao_country_code": "LG"
+    "icao_country_code": "LG",
+    "tier": "international"
   },
   "AEF": {
     "airline_name": "AeroLogic",
     "callsign": "German Cargo",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "international"
   },
   "AFL": {
     "airline_name": "Aeroflot",
     "callsign": "Aeroflot",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "international"
   },
   "AFR": {
     "airline_name": "Air France",
     "callsign": "Airfrans",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "international"
   },
   "AGH": {
     "airline_name": "Air Ghana",
     "callsign": "Ghana Cargo",
-    "icao_country_code": "DG"
+    "icao_country_code": "DG",
+    "tier": "regional"
   },
   "AHY": {
     "airline_name": "Azerbaijan Airlines",
     "callsign": "Azal",
-    "icao_country_code": "UB"
+    "icao_country_code": "UB",
+    "tier": "international"
   },
   "AIC": {
     "airline_name": "Air India",
     "callsign": "Air India",
-    "icao_country_code": "VT"
+    "icao_country_code": "VT",
+    "tier": "international"
   },
   "AIX": {
     "airline_name": "Air India Express",
     "callsign": "Air India Express",
-    "icao_country_code": "VT"
+    "icao_country_code": "VT",
+    "tier": "budget"
   },
   "AKK": {
     "airline_name": "Aklak Air",
     "callsign": "Aklak",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "regional"
   },
   "ALB": {
     "airline_name": "Albastar",
     "callsign": "Albastar",
-    "icao_country_code": "LE"
+    "icao_country_code": "LE",
+    "tier": "regional"
   },
   "ALK": {
     "airline_name": "SriLankan Airlines",
     "callsign": "Srilankan",
-    "icao_country_code": "4R"
+    "icao_country_code": "4R",
+    "tier": "international"
   },
   "AMX": {
     "airline_name": "Aeromexico",
     "callsign": "Aeromexico",
-    "icao_country_code": "MM"
+    "icao_country_code": "MM",
+    "tier": "international"
   },
   "ANA": {
     "airline_name": "All Nippon Airways",
     "callsign": "All Nippon",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "international"
   },
   "ANZ": {
     "airline_name": "Air New Zealand",
     "callsign": "New Zealand",
-    "icao_country_code": "NZ"
+    "icao_country_code": "NZ",
+    "tier": "international"
   },
   "APG": {
     "airline_name": "APG Airlines",
     "callsign": "Air P G",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "regional"
   },
   "APJ": {
     "airline_name": "Peach Aviation",
     "callsign": "Air Peach",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "budget"
   },
   "ARG": {
     "airline_name": "Aerolíneas Argentinas",
     "callsign": "Argentina",
-    "icao_country_code": "LV"
+    "icao_country_code": "LV",
+    "tier": "international"
   },
   "ARK": {
     "airline_name": "Arkia",
     "callsign": "Arkia",
-    "icao_country_code": "LL"
+    "icao_country_code": "LL",
+    "tier": "regional"
   },
   "ASA": {
     "airline_name": "Alaska Airlines",
     "callsign": "Alaska",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "ASK": {
     "airline_name": "ASKY Airlines",
     "callsign": "Asky",
-    "icao_country_code": "5V"
+    "icao_country_code": "5V",
+    "tier": "regional"
   },
   "ASL": {
     "airline_name": "ASL Airlines",
     "callsign": "French Post",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "regional"
   },
   "ASV": {
     "airline_name": "AirSwift",
     "callsign": "Airswift",
-    "icao_country_code": "RP"
+    "icao_country_code": "RP",
+    "tier": "regional"
   },
   "AUA": {
     "airline_name": "Austrian Airlines",
     "callsign": "Austrian",
-    "icao_country_code": "LO"
+    "icao_country_code": "LO",
+    "tier": "international"
   },
   "AUI": {
     "airline_name": "Ukraine International Airlines",
     "callsign": "Ukraine International",
-    "icao_country_code": "UR"
+    "icao_country_code": "UR",
+    "tier": "international"
   },
   "AVA": {
     "airline_name": "Avianca",
     "callsign": "Avianca",
-    "icao_country_code": "SK"
+    "icao_country_code": "SK",
+    "tier": "international"
   },
   "AZA": {
     "airline_name": "Alitalia",
     "callsign": "Alitalia",
-    "icao_country_code": "LI"
+    "icao_country_code": "LI",
+    "tier": "international"
   },
   "AZO": {
     "airline_name": "Azimuth",
     "callsign": "Azimuth",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "regional"
   },
   "AZU": {
     "airline_name": "Azul Brazilian Airlines",
     "callsign": "Azul",
-    "icao_country_code": "SB"
+    "icao_country_code": "SB",
+    "tier": "international"
   },
   "BAD": {
     "airline_name": "Badr Airlines",
     "callsign": "Badr Air",
-    "icao_country_code": "ST"
+    "icao_country_code": "ST",
+    "tier": "regional"
   },
   "BAH": {
     "airline_name": "Bahamasair",
     "callsign": "Bahamas",
-    "icao_country_code": "C6"
+    "icao_country_code": "C6",
+    "tier": "regional"
   },
   "BAV": {
     "airline_name": "Bamboo Airways",
     "callsign": "Bamboo",
-    "icao_country_code": "VV"
+    "icao_country_code": "VV",
+    "tier": "international"
   },
   "BAW": {
     "airline_name": "British Airways",
     "callsign": "Speedbird",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "international"
   },
   "BEE": {
     "airline_name": "Flybe",
     "callsign": "Jersey",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "regional"
   },
   "BEL": {
     "airline_name": "Brussels Airlines",
     "callsign": "Bee-Line",
-    "icao_country_code": "EB"
+    "icao_country_code": "EB",
+    "tier": "international"
   },
   "BER": {
     "airline_name": "Air Berlin",
     "callsign": "Air Berlin",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "international"
   },
   "BGH": {
     "airline_name": "BH Air",
     "callsign": "Balkan Holidays",
-    "icao_country_code": "LZ"
+    "icao_country_code": "LZ",
+    "tier": "regional"
   },
   "BHA": {
     "airline_name": "Buddha Air",
     "callsign": "Buddha Air",
-    "icao_country_code": "9N"
+    "icao_country_code": "9N",
+    "tier": "regional"
   },
   "BKP": {
     "airline_name": "Bangkok Airways",
     "callsign": "Bangkok Air",
-    "icao_country_code": "HS"
+    "icao_country_code": "HS",
+    "tier": "regional"
   },
   "BLO": {
     "airline_name": "Bluebird Nordic",
     "callsign": "Blue Cargo",
-    "icao_country_code": "TF"
+    "icao_country_code": "TF",
+    "tier": "regional"
   },
   "BOS": {
     "airline_name": "Boutique Air",
     "callsign": "Boutique",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "BPA": {
     "airline_name": "Blue Panorama",
     "callsign": "Blue Panorama",
-    "icao_country_code": "LI"
+    "icao_country_code": "LI",
+    "tier": "international"
   },
   "BTK": {
     "airline_name": "Batik Air",
     "callsign": "Batik",
-    "icao_country_code": "PK"
+    "icao_country_code": "PK",
+    "tier": "international"
   },
   "BTI": {
     "airline_name": "Air Baltic",
     "callsign": "Airbaltic",
-    "icao_country_code": "YL"
+    "icao_country_code": "YL",
+    "tier": "regional"
   },
   "CAL": {
     "airline_name": "China Airlines",
     "callsign": "Dynasty",
-    "icao_country_code": "B"
+    "icao_country_code": "B",
+    "tier": "international"
   },
   "CAW": {
     "airline_name": "Comair",
     "callsign": "Commercial",
-    "icao_country_code": "ZS"
+    "icao_country_code": "ZS",
+    "tier": "regional"
   },
   "CBB": {
     "airline_name": "Cebgo",
     "callsign": "Blue Jay",
-    "icao_country_code": "RP"
+    "icao_country_code": "RP",
+    "tier": "budget"
   },
   "CCA": {
     "airline_name": "Air China",
     "callsign": "Air China",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "international"
   },
   "CEB": {
     "airline_name": "Cebu Pacific",
     "callsign": "Cebu",
-    "icao_country_code": "RP"
+    "icao_country_code": "RP",
+    "tier": "budget"
   },
   "CES": {
     "airline_name": "China Eastern Airlines",
     "callsign": "China Eastern",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "international"
   },
   "CFG": {
     "airline_name": "Condor",
     "callsign": "Condor",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "international"
   },
   "CHH": {
     "airline_name": "Hainan Airlines",
     "callsign": "Hainan",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "international"
   },
   "CJT": {
     "airline_name": "Cargojet Airways",
     "callsign": "Cargojet",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "international"
   },
   "CLX": {
     "airline_name": "Cargolux",
     "callsign": "Cargolux",
-    "icao_country_code": "LX"
+    "icao_country_code": "LX",
+    "tier": "international"
   },
   "CMP": {
     "airline_name": "Copa Airlines",
     "callsign": "Copa",
-    "icao_country_code": "HP"
+    "icao_country_code": "HP",
+    "tier": "international"
   },
   "CPA": {
     "airline_name": "Cathay Pacific",
     "callsign": "Cathay",
-    "icao_country_code": "VH"
+    "icao_country_code": "VH",
+    "tier": "international"
   },
   "CQN": {
     "airline_name": "Chongqing Airlines",
     "callsign": "Chong Qing",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "regional"
   },
   "CRL": {
     "airline_name": "Corsair",
     "callsign": "Corsair",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "international"
   },
   "CSA": {
     "airline_name": "Czech Airlines",
     "callsign": "CSA-Lines",
-    "icao_country_code": "OK"
+    "icao_country_code": "OK",
+    "tier": "international"
   },
   "CSN": {
     "airline_name": "China Southern Airlines",
     "callsign": "China Southern",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "international"
   },
   "CTN": {
     "airline_name": "Croatia Airlines",
     "callsign": "Croatia",
-    "icao_country_code": "LD"
+    "icao_country_code": "LD",
+    "tier": "regional"
   },
   "CXA": {
     "airline_name": "Xiamen Air",
     "callsign": "Xiamen Air",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "international"
   },
   "DAL": {
     "airline_name": "Delta Air Lines",
     "callsign": "Delta",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "DAH": {
     "airline_name": "Air Algérie",
     "callsign": "Air Algerie",
-    "icao_country_code": "DA"
+    "icao_country_code": "DA",
+    "tier": "international"
   },
   "DHK": {
     "airline_name": "DHL Air UK",
     "callsign": "World Express",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "international"
   },
   "DLH": {
     "airline_name": "Lufthansa",
     "callsign": "Lufthansa",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "international"
   },
   "DNV": {
     "airline_name": "Donavia",
     "callsign": "Donavia",
-    "icao_country_code": "RA"
+    "icao_country_code": "RA",
+    "tier": "regional"
   },
   "DRK": {
     "airline_name": "Druk Air",
     "callsign": "Royal Bhutan",
-    "icao_country_code": "A5"
+    "icao_country_code": "A5",
+    "tier": "regional"
   },
   "EAL": {
     "airline_name": "Eastern Airlines",
     "callsign": "Eastern",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "EDV": {
     "airline_name": "Endeavor Air",
     "callsign": "Endeavor",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "EDW": {
     "airline_name": "Edelweiss Air",
     "callsign": "Edelweiss",
-    "icao_country_code": "LS"
+    "icao_country_code": "LS",
+    "tier": "international"
   },
   "EGF": {
     "airline_name": "American Eagle",
     "callsign": "Eagle Flight",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "EIN": {
     "airline_name": "Aer Lingus",
     "callsign": "Shamrock",
-    "icao_country_code": "EI"
+    "icao_country_code": "EI",
+    "tier": "international"
   },
   "ELY": {
     "airline_name": "El Al",
     "callsign": "El Al",
-    "icao_country_code": "LL"
+    "icao_country_code": "LL",
+    "tier": "international"
   },
   "ETH": {
     "airline_name": "Ethiopian Airlines",
     "callsign": "Ethiopian",
-    "icao_country_code": "HA"
+    "icao_country_code": "HA",
+    "tier": "international"
   },
   "ETD": {
     "airline_name": "Etihad Airways",
     "callsign": "Etihad",
-    "icao_country_code": "A6"
+    "icao_country_code": "A6",
+    "tier": "international"
   },
   "EVA": {
     "airline_name": "EVA Air",
     "callsign": "Eva",
-    "icao_country_code": "RC"
+    "icao_country_code": "RC",
+    "tier": "international"
   },
   "EWG": {
     "airline_name": "Eurowings",
     "callsign": "Eurowings",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "budget"
   },
   "EXS": {
     "airline_name": "Jet2.com",
     "callsign": "Channex",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "EZY": {
     "airline_name": "EasyJet",
     "callsign": "Easy",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "FAD": {
     "airline_name": "flyadeal",
     "callsign": "Adeala",
-    "icao_country_code": "OE"
+    "icao_country_code": "OE",
+    "tier": "budget"
   },
   "FDB": {
     "airline_name": "flydubai",
     "callsign": "Sky Dubai",
-    "icao_country_code": "A6"
+    "icao_country_code": "A6",
+    "tier": "budget"
   },
   "FDX": {
     "airline_name": "FedEx",
     "callsign": "Fedex",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "FEA": {
     "airline_name": "Far Eastern Air Transport",
     "callsign": "Far Eastern",
-    "icao_country_code": "RC"
+    "icao_country_code": "RC",
+    "tier": "regional"
   },
   "FIN": {
     "airline_name": "Finnair",
     "callsign": "Finnair",
-    "icao_country_code": "EF"
+    "icao_country_code": "EF",
+    "tier": "international"
   },
   "FJI": {
     "airline_name": "Fiji Airways",
     "callsign": "Fiji",
-    "icao_country_code": "NF"
+    "icao_country_code": "NF",
+    "tier": "international"
   },
   "FJU": {
     "airline_name": "Fiji Link",
     "callsign": "Link Fiji",
-    "icao_country_code": "NF"
+    "icao_country_code": "NF",
+    "tier": "regional"
   },
   "FLA": {
     "airline_name": "Air Flamenco",
     "callsign": "Flamenco",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "FSR": {
     "airline_name": "Flair Airlines",
     "callsign": "Flair",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "budget"
   },
   "GCR": {
     "airline_name": "Tianjin Airlines",
     "callsign": "Bo Hai",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "regional"
   },
   "GEC": {
     "airline_name": "Lufthansa Cargo",
     "callsign": "Lufthansa Cargo",
-    "icao_country_code": "ED"
+    "icao_country_code": "ED",
+    "tier": "international"
   },
   "GFA": {
     "airline_name": "Gulf Air",
     "callsign": "Gulf Air",
-    "icao_country_code": "OB"
+    "icao_country_code": "OB",
+    "tier": "international"
   },
   "GIA": {
     "airline_name": "Garuda Indonesia",
     "callsign": "Indonesia",
-    "icao_country_code": "WA"
+    "icao_country_code": "WA",
+    "tier": "international"
   },
   "GJS": {
     "airline_name": "GoJet Airlines",
     "callsign": "Lindbergh",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "GLO": {
     "airline_name": "Gol Transportes Aéreos",
     "callsign": "Gol",
-    "icao_country_code": "SB"
+    "icao_country_code": "SB",
+    "tier": "budget"
   },
   "GOW": {
     "airline_name": "Go First",
     "callsign": "Go First",
-    "icao_country_code": "V"
+    "icao_country_code": "V",
+    "tier": "budget"
   },
   "GTI": {
     "airline_name": "Atlas Air",
     "callsign": "Giant",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "GWA": {
     "airline_name": "Great Western Air",
     "callsign": "Great Western",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "regional"
   },
   "HAL": {
     "airline_name": "Hawaiian Airlines",
     "callsign": "Hawaiian",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "HDA": {
     "airline_name": "Cathay Dragon",
     "callsign": "Dragon",
-    "icao_country_code": "VH"
+    "icao_country_code": "VH",
+    "tier": "regional"
   },
   "HES": {
     "airline_name": "Hebridean Air Services",
     "callsign": "Hebridean",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "regional"
   },
   "HJA": {
     "airline_name": "Himalaya Airlines",
     "callsign": "Himalaya",
-    "icao_country_code": "VN"
+    "icao_country_code": "VN",
+    "tier": "regional"
   },
   "HKP": {
     "airline_name": "Hong Kong Express",
     "callsign": "Hongkong Shuttle",
-    "icao_country_code": "VH"
+    "icao_country_code": "VH",
+    "tier": "budget"
   },
   "HVN": {
     "airline_name": "Vietnam Airlines",
     "callsign": "Vietnam Airlines",
-    "icao_country_code": "VV"
+    "icao_country_code": "VV",
+    "tier": "international"
   },
   "IAD": {
     "airline_name": "AirAsia India",
     "callsign": "Red Knight",
-    "icao_country_code": "V"
+    "icao_country_code": "V",
+    "tier": "budget"
   },
   "IBE": {
     "airline_name": "Iberia",
     "callsign": "Iberia",
-    "icao_country_code": "LE"
+    "icao_country_code": "LE",
+    "tier": "international"
   },
   "IBK": {
     "airline_name": "Norwegian Air International",
     "callsign": "Nortrans",
-    "icao_country_code": "EI"
+    "icao_country_code": "EI",
+    "tier": "budget"
   },
   "ICE": {
     "airline_name": "Icelandair",
     "callsign": "Ice Air",
-    "icao_country_code": "BI"
+    "icao_country_code": "BI",
+    "tier": "international"
   },
   "ICN": {
     "airline_name": "interCaribbean Airways",
     "callsign": "Islandways",
-    "icao_country_code": "VQ"
+    "icao_country_code": "VQ",
+    "tier": "regional"
   },
   "IGO": {
     "airline_name": "IndiGo",
     "callsign": "Ifly",
-    "icao_country_code": "V"
+    "icao_country_code": "V",
+    "tier": "budget"
   },
   "IRA": {
     "airline_name": "Iran Air",
     "callsign": "Iranair",
-    "icao_country_code": "EP"
+    "icao_country_code": "EP",
+    "tier": "international"
   },
   "ITY": {
     "airline_name": "ITA Airways",
     "callsign": "Itarrow",
-    "icao_country_code": "LI"
+    "icao_country_code": "LI",
+    "tier": "international"
   },
   "IYE": {
     "airline_name": "Yemenia",
     "callsign": "Yemenia",
-    "icao_country_code": "OY"
+    "icao_country_code": "OY",
+    "tier": "international"
   },
   "JAL": {
     "airline_name": "Japan Airlines",
     "callsign": "Japan Air",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "international"
   },
   "JAW": {
     "airline_name": "Jambojet",
     "callsign": "Chui",
-    "icao_country_code": "HK"
+    "icao_country_code": "HK",
+    "tier": "budget"
   },
   "JBU": {
     "airline_name": "JetBlue",
     "callsign": "Jetblue",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "budget"
   },
   "JET": {
     "airline_name": "Jetstar",
     "callsign": "Jetstar",
-    "icao_country_code": "Y"
+    "icao_country_code": "Y",
+    "tier": "budget"
   },
   "JJA": {
     "airline_name": "Jeju Air",
     "callsign": "Jeju Air",
-    "icao_country_code": "RK"
+    "icao_country_code": "RK",
+    "tier": "budget"
   },
   "JJP": {
     "airline_name": "Jetstar Japan",
     "callsign": "Orange Liner",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "budget"
   },
   "JNA": {
     "airline_name": "Jin Air",
     "callsign": "Jin Air",
-    "icao_country_code": "RK"
+    "icao_country_code": "RK",
+    "tier": "budget"
   },
   "JOY": {
     "airline_name": "Joy Air",
     "callsign": "Joy Air",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "regional"
   },
   "JST": {
     "airline_name": "Jetstar Airways",
     "callsign": "Jetstar",
-    "icao_country_code": "Y"
+    "icao_country_code": "Y",
+    "tier": "budget"
   },
   "KAL": {
     "airline_name": "Korean Air",
     "callsign": "Korean Air",
-    "icao_country_code": "RK"
+    "icao_country_code": "RK",
+    "tier": "international"
   },
   "KAP": {
     "airline_name": "Cape Air",
     "callsign": "Cair",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "KCA": {
     "airline_name": "Air Astana",
     "callsign": "Astanaline",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "international"
   },
   "KLC": {
     "airline_name": "KLM Cityhopper",
     "callsign": "City",
-    "icao_country_code": "EH"
+    "icao_country_code": "EH",
+    "tier": "regional"
   },
   "KLM": {
     "airline_name": "KLM",
     "callsign": "KLM",
-    "icao_country_code": "EH"
+    "icao_country_code": "EH",
+    "tier": "international"
   },
   "KNA": {
     "airline_name": "Kunming Airlines",
     "callsign": "Kunming Air",
-    "icao_country_code": "Z"
+    "icao_country_code": "Z",
+    "tier": "regional"
   },
   "KQA": {
     "airline_name": "Kenya Airways",
     "callsign": "Kenya",
-    "icao_country_code": "HK"
+    "icao_country_code": "HK",
+    "tier": "international"
   },
   "KZR": {
     "airline_name": "Air Astana",
     "callsign": "Astanaline",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "international"
   },
   "LAO": {
     "airline_name": "Lao Airlines",
     "callsign": "Lao",
-    "icao_country_code": "RD"
+    "icao_country_code": "RD",
+    "tier": "regional"
   },
   "LAN": {
     "airline_name": "LATAM Airlines",
     "callsign": "Latam",
-    "icao_country_code": "SC"
+    "icao_country_code": "SC",
+    "tier": "international"
   },
   "LDM": {
     "airline_name": "Lauda",
     "callsign": "Beaujolais",
-    "icao_country_code": "OE"
+    "icao_country_code": "OE",
+    "tier": "budget"
   },
   "LNI": {
     "airline_name": "Lion Air",
     "callsign": "Lion Inter",
-    "icao_country_code": "WA"
+    "icao_country_code": "WA",
+    "tier": "budget"
   },
   "LOG": {
     "airline_name": "Loganair",
     "callsign": "Logan",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "regional"
   },
   "LOT": {
     "airline_name": "LOT Polish Airlines",
     "callsign": "Pollot",
-    "icao_country_code": "SP"
+    "icao_country_code": "SP",
+    "tier": "international"
   },
   "LRC": {
     "airline_name": "Avianca Costa Rica",
     "callsign": "Lacsa",
-    "icao_country_code": "TI"
+    "icao_country_code": "TI",
+    "tier": "international"
   },
   "LUX": {
     "airline_name": "Luxair",
     "callsign": "Luxair",
-    "icao_country_code": "LX"
+    "icao_country_code": "LX",
+    "tier": "regional"
   },
   "MAH": {
     "airline_name": "Malev Hungarian Airlines",
     "callsign": "Malev",
-    "icao_country_code": "HA"
+    "icao_country_code": "HA",
+    "tier": "international"
   },
   "MAS": {
     "airline_name": "Malaysia Airlines",
     "callsign": "Malaysian",
-    "icao_country_code": "WM"
+    "icao_country_code": "WM",
+    "tier": "international"
   },
   "MAU": {
     "airline_name": "Air Mauritius",
     "callsign": "Airmauritius",
-    "icao_country_code": "FI"
+    "icao_country_code": "FI",
+    "tier": "international"
   },
   "MEA": {
     "airline_name": "Middle East Airlines",
     "callsign": "Cedar Jet",
-    "icao_country_code": "OL"
+    "icao_country_code": "OL",
+    "tier": "international"
   },
   "MGX": {
     "airline_name": "Montenegro Airlines",
     "callsign": "Montenegro",
-    "icao_country_code": "4O"
+    "icao_country_code": "4O",
+    "tier": "regional"
   },
   "MHL": {
     "airline_name": "Marshall Islands Aviation",
     "callsign": "Marshalls",
-    "icao_country_code": "V7"
+    "icao_country_code": "V7",
+    "tier": "regional"
   },
   "MNG": {
     "airline_name": "MNG Airlines",
     "callsign": "Black Sea",
-    "icao_country_code": "LT"
+    "icao_country_code": "LT",
+    "tier": "international"
   },
   "MSR": {
     "airline_name": "EgyptAir",
     "callsign": "Egyptair",
-    "icao_country_code": "HE"
+    "icao_country_code": "HE",
+    "tier": "international"
   },
   "MYW": {
     "airline_name": "MyWay Airlines",
     "callsign": "Myway",
-    "icao_country_code": "4L"
+    "icao_country_code": "4L",
+    "tier": "regional"
   },
   "NAA": {
     "airline_name": "Norwegian Air Argentina",
     "callsign": "Norair",
-    "icao_country_code": "LV"
+    "icao_country_code": "LV",
+    "tier": "budget"
   },
   "NAX": {
     "airline_name": "Norwegian Air Shuttle",
     "callsign": "Nor Shuttle",
-    "icao_country_code": "EN"
+    "icao_country_code": "EN",
+    "tier": "budget"
   },
   "NKS": {
     "airline_name": "Spirit Airlines",
     "callsign": "Spirit Wings",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "budget"
   },
   "NMB": {
     "airline_name": "Air Namibia",
     "callsign": "Namibia",
-    "icao_country_code": "V5"
+    "icao_country_code": "V5",
+    "tier": "international"
   },
   "NOK": {
     "airline_name": "Nok Air",
     "callsign": "Nok Air",
-    "icao_country_code": "HS"
+    "icao_country_code": "HS",
+    "tier": "budget"
   },
   "NOS": {
     "airline_name": "Neos",
     "callsign": "Moonflower",
-    "icao_country_code": "LI"
+    "icao_country_code": "LI",
+    "tier": "regional"
   },
   "NRS": {
     "airline_name": "Norwegian Air UK",
     "callsign": "Red Nose",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "NTH": {
     "airline_name": "Hokkaido Air System",
     "callsign": "North Air",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "regional"
   },
   "OAL": {
     "airline_name": "Olympic Air",
     "callsign": "Olympic",
-    "icao_country_code": "LG"
+    "icao_country_code": "LG",
+    "tier": "regional"
   },
   "OHY": {
     "airline_name": "Onur Air",
     "callsign": "Onur Air",
-    "icao_country_code": "LT"
+    "icao_country_code": "LT",
+    "tier": "budget"
   },
   "OMA": {
     "airline_name": "Oman Air",
     "callsign": "Oman Air",
-    "icao_country_code": "OT"
+    "icao_country_code": "OT",
+    "tier": "international"
   },
   "OZW": {
     "airline_name": "Sky Express",
     "callsign": "Air Anya",
-    "icao_country_code": "LG"
+    "icao_country_code": "LG",
+    "tier": "regional"
   },
   "PAL": {
     "airline_name": "Philippine Airlines",
     "callsign": "Philippine",
-    "icao_country_code": "RP"
+    "icao_country_code": "RP",
+    "tier": "international"
   },
   "PAO": {
     "airline_name": "Air Panama",
     "callsign": "Air Panama",
-    "icao_country_code": "HP"
+    "icao_country_code": "HP",
+    "tier": "regional"
   },
   "PCO": {
     "airline_name": "Pacific Coastal Airlines",
     "callsign": "Pasco",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "regional"
   },
   "PGT": {
     "airline_name": "Pegasus Airlines",
     "callsign": "Sunturk",
-    "icao_country_code": "LT"
+    "icao_country_code": "LT",
+    "tier": "budget"
   },
   "PGU": {
     "airline_name": "Prague Connect",
     "callsign": "Prague Connect",
-    "icao_country_code": "LK"
+    "icao_country_code": "LK",
+    "tier": "regional"
   },
   "PIA": {
     "airline_name": "Pakistan International Airlines",
     "callsign": "Pakistan",
-    "icao_country_code": "AP"
+    "icao_country_code": "AP",
+    "tier": "international"
   },
   "PLI": {
     "airline_name": "PAL Express",
     "callsign": "Airphil",
-    "icao_country_code": "RP"
+    "icao_country_code": "RP",
+    "tier": "budget"
   },
   "PTB": {
     "airline_name": "Passaredo",
     "callsign": "Passaredo",
-    "icao_country_code": "SB"
+    "icao_country_code": "SB",
+    "tier": "regional"
   },
   "QFA": {
     "airline_name": "Qantas",
     "callsign": "Qantas",
-    "icao_country_code": "Y"
+    "icao_country_code": "Y",
+    "tier": "international"
   },
   "QTR": {
     "airline_name": "Qatar Airways",
     "callsign": "Qatari",
-    "icao_country_code": "OT"
+    "icao_country_code": "OT",
+    "tier": "international"
   },
   "RAM": {
     "airline_name": "Royal Air Maroc",
     "callsign": "Royal Air Maroc",
-    "icao_country_code": "CN"
+    "icao_country_code": "CN",
+    "tier": "international"
   },
   "RBA": {
     "airline_name": "Royal Brunei Airlines",
     "callsign": "Brunei",
-    "icao_country_code": "V8"
+    "icao_country_code": "V8",
+    "tier": "international"
   },
   "REA": {
     "airline_name": "Aer Arann",
     "callsign": "Aer Arann",
-    "icao_country_code": "EI"
+    "icao_country_code": "EI",
+    "tier": "regional"
   },
   "REU": {
     "airline_name": "Air Austral",
     "callsign": "Reunion",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "international"
   },
   "RJA": {
     "airline_name": "Royal Jordanian",
     "callsign": "Jordanian",
-    "icao_country_code": "JY"
+    "icao_country_code": "JY",
+    "tier": "international"
   },
   "ROT": {
     "airline_name": "TAROM",
     "callsign": "Tarom",
-    "icao_country_code": "LR"
+    "icao_country_code": "LR",
+    "tier": "international"
   },
   "RYR": {
     "airline_name": "Ryanair",
     "callsign": "Ryanair",
-    "icao_country_code": "EI"
+    "icao_country_code": "EI",
+    "tier": "budget"
   },
   "SAA": {
     "airline_name": "South African Airways",
     "callsign": "Springbok",
-    "icao_country_code": "FA"
+    "icao_country_code": "FA",
+    "tier": "international"
   },
   "SAM": {
     "airline_name": "Samoa Airways",
     "callsign": "Samoa",
-    "icao_country_code": "5W"
+    "icao_country_code": "5W",
+    "tier": "regional"
   },
   "SAS": {
     "airline_name": "SAS",
     "callsign": "Scandinavian",
-    "icao_country_code": "EK"
+    "icao_country_code": "EK",
+    "tier": "international"
   },
   "SIA": {
     "airline_name": "Singapore Airlines",
     "callsign": "Singapore",
-    "icao_country_code": "WS"
+    "icao_country_code": "WS",
+    "tier": "international"
   },
   "SKW": {
     "airline_name": "SkyWest Airlines",
     "callsign": "Skywest",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "regional"
   },
   "SKY": {
     "airline_name": "Skymark Airlines",
     "callsign": "Skymark",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "budget"
   },
   "SLM": {
     "airline_name": "Surinam Airways",
     "callsign": "Surinam",
-    "icao_country_code": "SM"
+    "icao_country_code": "SM",
+    "tier": "international"
   },
   "SNB": {
     "airline_name": "Sterling Airlines",
     "callsign": "Sterling",
-    "icao_country_code": "OY"
+    "icao_country_code": "OY",
+    "tier": "budget"
   },
   "SVA": {
     "airline_name": "Saudia",
     "callsign": "Saudia",
-    "icao_country_code": "OE"
+    "icao_country_code": "OE",
+    "tier": "international"
   },
   "SWA": {
     "airline_name": "Southwest Airlines",
     "callsign": "Southwest",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "budget"
   },
   "SWR": {
     "airline_name": "Swiss",
     "callsign": "Swiss",
-    "icao_country_code": "LS"
+    "icao_country_code": "LS",
+    "tier": "international"
   },
   "SXS": {
     "airline_name": "SunExpress",
     "callsign": "Sunexpress",
-    "icao_country_code": "TU"
+    "icao_country_code": "TU",
+    "tier": "budget"
   },
   "TAM": {
     "airline_name": "LATAM Brasil",
     "callsign": "Tam",
-    "icao_country_code": "SB"
+    "icao_country_code": "SB",
+    "tier": "international"
   },
   "TAP": {
     "airline_name": "TAP Air Portugal",
     "callsign": "Air Portugal",
-    "icao_country_code": "LP"
+    "icao_country_code": "LP",
+    "tier": "international"
   },
   "TAR": {
     "airline_name": "Tunisair",
     "callsign": "Tunisair",
-    "icao_country_code": "TS"
+    "icao_country_code": "TS",
+    "tier": "international"
   },
   "TCX": {
     "airline_name": "Thomas Cook Airlines",
     "callsign": "Kestrel",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "TFL": {
     "airline_name": "TUI fly Netherlands",
     "callsign": "Orange",
-    "icao_country_code": "EH"
+    "icao_country_code": "EH",
+    "tier": "budget"
   },
   "THA": {
     "airline_name": "Thai Airways",
     "callsign": "Thai",
-    "icao_country_code": "VT"
+    "icao_country_code": "VT",
+    "tier": "international"
   },
   "THT": {
     "airline_name": "Air Tahiti Nui",
     "callsign": "Tahiti Nui",
-    "icao_country_code": "NT"
+    "icao_country_code": "NT",
+    "tier": "international"
   },
   "THY": {
     "airline_name": "Turkish Airlines",
     "callsign": "Turkish",
-    "icao_country_code": "LT"
+    "icao_country_code": "LT",
+    "tier": "international"
   },
   "TNA": {
     "airline_name": "TransAsia Airways",
     "callsign": "Transasia",
-    "icao_country_code": "RC"
+    "icao_country_code": "RC",
+    "tier": "regional"
   },
   "TOM": {
     "airline_name": "TUI Airways",
     "callsign": "Tomson",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "TSC": {
     "airline_name": "Air Transat",
     "callsign": "Transat",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "international"
   },
   "TVF": {
     "airline_name": "Transavia France",
     "callsign": "France Soleil",
-    "icao_country_code": "LF"
+    "icao_country_code": "LF",
+    "tier": "budget"
   },
   "TWB": {
     "airline_name": "T'way Air",
     "callsign": "Tway Air",
-    "icao_country_code": "RK"
+    "icao_country_code": "RK",
+    "tier": "budget"
   },
   "UAE": {
     "airline_name": "Emirates",
     "callsign": "Emirates",
-    "icao_country_code": "OM"
+    "icao_country_code": "OM",
+    "tier": "international"
   },
   "UAL": {
     "airline_name": "United Airlines",
     "callsign": "United",
-    "icao_country_code": "K"
+    "icao_country_code": "K",
+    "tier": "international"
   },
   "UNA": {
     "airline_name": "Alrosa",
     "callsign": "Alrosa",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "regional"
   },
   "URS": {
     "airline_name": "Ur Airlines",
     "callsign": "Ur",
-    "icao_country_code": "YI"
+    "icao_country_code": "YI",
+    "tier": "regional"
   },
   "UTA": {
     "airline_name": "UTair Aviation",
     "callsign": "Utair",
-    "icao_country_code": "U"
+    "icao_country_code": "U",
+    "tier": "regional"
   },
   "UZB": {
     "airline_name": "Uzbekistan Airways",
     "callsign": "Uzbek",
-    "icao_country_code": "UK"
+    "icao_country_code": "UK",
+    "tier": "international"
   },
   "VAP": {
     "airline_name": "Vistara",
     "callsign": "Vistara",
-    "icao_country_code": "V"
+    "icao_country_code": "V",
+    "tier": "international"
   },
   "VCA": {
     "airline_name": "Avianca Cargo",
     "callsign": "Avianca Cargo",
-    "icao_country_code": "SK"
+    "icao_country_code": "SK",
+    "tier": "international"
   },
   "VGN": {
     "airline_name": "Virgin Nigeria",
     "callsign": "Virgin Nigeria",
-    "icao_country_code": "5N"
+    "icao_country_code": "5N",
+    "tier": "regional"
   },
   "VIR": {
     "airline_name": "Virgin Atlantic",
     "callsign": "Virgin",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "international"
   },
   "VJC": {
     "airline_name": "VietJet Air",
     "callsign": "Vietjet",
-    "icao_country_code": "VV"
+    "icao_country_code": "VV",
+    "tier": "budget"
   },
   "VLG": {
     "airline_name": "Vueling",
     "callsign": "Vueling",
-    "icao_country_code": "LE"
+    "icao_country_code": "LE",
+    "tier": "budget"
   },
   "VNL": {
     "airline_name": "Vanilla Air",
     "callsign": "Vanilla",
-    "icao_country_code": "RJ"
+    "icao_country_code": "RJ",
+    "tier": "budget"
   },
   "VOI": {
     "airline_name": "Volaris",
     "callsign": "Volaris",
-    "icao_country_code": "MM"
+    "icao_country_code": "MM",
+    "tier": "budget"
   },
   "VOZ": {
     "airline_name": "Virgin Australia",
     "callsign": "Virgin",
-    "icao_country_code": "Y"
+    "icao_country_code": "Y",
+    "tier": "international"
   },
   "VRE": {
     "airline_name": "Volotea",
     "callsign": "Volotea",
-    "icao_country_code": "LE"
+    "icao_country_code": "LE",
+    "tier": "budget"
   },
   "VTI": {
     "airline_name": "Vistara",
     "callsign": "Vistara",
-    "icao_country_code": "V"
+    "icao_country_code": "V",
+    "tier": "international"
   },
   "WJA": {
     "airline_name": "WestJet",
     "callsign": "Westjet",
-    "icao_country_code": "C"
+    "icao_country_code": "C",
+    "tier": "budget"
   },
   "WLC": {
     "airline_name": "Welcome Air",
     "callsign": "Welcome air",
-    "icao_country_code": "OE"
+    "icao_country_code": "OE",
+    "tier": "regional"
   },
   "WUK": {
     "airline_name": "Wizz Air UK",
     "callsign": "Wizz Go",
-    "icao_country_code": "EG"
+    "icao_country_code": "EG",
+    "tier": "budget"
   },
   "WZZ": {
     "airline_name": "Wizz Air",
     "callsign": "Wizz Air",
-    "icao_country_code": "HA"
+    "icao_country_code": "HA",
+    "tier": "budget"
   }
 }
