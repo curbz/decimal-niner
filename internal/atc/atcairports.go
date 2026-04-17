@@ -273,13 +273,12 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 				curParking.WidthClass = p[1] // Size class (e.g., "D")
 				curParking.SizeType = p[2]
-				curAirport.Parking = append(curAirport.Parking, *curParking)
-			} else {
 				if len(p) >= 4 {
 					airlineCodes = strings.Join(p[3:], " ")
 				}
 			}
 			curParking.AirlineCodes = airlineCodes
+			curAirport.Parking = append(curAirport.Parking, *curParking)
 			curParking = nil // Reset for next spot
 			continue
 		}
@@ -887,7 +886,7 @@ func finalizeHubWeights(ap *Airport) {
 
     for _, spot := range ap.Parking {
         // Only count commercial/airline spots
-        if spot.Type == "gate" || spot.Type == "airline" {
+        if spot.SizeType == "airline" {
             codes := strings.Fields(spot.AirlineCodes)
             for _, code := range codes {
                 tally[code]++

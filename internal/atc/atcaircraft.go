@@ -193,7 +193,7 @@ func (s *Service) GetAirlineByCode(code string) *AirlineInfo {
 
 func (s *Service) GetAirlineByName(name string) *AirlineInfo {
 	// 1. Find the ICAO code from the name index
-	a, exists := s.AirlineCodeByName[name]
+	a, exists := s.AirlineByName[name]
 	if !exists {
 		return nil
 	}

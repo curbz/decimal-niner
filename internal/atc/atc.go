@@ -22,8 +22,8 @@ type Service struct {
 	Holds                 map[string]*Hold
 	UserState             UserState
 	AirlineByCode         map[string]*AirlineInfo
-	AirlineCodeByName     map[string]*AirlineInfo   // Keyed by Name "British Airways" -> "BAW"
-	AirlineCodesByCountry map[string][]string // Keyed by CountryCode (e.g., "GB" -> ["BAW", "EZY"])
+	AirlineByName         map[string]*AirlineInfo // Keyed by Name "British Airways"
+	AirlineCodesByCountry map[string][]string     // Keyed by CountryCode (e.g., "GB" -> ["BAW", "EZY"])
 	Airports              map[string]*Airport
 	AirportService        AirportProvider
 	FlightSchedules       map[string][]flightplan.ScheduledFlight
@@ -61,19 +61,19 @@ type AirportProvider interface {
 // --- configuration structures ---
 type config struct {
 	ATC struct {
-		MessageBufferSize     int          `yaml:"message_buffer_size"`
-		AtcDataFile           string       `yaml:"atc_data_file"`
-		AtcRegionsFile        string       `yaml:"atc_regions_file"`
-		AtcHoldsFile          string       `yaml:"atc_holds_file"`
-		AtcNavDataFile        string       `yaml:"atc_nav_data_file"`
-		AtcFixesFile          string       `yaml:"atc_fixes_file"`
-		AirportCIFPDir        string       `yaml:"airports_cifp_dir"`
-		AirportsDataFile      string       `yaml:"airports_data_file"`
-		AirlinesFile          string       `yaml:"airlines_file"`
-		AirlineCountryCodeFallback string `yaml:"airline_country_code_fallback"`
-		Voices                VoicesConfig `yaml:"voices"`
-		ListenAllFreqs        bool         `yaml:"listen_all_frequencies"`
-		StrictFlightPlanMatch bool         `yaml:"strict_flightplan_matching"`
+		MessageBufferSize          int          `yaml:"message_buffer_size"`
+		AtcDataFile                string       `yaml:"atc_data_file"`
+		AtcRegionsFile             string       `yaml:"atc_regions_file"`
+		AtcHoldsFile               string       `yaml:"atc_holds_file"`
+		AtcNavDataFile             string       `yaml:"atc_nav_data_file"`
+		AtcFixesFile               string       `yaml:"atc_fixes_file"`
+		AirportCIFPDir             string       `yaml:"airports_cifp_dir"`
+		AirportsDataFile           string       `yaml:"airports_data_file"`
+		AirlinesFile               string       `yaml:"airlines_file"`
+		AirlineCountryCodeFallback string       `yaml:"airline_country_code_fallback"`
+		Voices                     VoicesConfig `yaml:"voices"`
+		ListenAllFreqs             bool         `yaml:"listen_all_frequencies"`
+		StrictFlightPlanMatch      bool         `yaml:"strict_flightplan_matching"`
 	} `yaml:"atc"`
 }
 
@@ -159,10 +159,10 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 		return nil, err
 	}
 
-	AirlineCodeByName := make(map[string]string)
+	airlineByName := make(map[string]*AirlineInfo)
 	airlineCodesByCountry := make(map[string][]string)
 	for code, info := range airlinesData {
-		AirlineCodeByName[info.AirlineName] = code
+		airlineByName[info.AirlineName] = info
 		airlineCodesByCountry[info.CountryCode] = append(airlineCodesByCountry[info.CountryCode], code)
 	}
 	logger.Log.Infof("Airlines loaded successfully (%d)", len(airlinesData))
@@ -182,15 +182,17 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	util.GoSafe(func() { RadioPlayer(cfg.ATC.Voices.Sox.Application) })
 
 	return &Service{
-		Config:          cfg,
-		Broadcast:       make(chan *Aircraft, cfg.ATC.MessageBufferSize),
-		Controllers:     db,
-		Holds:           globalHolds,
-		AirlineByCode:   airlinesData,
-		Airports:        airports,
-		FlightSchedules: fScheds,
-		Weather:         &Weather{Wind: &Wind{}, Baro: &Baro{Sealevel: 101325, Flight: 101325}},
-		VoiceManager:    vm,
+		Config:          		cfg,
+		Broadcast:       		make(chan *Aircraft, cfg.ATC.MessageBufferSize),
+		Controllers:     		db,
+		Holds:           		globalHolds,
+		AirlineByCode:   		airlinesData,
+		AirlineByName: 	 		airlineByName,
+		AirlineCodesByCountry: 	airlineCodesByCountry,
+		Airports:        		airports,
+		FlightSchedules: 		fScheds,
+		Weather:         		&Weather{Wind: &Wind{}, Baro: &Baro{Sealevel: 101325, Flight: 101325}},
+		VoiceManager:    		vm,
 	}, nil
 }
 
