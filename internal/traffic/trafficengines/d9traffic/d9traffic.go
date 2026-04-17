@@ -322,8 +322,8 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 	e.Spawned[f.AircraftRegistration] = true
 	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
 
-	util.LogWithLabel("D9TRAFFIC", "successfully spawned aircraft: %s (%s %d) estimated next tranistion: %v",
-		f.AircraftRegistration, f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
+	util.LogWithLabel(f.AircraftRegistration, "successfully spawned aircraft: %s flight %d - estimated next tranistion: %v",
+		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
 
 }
 
@@ -356,16 +356,14 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			e.atcService.SetFlightPhaseClass(ac)
 			continue
 		case flightphase.Parked:
-			if ac.Flight.AssignedParking == "" {
-
-				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.CountryCode)
+			if ac.Flight.AssignedParkingSpot == nil {
+				// Pass ac.Flight.Airline.ICAO instead of CountryCode
+				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
 				if spot == nil {
-					util.LogWarnWithLabel("D9TRAFFIC", "no available parking found for aircraft %s at airport %s - cannot spawn",
-						ac.Registration, airport.ICAO)
+					util.LogWarnWithLabel(ac.Registration, "no suitable parking found at airport %s - cannot spawn", airport.ICAO)
 					continue
 				} else {
-					util.LogWithLabel("D9TRAFFIC", "assigning parking for aircraft %s at airport %s to spot %s",
-						ac.Registration, airport.ICAO, spot.Name)
+					util.LogWithLabel(ac.Registration, "assigning parking at airport %s to spot %s", airport.ICAO, spot.Name)
 				}
 
 				ac.Flight.Position = atc.Position{
@@ -374,7 +372,8 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 					Heading:  spot.Heading,
 					Altitude: airport.Elevation,
 				}
-				ac.Flight.AssignedParking = spot.Name
+				ac.Flight.AssignedParkingSpot = spot
+				ac.Flight.AssignedParkingName = spot.Name
 				key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
 				e.OccupiedParking[key] = ac.Registration
 				spot.IsOccupied = true
@@ -388,8 +387,8 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.Phase.Current = flightphase.TaxiOut.Index()
 				ac.Flight.Phase.Class = flightclass.Departing
-				if ac.Flight.AssignedParking != "" {
-					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParking)
+				if ac.Flight.AssignedParkingSpot != nil {
+					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
 				}
 				dur = DMINUS_TAXIOUT_MINS - DMINUS_DEPART_MINS
 			}
@@ -540,10 +539,11 @@ func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass st
     return nil
 }
 
-func (e *D9TrafficEngine) releaseParking(icao, spotName string) {
-	key := fmt.Sprintf("%s_%s", icao, spotName)
+func (e *D9TrafficEngine) releaseParking(icao string, spot *atc.ParkingSpot) {
+	spot.IsOccupied = false
+	key := fmt.Sprintf("%s_%s", icao, spot.Name)
 	delete(e.OccupiedParking, key)
-	util.LogWithLabel("D9TRAFFIC", "Parking spot %s at %s is now vacant.", spotName, icao)
+	util.LogWithLabel("D9TRAFFIC", "Parking spot %s at %s is now vacant.", spot.Name, icao)
 }
 
 func (e *D9TrafficEngine) determineActiveRunway(airport *atc.Airport) *atc.Runway {
@@ -675,29 +675,19 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 
     // 4. Registration Country Fallback
 	util.LogWarnWithLabel(f.AircraftRegistration, "allocating airline by country of registration logic")
-    countryCode :=  e.atcService.GetCountryFromRegistration(f.AircraftRegistration)
+	countryCode := e.atcService.GetCountryFromRegistration(f.AircraftRegistration)
 	if countryCode == "" {
-		util.LogWarnWithLabel(f.AircraftRegistration, "could not determine country of registration - defaulting to %s", e.atcService.Config.ATC.AirlineCountryCodeFallback)
 		countryCode = e.atcService.Config.ATC.AirlineCountryCodeFallback
 	}
+
 	if countryCode != "" {
-		if code := getWeightedRandomAirline(map[string]float64{countryCode: 1.0}); code != "" {
-            airline := e.atcService.GetAirlineByCode(code)
-            if airline != nil {
-                return airline
-            }
-		}
 		code := e.atcService.GetRandomAirlineByCountry(countryCode)
 		if code != "" {
-            airline := e.atcService.GetAirlineByCode(code)
-            if airline != nil {
-                return airline
-            }
+			return e.atcService.GetAirlineByCode(code)
 		}
 	}
-	
-	return nil
-}
+		return nil
+	}
 
 func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) float64 {
     origin, okO := e.atcService.Airports[originICAO]
@@ -781,19 +771,3 @@ func getWeightedRandomAirline(weights map[string]float64) string {
     return ""
 }
 
-func GetWidthClass(radiusMeters float64) string {
-	switch {
-	case radiusMeters <= 7.5:
-		return "A"
-	case radiusMeters <= 12.0:
-		return "B"
-	case radiusMeters <= 18.0:
-		return "C"
-	case radiusMeters <= 26.0:
-		return "D"
-	case radiusMeters <= 32.5:
-		return "E"
-	default:
-		return "F"
-	}
-}

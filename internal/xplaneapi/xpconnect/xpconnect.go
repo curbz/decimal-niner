@@ -845,7 +845,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			return
 		}
 		if p, ok := parking.(string); ok {
-			aircraft.Flight.AssignedParking = p
+			aircraft.Flight.AssignedParkingName = p
 		} else {
 			logger.Log.Errorf("unexpected parking type for aircraft %s at index %d: %T", tailNumber, index, parking)
 		}
@@ -942,7 +942,7 @@ func (xpc *XPConnect) createNewAircraft(index, flightNumber int, acKey, registra
 				util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
 			} else {
 				util.LogWarnWithLabel(aircraft.Registration, "no country code information found for registration %s - using fallback", aircraft.Registration)
-				
+
 			}
 		}
 	}

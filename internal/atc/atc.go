@@ -21,7 +21,7 @@ type Service struct {
 	Controllers           []*Controller
 	Holds                 map[string]*Hold
 	UserState             UserState
-	AirlineByCode         map[string]*AirlineInfo
+	AirlineByICAO         map[string]*AirlineInfo
 	AirlineByName         map[string]*AirlineInfo // Keyed by Name "British Airways"
 	AirlineCodesByCountry map[string][]string     // Keyed by CountryCode (e.g., "GB" -> ["BAW", "EZY"])
 	Airports              map[string]*Airport
@@ -161,9 +161,10 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 
 	airlineByName := make(map[string]*AirlineInfo)
 	airlineCodesByCountry := make(map[string][]string)
-	for code, info := range airlinesData {
+	for icao, info := range airlinesData {
+		info.ICAO = icao
 		airlineByName[info.AirlineName] = info
-		airlineCodesByCountry[info.CountryCode] = append(airlineCodesByCountry[info.CountryCode], code)
+		airlineCodesByCountry[info.CountryCode] = append(airlineCodesByCountry[info.CountryCode], icao)
 	}
 	logger.Log.Infof("Airlines loaded successfully (%d)", len(airlinesData))
 
@@ -182,17 +183,17 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	util.GoSafe(func() { RadioPlayer(cfg.ATC.Voices.Sox.Application) })
 
 	return &Service{
-		Config:          		cfg,
-		Broadcast:       		make(chan *Aircraft, cfg.ATC.MessageBufferSize),
-		Controllers:     		db,
-		Holds:           		globalHolds,
-		AirlineByCode:   		airlinesData,
-		AirlineByName: 	 		airlineByName,
-		AirlineCodesByCountry: 	airlineCodesByCountry,
-		Airports:        		airports,
-		FlightSchedules: 		fScheds,
-		Weather:         		&Weather{Wind: &Wind{}, Baro: &Baro{Sealevel: 101325, Flight: 101325}},
-		VoiceManager:    		vm,
+		Config:                cfg,
+		Broadcast:             make(chan *Aircraft, cfg.ATC.MessageBufferSize),
+		Controllers:           db,
+		Holds:                 globalHolds,
+		AirlineByICAO:         airlinesData,
+		AirlineByName:         airlineByName,
+		AirlineCodesByCountry: airlineCodesByCountry,
+		Airports:              airports,
+		FlightSchedules:       fScheds,
+		Weather:               &Weather{Wind: &Wind{}, Baro: &Baro{Sealevel: 101325, Flight: 101325}},
+		VoiceManager:          vm,
 	}, nil
 }
 

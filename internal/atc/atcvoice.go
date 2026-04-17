@@ -29,12 +29,12 @@ import (
 )
 
 type VoicesConfig struct {
-	PhrasesFile                string `yaml:"phrases_file"`
-	UnicomPhrasesFile          string `yaml:"unicom_phrases_file"`
-	Piper                      Piper  `yaml:"piper"`
-	Sox                        Sox    `yaml:"sox"`
-	HandoffValedictionFactor   int    `yaml:"handoff_valediction_factor"`
-	SayAgainFactor             int    `yaml:"say_again_factor"`
+	PhrasesFile              string `yaml:"phrases_file"`
+	UnicomPhrasesFile        string `yaml:"unicom_phrases_file"`
+	Piper                    Piper  `yaml:"piper"`
+	Sox                      Sox    `yaml:"sox"`
+	HandoffValedictionFactor int    `yaml:"handoff_valediction_factor"`
+	SayAgainFactor           int    `yaml:"say_again_factor"`
 }
 
 // +----------------------------------------------------------+
@@ -333,7 +333,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"$WIND_SPEED":    func(args ...string) interface{} { return s.Weather.Wind.Speed },
 		"$WIND_SHEAR":    func(args ...string) interface{} { return s.Weather.Wind.Shear },
 		"$TURBULENCE":    func(args ...string) interface{} { return s.Weather.Turbulence },
-		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParking },
+		"$PARKING":       func(args ...string) interface{} { return ac.Flight.AssignedParkingName },
 		"$APPROACH_TYPE": func(args ...string) interface{} {
 			if rwy != nil {
 				util.LogDebugWithLabel(ac.Registration, "controller says highest precision approach is %s", rwy.HighestPrecisionApproach)
@@ -405,7 +405,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			} else {
 				icao = ac.Flight.Comms.Controller.ICAO
 			}
-			return formatParking(ac.Flight.AssignedParking, isNorthAmerica(icao))
+			return formatParking(ac.Flight.AssignedParkingName, isNorthAmerica(icao))
 		},
 
 		// --- DEPARTURE & ARRIVAL ---

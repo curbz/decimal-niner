@@ -36,7 +36,8 @@ type Flight struct {
 	Phase               flightphase.Phase
 	Comms               Comms
 	CruiseAlt           int
-	AssignedParking     string
+	AssignedParkingName string
+	AssignedParkingSpot *ParkingSpot
 	AssignedRunway      string
 	Squawk              string
 	PlanAssigned        bool
@@ -52,6 +53,7 @@ type Position struct {
 }
 
 type AirlineInfo struct {
+	ICAO        string
 	AirlineName string `json:"airline_name"`
 	Callsign    string `json:"callsign"`
 	CountryCode string `json:"icao_country_code"`
@@ -184,7 +186,7 @@ func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
 }
 
 func (s *Service) GetAirlineByCode(code string) *AirlineInfo {
-	airlineInfo, exists := s.AirlineByCode[code]
+	airlineInfo, exists := s.AirlineByICAO[code]
 	if !exists {
 		return nil
 	}
