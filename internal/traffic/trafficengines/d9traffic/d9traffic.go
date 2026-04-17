@@ -270,9 +270,13 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
     airline := e.resolveAirline(f) 
 	if airline == nil {
-		util.LogWarnWithLabel("D9TRAFFIC", "unable to resolve airline for flight %s %d - aircraft will not be spawned", f.AirlineName, f.Number)
+		util.LogWarnWithLabel(f.AircraftRegistration, "unable to resolve airline for flight %s %d - aircraft will not be spawned", f.AirlineName, f.Number)
 		return
 	}	
+	if airline.AirlineName != f.AirlineName {
+		util.LogWarnWithLabel(f.AircraftRegistration, "airline %s reallocated to %s", f.AirlineName, airline.AirlineName)
+	}
+
 	sizeClass := e.determineSizeClass(f, airline)
 	sizeClassStr := ""
 	if sizeClass == "E" || sizeClass == "F" {
@@ -645,31 +649,51 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
     // --- FALLBACKS ---
     // At this point, we know we don't have a name match.
     // We will now find a code and immediately return its full info struct.
-
-    origin := e.atcService.Airports[f.IcaoOrigin]
-    dest := e.atcService.Airports[f.IcaoDest]
-
     // 2. Matching Pairs (Airlines at both ends)
+	util.LogWarnWithLabel(f.AircraftRegistration, "airline %s not found - allocating by orign/destination gate pairing logic", f.AirlineName)
+	origin := e.atcService.Airports[f.IcaoOrigin]
+    dest := e.atcService.Airports[f.IcaoDest]
     if origin != nil && dest != nil {
         if code := getWeightedCommonAirline(origin, dest); code != "" {
-            return e.atcService.GetAirlineByCode(code)
+            airline := e.atcService.GetAirlineByCode(code)
+            if airline != nil {
+                return airline
+            }
         }
     }
 
     // 3. Origin Hub Weighted Selection
+	util.LogWarnWithLabel(f.AircraftRegistration, "allocating airline by origin gate logic")
     if origin != nil && len(origin.HubWeights) > 0 {
-        code := getWeightedRandomAirline(origin.HubWeights)
-        return e.atcService.GetAirlineByCode(code)
+        if code := getWeightedRandomAirline(origin.HubWeights); code != "" {
+            airline := e.atcService.GetAirlineByCode(code)
+            if airline != nil {
+                return airline
+            }
+        }
     }
 
     // 4. Registration Country Fallback
+	util.LogWarnWithLabel(f.AircraftRegistration, "allocating airline by country of registration logic")
     countryCode :=  e.atcService.GetCountryFromRegistration(f.AircraftRegistration)
 	if countryCode == "" {
-		countryCode = e.atcService.Config.ATC. AirlineCountryCodeFallback
+		util.LogWarnWithLabel(f.AircraftRegistration, "could not determine country of registration - defaulting to %s", e.atcService.Config.ATC.AirlineCountryCodeFallback)
+		countryCode = e.atcService.Config.ATC.AirlineCountryCodeFallback
 	}
 	if countryCode != "" {
-		code := getWeightedRandomAirline(map[string]float64{countryCode: 1.0})
-		return e.atcService.GetAirlineByCode(code)
+		if code := getWeightedRandomAirline(map[string]float64{countryCode: 1.0}); code != "" {
+            airline := e.atcService.GetAirlineByCode(code)
+            if airline != nil {
+                return airline
+            }
+		}
+		code := e.atcService.GetRandomAirlineByCountry(countryCode)
+		if code != "" {
+            airline := e.atcService.GetAirlineByCode(code)
+            if airline != nil {
+                return airline
+            }
+		}
 	}
 	
 	return nil

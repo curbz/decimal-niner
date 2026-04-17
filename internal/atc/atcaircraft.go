@@ -204,11 +204,7 @@ func (s *Service) GetAirlineByName(name string) *AirlineInfo {
 func (s *Service) GetRandomAirlineByCountry(countryCode string) string {
 	// 1. Get the list of ICAO codes for this country
 	airlines, exists := s.AirlineCodesByCountry[countryCode]
-
-	// 2. If no airlines found for that specific country,
-	// maybe try a regional fallback or return a default
 	if !exists || len(airlines) == 0 {
-		// TODO: implement regional fallback
 		return ""
 	}
 
