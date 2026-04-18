@@ -53,6 +53,11 @@ const (
 	DMINUS_CLIMBOUT_MINS = -5
 	DMINUS_CRUISE        = -15
 
+    AMINUS_APPROACH_MINS = 12 // ~15-20 NM out
+    AMINUS_FINAL_MINS    = 4  // ~4-5 NM out
+    AMINUS_LAND_MINS     = 0  // Touchdown
+    AMINUS_TAXIIN_MINS   = -2 // Off runway, taxing
+
 	// allowable time variance (minutes) in phase duration. example: Parked jitter of 240 means that the parked phase duration
 	// can be reduced or increased by up to half of this time i.e. 120 seconds
 	PARKED_JITTER_SECONDS   = 240
@@ -95,7 +100,8 @@ func (e *D9TrafficEngine) Start() {
 			// 2. Run the Spawn Check for all relevant airports
 			relevantICAOs := e.getRelevantICAOs()
 			for _, icao := range relevantICAOs {
-				e.checkForNewSpawns(icao, day, hour, min)
+				e.checkForDepartureSpawns(icao, day, hour, min)
+				e.checkForArrivalSpawns(icao, day, hour, min)
 			}
 
 			// 3. Update existing aircraft (Phase transitions)
@@ -196,7 +202,7 @@ func (e *D9TrafficEngine) getRelevantICAOs() []string {
 	return result
 }
 
-func (e *D9TrafficEngine) checkForNewSpawns(icao string, day, h, m int) {
+func (e *D9TrafficEngine) checkForDepartureSpawns(icao string, day, h, m int) {
 	timeline, ok := e.AirportSchedules[icao]
 	if !ok {
 		return
@@ -241,6 +247,23 @@ func (e *D9TrafficEngine) checkForNewSpawns(icao string, day, h, m int) {
 	}
 }
 
+func (e *D9TrafficEngine) checkForArrivalSpawns(icao string, day, h, m int) {
+    timeline := e.AirportSchedules[icao]
+    nowMins := (h * 60) + m
+
+    for _, f := range timeline.Arrivals {
+        if f.ArrivalDayOfWeek != day { continue }
+        
+        arrMins := (f.ArrivalHour * 60) + f.ArrivalMin
+        // If arriving soon and not already active
+        if arrMins >= nowMins && arrMins <= nowMins+30 {
+            if !e.isCurrentlyActive(f.AircraftRegistration) {
+                e.spawnInboundTraffic(&f)
+            }
+        }
+    }
+}
+
 func (e *D9TrafficEngine) isCurrentlyActive(registration string) bool {
 	active, exists := e.Spawned[registration]
 	return exists && active
@@ -259,7 +282,7 @@ func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int
 func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 	ttd := e.timeDiffToDeparture(f)
-	initialPhase, dur := e.determineInitialPhase(ttd)
+	initialPhase, dur := e.determineInitialDepaturePhase(ttd)
 
 	if initialPhase == flightphase.Unknown {
 		return
@@ -283,10 +306,6 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 		sizeClassStr = "Heavy"
 	}
 
-	// Create the "Live" entity
-	//aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
-
-	// TODO: assign runway - based on weather/wind and runway availability
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,
 		//TODO set correct sizeclass
@@ -322,9 +341,84 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 	e.Spawned[f.AircraftRegistration] = true
 	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
 
-	util.LogWithLabel(f.AircraftRegistration, "successfully spawned aircraft: %s flight %d - estimated next tranistion: %v",
+	util.LogWithLabel(f.AircraftRegistration, "successfully spawned outbound aircraft: %s flight %d - estimated next tranistion: %v",
 		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
 
+}
+
+func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
+
+    tta := e.timeDiffToArrival(f)
+    initialPhase, dur := e.determineInitialArrivalPhase(tta)
+
+    airport := e.atcService.Airports[f.IcaoDest]
+
+	currSimZTime := e.atcService.GetCurrentZuluTime()
+
+    airline := e.resolveAirline(f)
+	
+    sizeClass := e.determineSizeClass(f, airline)
+	sizeClassStr := ""
+	if sizeClass == "E" || sizeClass == "F" {
+		sizeClassStr = "Heavy"
+	}
+
+    newAc := &atc.Aircraft{
+        Registration: f.AircraftRegistration,
+        SizeClass:    sizeClass,
+        Flight: atc.Flight{
+			Number:      f.Number,
+			Origin:      f.IcaoOrigin,
+			Destination: f.IcaoDest,
+			Airline: airline,
+			AssignedRunway: e.determineActiveRunway(airport).Name,
+			Comms: atc.Comms{
+				CountryCode: airline.CountryCode,
+				Callsign: fmt.Sprintf("%s %d %s", airline.Callsign, f.Number, sizeClassStr),
+			},
+			Schedule: f,
+			// Squawk random number between 1200 and 6999
+			Squawk:       fmt.Sprintf("%04d", 1200+rand.IntN(5800)),
+			PlanAssigned: true,
+            Phase: flightphase.Phase{
+                Current:    initialPhase.Index(),
+				Previous:                flightphase.Unknown.Index(),
+				Transition:              currSimZTime,
+				EstimatedNextTransition: currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second),
+            },
+        },
+    }
+
+	e.setInitialArrivalPosition(newAc, tta)
+
+	e.atcService.SetFlightPhaseClass(newAc)
+
+	e.Spawned[f.AircraftRegistration] = true
+	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
+
+	util.LogWithLabel(f.AircraftRegistration, "successfully spawned inbound aircraft: %s flight %d - estimated next tranistion: %v",
+		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
+}
+
+func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
+    currSimZTime := e.atcService.GetCurrentZuluTime()
+    h, m, _ := currSimZTime.Clock()
+    
+    nowMins := (h * 60) + m
+    arrMins := (f.ArrivalHour * 60) + f.ArrivalMin
+
+    diff := arrMins - nowMins
+
+    // Handle midnight wrap-around:
+    // If it's 23:55 (1435 mins) and arrival is 00:05 (5 mins)
+    // diff is -1430. Adding 1440 makes it a 10-minute TTA.
+    if diff < -720 {
+        diff += 1440
+    } else if diff > 720 {
+        diff -= 1440
+    }
+
+    return diff
 }
 
 func (e *D9TrafficEngine) updateActiveAircraft() {
@@ -349,7 +443,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 		switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 		case flightphase.Unknown:
 			// shouldn't be the case that the phase is unknown at this point, but this acts as a safety net
-			initialPhase, dur := e.determineInitialPhase(diff)
+			initialPhase, dur := e.determineInitialDepaturePhase(diff)
 			ac.Flight.Phase.Current = initialPhase.Index()
 			ac.Flight.Phase.Transition = currSimZTime
 			ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second)
@@ -428,6 +522,35 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				ac.Flight.Phase.Class = flightclass.Cruising
 				//TODO figure out what we do with further phases and what we set dur to
 			}
+
+		case flightphase.Approach, flightphase.Final, flightphase.Braking:
+			// 1. Move the aircraft based on current phase speed
+			e.updateInboundPosition(ac)
+
+			// 2. Check for phase transitions based on distance
+			dist := e.calculateDistanceToRunway(ac)
+			
+			if ac.Flight.Phase.Current == flightphase.Approach.Index() && dist <= 4.0 {
+				ac.Flight.Phase.Current = flightphase.Final.Index()
+				util.LogWithLabel(ac.Registration, "intercepted final approach for %s", ac.Flight.AssignedRunway)
+			} else if ac.Flight.Phase.Current == flightphase.Final.Index() && dist <= 0.1 {
+				ac.Flight.Phase.Current = flightphase.Braking.Index()
+				// Set a 40-second timer for the rollout/braking
+				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(40 * time.Second)
+				util.LogWithLabel(ac.Registration, "touchdown at %s", ac.Flight.Destination)
+			} else if ac.Flight.Phase.Current == flightphase.Braking.Index() && currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				ac.Flight.Phase.Current = flightphase.TaxiIn.Index()
+				// Give them 5 minutes to reach the gate
+				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(5 * time.Minute)
+			}
+
+		case flightphase.TaxiIn:
+			// Logic to move toward AssignedParking (which was found during Braking)
+			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				ac.Flight.Phase.Current = flightphase.Parked.Index()
+				// Finalize position to exact gate coords
+				e.snapToGate(ac)
+			}
 		default:
 			continue
 		}
@@ -473,9 +596,19 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 	e.initialised = true
 }
 
+func (e *D9TrafficEngine) snapToGate(ac *atc.Aircraft) {
+    airport := e.atcService.Airports[ac.Flight.Destination]
+	spot := ac.Flight.AssignedParkingSpot
+	ac.Flight.Position.Lat = spot.Lat
+	ac.Flight.Position.Long = spot.Lon
+	ac.Flight.Position.Heading = spot.Heading
+	ac.Flight.Position.Altitude = airport.Elevation
+	util.LogWithLabel(ac.Registration, "arrived at gate %s", spot.Name)
+}
+
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
 // of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time
-func (e *D9TrafficEngine) determineInitialPhase(diff int) (flightphase.FlightPhase, int) {
+func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int) (flightphase.FlightPhase, int) {
 	switch {
 	case diff > DMINUS_PARKED_MINS:
 		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
@@ -496,6 +629,93 @@ func (e *D9TrafficEngine) determineInitialPhase(diff int) (flightphase.FlightPha
 		//TODO handle spawnig later phases
 		return flightphase.Cruise, 0
 	}
+}
+
+func (e *D9TrafficEngine) determineInitialArrivalPhase(tta int) (flightphase.FlightPhase, int) {
+    switch {
+    case tta > AMINUS_APPROACH_MINS:
+        // Still far out, spawn in Cruise/Descent
+        dur := (tta - AMINUS_APPROACH_MINS) * 60
+        return flightphase.Cruise, dur + rand.IntN(60)
+
+    case tta <= AMINUS_APPROACH_MINS && tta > AMINUS_FINAL_MINS:
+        // Between 12 and 4 mins to landing: Approach
+        dur := (tta - AMINUS_FINAL_MINS) * 60
+        return flightphase.Approach, dur + rand.IntN(30)
+
+    case tta <= AMINUS_FINAL_MINS && tta > AMINUS_LAND_MINS:
+        // Between 4 and 0 mins: Final
+        dur := (tta - AMINUS_LAND_MINS) * 60
+        return flightphase.Final, dur + rand.IntN(15)
+
+    case tta <= AMINUS_LAND_MINS && tta > AMINUS_TAXIIN_MINS:
+        // Just landed: Braking
+        dur := (tta - AMINUS_TAXIIN_MINS) * 60
+        return flightphase.Braking, dur
+
+    default:
+        // Already should be at the gate or taxiing
+        return flightphase.TaxiIn, 300 // Give them 5 mins to reach gate
+    }
+}
+
+func (e *D9TrafficEngine) setInitialArrivalPosition(ac *atc.Aircraft, tta int) {
+    airport := e.atcService.Airports[ac.Flight.Destination]
+    rwy := e.getAssignedRunway(airport, ac.Flight.AssignedRunway)
+    phase := flightphase.FlightPhase(ac.Flight.Phase.Current)
+
+    var distance float64
+    switch phase {
+    case flightphase.Cruise:
+        distance = float64(tta) * 4.0 // ~240kts ground speed
+    case flightphase.Approach:
+        distance = float64(tta) * 3.0 // ~180kts ground speed
+    case flightphase.Final:
+        distance = float64(tta) * 2.5 // ~150kts ground speed
+    case flightphase.Braking, flightphase.TaxiIn:
+        distance = 0.1 // On the runway
+    }
+
+    // Project backward from the runway threshold
+    lat, lon := geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading+180, distance)
+    
+    ac.Flight.Position.Lat = lat
+    ac.Flight.Position.Long = lon
+    ac.Flight.Position.Heading = rwy.Heading
+    ac.Flight.Position.Altitude = airport.Elevation + (distance * 300)
+}
+
+func (e *D9TrafficEngine) updateInboundPosition(ac *atc.Aircraft) {
+    var speedKnots float64
+    currentPhase := flightphase.FlightPhase(ac.Flight.Phase.Current)
+
+    switch currentPhase {
+    case flightphase.Approach:
+        speedKnots = 200.0
+    case flightphase.Final:
+        speedKnots = 150.0
+    case flightphase.Braking:
+        // Linear deceleration from 140 to 20 knots
+        speedKnots = 80.0 
+    default:
+        return
+    }
+
+    // Distance covered in 10 seconds: (Speed / 3600) * 10
+    distPerTick := (speedKnots / 360) 
+
+    // Move Lat/Lon forward
+    newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distPerTick)
+    ac.Flight.Position.Lat = newLat
+    ac.Flight.Position.Long = newLon
+
+    // Update Altitude for Approach/Final (3-degree slope)
+    // Rule of thumb: 300ft per NM
+    if currentPhase != flightphase.Braking {
+        airport := e.atcService.Airports[ac.Flight.Destination]
+        distToRwy := e.calculateDistanceToRunway(ac)
+        ac.Flight.Position.Altitude = airport.Elevation + (distToRwy * 300.0)
+    }
 }
 
 func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass string, airlineICAO string) *atc.ParkingSpot {
@@ -687,7 +907,7 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 		}
 	}
 		return nil
-	}
+}
 
 func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) float64 {
     origin, okO := e.atcService.Airports[originICAO]
@@ -718,6 +938,36 @@ func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) f
     // Earth's radius in Nautical Miles is approximately 3440.065
     const earthRadiusNM = 3440.065
     return earthRadiusNM * c
+}
+
+func (e *D9TrafficEngine) calculateDistanceToRunway(ac *atc.Aircraft) float64 {
+    airport := e.atcService.Airports[ac.Flight.Destination]
+    // We assume the aircraft is assigned to the "best" runway calculated at spawn
+    rwy := e.getAssignedRunway(airport, ac.Flight.AssignedRunway)
+    
+    // Haversine distance between current position and runway threshold
+    return geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, rwy.Lat, rwy.Lon)
+}
+
+func (e *D9TrafficEngine) getAssignedRunway(ap *atc.Airport, name string) *atc.Runway {
+    if ap == nil {
+        return nil
+    }
+    
+    // Most airports only have a few runways, so a simple loop is efficient.
+    for _, rwy := range ap.Runways {
+        if rwy.Name == name {
+            return rwy
+        }
+    }
+    
+    // Fallback: If for some reason the name doesn't match, 
+    // return the first available runway so the geometry doesn't crash.
+    for _, rwy := range ap.Runways {
+        return rwy
+    }
+    
+    return nil
 }
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
