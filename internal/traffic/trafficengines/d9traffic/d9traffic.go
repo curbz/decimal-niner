@@ -57,6 +57,7 @@ const (
     AMINUS_FINAL_MINS    = 4  // ~4-5 NM out
     AMINUS_LAND_MINS     = 0  // Touchdown
     AMINUS_TAXIIN_MINS   = -2 // Off runway, taxing
+	//TODO add shutdown and parked
 
 	// allowable time variance (minutes) in phase duration. example: Parked jitter of 240 means that the parked phase duration
 	// can be reduced or increased by up to half of this time i.e. 120 seconds
@@ -308,7 +309,6 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,
-		//TODO set correct sizeclass
 		SizeClass: sizeClass,
 		Flight: atc.Flight{
 			Number:      f.Number,
@@ -539,18 +539,29 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(40 * time.Second)
 				util.LogWithLabel(ac.Registration, "touchdown at %s", ac.Flight.Destination)
 			} else if ac.Flight.Phase.Current == flightphase.Braking.Index() && currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				ac.Flight.Phase.Current = flightphase.TaxiIn.Index()
 				// Give them 5 minutes to reach the gate
+				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
+				if spot == nil {
+					util.LogWarnWithLabel(ac.Registration, "no suitable parking found at airport %s - flight ended", airport.ICAO)
+					//TODO: remove from active flights
+					continue
+				} else {
+					util.LogWithLabel(ac.Registration, "assigning parking at airport %s to spot %s", airport.ICAO, spot.Name)
+				}
+				ac.Flight.AssignedParkingSpot = spot
+				ac.Flight.AssignedParkingName = spot.Name
 				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(5 * time.Minute)
+				ac.Flight.Phase.Current = flightphase.TaxiIn.Index()
 			}
 
 		case flightphase.TaxiIn:
 			// Logic to move toward AssignedParking (which was found during Braking)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				ac.Flight.Phase.Current = flightphase.Parked.Index()
+				ac.Flight.Phase.Current = flightphase.Shutdown.Index()
 				// Finalize position to exact gate coords
 				e.snapToGate(ac)
 			}
+		//TODO handle transition from shutdown to post flight parked
 		default:
 			continue
 		}
@@ -599,11 +610,14 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 func (e *D9TrafficEngine) snapToGate(ac *atc.Aircraft) {
     airport := e.atcService.Airports[ac.Flight.Destination]
 	spot := ac.Flight.AssignedParkingSpot
-	ac.Flight.Position.Lat = spot.Lat
-	ac.Flight.Position.Long = spot.Lon
-	ac.Flight.Position.Heading = spot.Heading
-	ac.Flight.Position.Altitude = airport.Elevation
-	util.LogWithLabel(ac.Registration, "arrived at gate %s", spot.Name)
+	if spot != nil {
+		//TODO retry assigning as it is possible that braking phase was skipped or this is the inital skipped
+		ac.Flight.Position.Lat = spot.Lat
+		ac.Flight.Position.Long = spot.Lon
+		ac.Flight.Position.Heading = spot.Heading
+		ac.Flight.Position.Altitude = airport.Elevation
+		util.LogWithLabel(ac.Registration, "arrived at gate %s", spot.Name)
+	}
 }
 
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
@@ -626,7 +640,6 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int) (flightphase.F
 		estimatedDuration := ((diff - DMINUS_DEPART_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
 		return flightphase.Depart, estimatedDuration
 	default:
-		//TODO handle spawnig later phases
 		return flightphase.Cruise, 0
 	}
 }
