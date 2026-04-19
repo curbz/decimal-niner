@@ -356,7 +356,7 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 
     airline := e.resolveAirline(f)
-	
+
     sizeClass := e.determineSizeClass(f, airline)
 	sizeClassStr := ""
 	if sizeClass == "E" || sizeClass == "F" {
@@ -906,7 +906,15 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 			return e.atcService.GetAirlineByCode(code)
 		}
 	}
-		return nil
+	
+	util.LogWarnWithLabel(f.AircraftRegistration, "unable to resolve airline, defaulting to BAW")
+	return &atc.AirlineInfo{
+		ICAO: 	  "UNK",
+		AirlineName: "British Airways",
+		Callsign:    "SPEEDBIRD",
+		CountryCode: "GB",
+		Tier:        "international",
+	}
 }
 
 func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) float64 {
