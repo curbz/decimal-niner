@@ -19,11 +19,10 @@ import (
 )
 
 type D9TrafficEngine struct {
-	ActiveAircraft   []*atc.Aircraft
 	AirportSchedules map[string]*AirportTimeline
 	atcService       *atc.Service
 	FlightPlanPath   string
-	Spawned          map[string]bool // TailNumber -> bool
+	ActiveAircraft   map[string]*atc.Aircraft
 	initialised      bool
 	OccupiedParking  map[string]string
 }
@@ -77,7 +76,7 @@ func New(cfgPath string) (traffic.Engine, error) {
 
 	return &D9TrafficEngine{
 		FlightPlanPath:  cfg.D9Traffic.FlightPlanPath,
-		Spawned:         make(map[string]bool),
+		ActiveAircraft:         make(map[string]*atc.Aircraft),
 		OccupiedParking: make(map[string]string),
 	}, nil
 }
@@ -108,7 +107,7 @@ func (e *D9TrafficEngine) Start() {
 			// 3. Update existing aircraft (Phase transitions)
 			e.updateActiveAircraft()
 
-			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total spawned aircraft: %d", time.Since(start), len(e.Spawned))
+			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total active aircraft: %d", time.Since(start), len(e.ActiveAircraft))
 		}
 	}()
 }
@@ -235,7 +234,7 @@ func (e *D9TrafficEngine) checkForDepartureSpawns(icao string, day, h, m int) {
 
 			// If the flight is in the future window [now, now + 30]
 			if compareMins >= nowMins && compareMins <= nowMins+lookahead {
-				if !e.isCurrentlyActive(f.AircraftRegistration) {
+				if !e.isCurrentlyActive(f.AircraftRegistration, f.Number) {
 					e.spawnGroundTraffic(&f)
 				}
 			}
@@ -258,16 +257,16 @@ func (e *D9TrafficEngine) checkForArrivalSpawns(icao string, day, h, m int) {
         arrMins := (f.ArrivalHour * 60) + f.ArrivalMin
         // If arriving soon and not already active
         if arrMins >= nowMins && arrMins <= nowMins+30 {
-            if !e.isCurrentlyActive(f.AircraftRegistration) {
+            if !e.isCurrentlyActive(f.AircraftRegistration, f.Number) {
                 e.spawnInboundTraffic(&f)
             }
         }
     }
 }
 
-func (e *D9TrafficEngine) isCurrentlyActive(registration string) bool {
-	active, exists := e.Spawned[registration]
-	return exists && active
+func (e *D9TrafficEngine) isCurrentlyActive(registration string, flightNumber int) bool {
+	_, exists := e.ActiveAircraft[fmt.Sprintf("%s_%d", registration, flightNumber)]
+	return exists
 }
 
 func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int {
@@ -338,8 +337,7 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 	}
 	e.atcService.SetFlightPhaseClass(newAc)
 
-	e.Spawned[f.AircraftRegistration] = true
-	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
+	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
 	util.LogWithLabel(f.AircraftRegistration, "successfully spawned outbound aircraft: %s flight %d - estimated next tranistion: %v",
 		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
@@ -390,14 +388,16 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
     }
 
 	e.setInitialArrivalPosition(newAc, tta)
-
 	e.atcService.SetFlightPhaseClass(newAc)
 
-	e.Spawned[f.AircraftRegistration] = true
-	e.ActiveAircraft = append(e.ActiveAircraft, newAc)
+	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
 	util.LogWithLabel(f.AircraftRegistration, "successfully spawned inbound aircraft: %s flight %d - estimated next tranistion: %v",
 		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
+}
+
+func getActiveAircraftKey(ac *atc.Aircraft) string {
+	return fmt.Sprintf("%s_%d", ac.Registration, ac.Flight.Number)
 }
 
 func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
@@ -423,7 +423,7 @@ func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
 
 func (e *D9TrafficEngine) updateActiveAircraft() {
 
-	for _, ac := range e.ActiveAircraft {
+	for _, ac := range e.ActiveAircraft { 
 
 		f := ac.Flight.Schedule
 		if f == nil {
@@ -450,27 +450,12 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			e.atcService.SetFlightPhaseClass(ac)
 			continue
 		case flightphase.Parked:
-			if ac.Flight.AssignedParkingSpot == nil {
-				// Pass ac.Flight.Airline.ICAO instead of CountryCode
-				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
-				if spot == nil {
-					util.LogWarnWithLabel(ac.Registration, "no suitable parking found at airport %s - cannot spawn", airport.ICAO)
-					continue
-				} else {
-					util.LogWithLabel(ac.Registration, "assigning parking at airport %s to spot %s", airport.ICAO, spot.Name)
-				}
-
-				ac.Flight.Position = atc.Position{
-					Lat:      spot.Lat,
-					Long:     spot.Lon,
-					Heading:  spot.Heading,
-					Altitude: airport.Elevation,
-				}
-				ac.Flight.AssignedParkingSpot = spot
-				ac.Flight.AssignedParkingName = spot.Name
-				key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
-				e.OccupiedParking[key] = ac.Registration
-				spot.IsOccupied = true
+			if ac.Flight.Phase.Class == flightclass.PostflightParked {
+				e.endFlight(ac)
+				continue
+			} 
+			if e.positionAtOriginParking(ac) == nil {
+				continue
 			}
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.Phase.Current = flightphase.Startup.Index()
@@ -478,6 +463,9 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				dur = DMINUS_STARTUP_MINS - DMINUS_TAXIOUT_MINS
 			}
 		case flightphase.Startup:
+			if e.positionAtOriginParking(ac) == nil {
+				continue
+			}
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.Phase.Current = flightphase.TaxiOut.Index()
 				ac.Flight.Phase.Class = flightclass.Departing
@@ -539,7 +527,6 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(40 * time.Second)
 				util.LogWithLabel(ac.Registration, "touchdown at %s", ac.Flight.Destination)
 			} else if ac.Flight.Phase.Current == flightphase.Braking.Index() && currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				// Give them 5 minutes to reach the gate
 				spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
 				if spot == nil {
 					util.LogWarnWithLabel(ac.Registration, "no suitable parking found at airport %s - flight ended", airport.ICAO)
@@ -550,6 +537,10 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				}
 				ac.Flight.AssignedParkingSpot = spot
 				ac.Flight.AssignedParkingName = spot.Name
+				key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+				e.OccupiedParking[key] = ac.Registration
+				spot.IsOccupied = true
+				// Give them 5 minutes to reach the gate
 				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(5 * time.Minute)
 				ac.Flight.Phase.Current = flightphase.TaxiIn.Index()
 			}
@@ -559,9 +550,9 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.Phase.Current = flightphase.Shutdown.Index()
 				// Finalize position to exact gate coords
-				e.snapToGate(ac)
+				e.positionAtDestParking(ac)
 			}
-		//TODO handle transition from shutdown to post flight parked
+		//TODO handle transition from shutdown to parked = must ensure parked results in flighclass of postflight parked so that it is removed from active flights in updateActiveAircraft
 		default:
 			continue
 		}
@@ -607,17 +598,64 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 	e.initialised = true
 }
 
-func (e *D9TrafficEngine) snapToGate(ac *atc.Aircraft) {
+func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {
+	delete(e.ActiveAircraft, getActiveAircraftKey(ac))
+	if ac.Flight.AssignedParkingSpot != nil {
+		e.releaseParking(ac.Flight.Destination, ac.Flight.AssignedParkingSpot)
+	}
+}
+
+func (e *D9TrafficEngine) positionAtOriginParking(ac *atc.Aircraft) *atc.ParkingSpot {
+	airport := e.atcService.Airports[ac.Flight.Origin]
+	spot := ac.Flight.AssignedParkingSpot
+	if spot == nil {
+		spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
+		if spot == nil {
+			util.LogWarnWithLabel(ac.Registration, "no suitable parking found at origin airport %s - terminating flight", airport.ICAO)
+			delete(e.ActiveAircraft, getActiveAircraftKey(ac))
+			//TODO consider strategy to prevent spawn re-selection, potentially delete schedule
+			return nil
+		} else {
+			util.LogWithLabel(ac.Registration, "assigning parking at airport %s to spot %s", airport.ICAO, spot.Name)
+		}
+	}
+
+	ac.Flight.Position = atc.Position{
+		Lat:      spot.Lat,
+		Long:     spot.Lon,
+		Heading:  spot.Heading,
+		Altitude: airport.Elevation,
+	}
+	ac.Flight.AssignedParkingSpot = spot
+	ac.Flight.AssignedParkingName = spot.Name
+	key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+	e.OccupiedParking[key] = ac.Registration
+	spot.IsOccupied = true
+	return spot
+}
+
+func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) *atc.ParkingSpot {
     airport := e.atcService.Airports[ac.Flight.Destination]
 	spot := ac.Flight.AssignedParkingSpot
-	if spot != nil {
-		//TODO retry assigning as it is possible that braking phase was skipped or this is the inital skipped
-		ac.Flight.Position.Lat = spot.Lat
-		ac.Flight.Position.Long = spot.Lon
-		ac.Flight.Position.Heading = spot.Heading
-		ac.Flight.Position.Altitude = airport.Elevation
-		util.LogWithLabel(ac.Registration, "arrived at gate %s", spot.Name)
+	if spot == nil {
+		spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
+		if spot == nil {
+			util.LogWarnWithLabel(ac.Registration, "no suitable parking found at airport %s - ending flight", airport.ICAO)
+			e.endFlight(ac)
+			return nil
+		} else {
+			util.LogWithLabel(ac.Registration, "assigning parking at airport %s to spot %s", airport.ICAO, spot.Name)
+		}
 	}
+	ac.Flight.Position.Lat = spot.Lat
+	ac.Flight.Position.Long = spot.Lon
+	ac.Flight.Position.Heading = spot.Heading
+	ac.Flight.Position.Altitude = airport.Elevation
+	key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
+	e.OccupiedParking[key] = ac.Registration
+	spot.IsOccupied = true
+	util.LogWithLabel(ac.Registration, "arrived at gate %s", spot.Name)
+	return spot
 }
 
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
