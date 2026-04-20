@@ -456,7 +456,9 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	if !xpc.initialised {
 		xpc.initialised = true
-		logger.Log.Infof("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
+		if xpc.readAircraftData {
+			logger.Log.Infof("Initial aircraft data loaded. Total tracked aircraft: %d", len(xpc.aircraftMap))
+		}
 	}
 }
 

@@ -14,7 +14,7 @@ atc:
   message_buffer_size:    40
   listen_all_frequencies: true
   strict_flightplan_matching: false
-  airline_country_code_fallback: "GB"
+  airline_country_code_fallback: "EG"
   airlines_file:     "resources/airlines.json"
   atc_data_file:     "/home/dmorris/decimal-niner/X-Plane/atc.dat"
   atc_regions_file:  "/home/dmorris/decimal-niner/X-Plane/atc_regions.dat"

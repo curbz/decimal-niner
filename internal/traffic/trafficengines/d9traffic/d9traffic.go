@@ -609,7 +609,7 @@ func (e *D9TrafficEngine) positionAtOriginParking(ac *atc.Aircraft) *atc.Parking
 	airport := e.atcService.Airports[ac.Flight.Origin]
 	spot := ac.Flight.AssignedParkingSpot
 	if spot == nil {
-		spot := e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
+		spot = e.findAvailableParking(airport, ac.SizeClass, ac.Flight.Airline.ICAO)
 		if spot == nil {
 			util.LogWarnWithLabel(ac.Registration, "no suitable parking found at origin airport %s - terminating flight", airport.ICAO)
 			delete(e.ActiveAircraft, getActiveAircraftKey(ac))
