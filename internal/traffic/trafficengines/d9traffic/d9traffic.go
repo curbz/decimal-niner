@@ -52,11 +52,13 @@ const (
 	DMINUS_CLIMBOUT_MINS = -5
 	DMINUS_CRUISE        = -15
 
-    AMINUS_APPROACH_MINS = 12 // ~15-20 NM out
+    AMINUS_APPROACH_MINS = 8 // ~15-20 NM out
     AMINUS_FINAL_MINS    = 4  // ~4-5 NM out
     AMINUS_LAND_MINS     = 0  // Touchdown
-    AMINUS_TAXIIN_MINS   = -2 // Off runway, taxing
-	//TODO add shutdown and parked
+	AMINUS_BRAKING		 = 1
+    AMINUS_TAXIIN_MINS   = -10
+	AMINUS_SHUTDOWN_MINS = -15
+	AMINUS_PARKED_MINS   = -30
 
 	// allowable time variance (minutes) in phase duration. example: Parked jitter of 240 means that the parked phase duration
 	// can be reduced or increased by up to half of this time i.e. 120 seconds
@@ -65,6 +67,11 @@ const (
 	TAXIOUT_JITTER_SECONDS  = 240
 	DEPART_JITTER_SECONDS   = 120
 	CLIMBOUT_JITTER_SECONDS = 180
+	APPROACH_JITTER_SECONDS = 100
+    FINAL_JITTER_SECONDS    = 60
+	BRAKING_JITTER_SECONDS  = 20
+	SHUTDOWN_JITTER_SECONDS = 120
+
 )
 
 func New(cfgPath string) (traffic.Engine, error) {
@@ -283,6 +290,7 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 	ttd := e.timeDiffToDeparture(f)
 	initialPhase, dur := e.determineInitialDepaturePhase(ttd)
+	tDur := time.Duration(math.Abs(float64(dur))) * time.Second
 
 	if initialPhase == flightphase.Unknown {
 		return
@@ -331,7 +339,8 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 				Current:                 initialPhase.Index(),
 				Previous:                flightphase.Unknown.Index(),
 				Transition:              currSimZTime,
-				EstimatedNextTransition: currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second),
+				EstimatedNextTransition: currSimZTime.Add(tDur),
+				TotalDuration: tDur,
 			},
 		},
 	}
@@ -348,6 +357,7 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
 
     tta := e.timeDiffToArrival(f)
     initialPhase, dur := e.determineInitialArrivalPhase(tta)
+	tDur := time.Duration(math.Abs(float64(dur))) * time.Second
 
     airport := e.atcService.Airports[f.IcaoDest]
 
@@ -382,7 +392,8 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
                 Current:    initialPhase.Index(),
 				Previous:                flightphase.Unknown.Index(),
 				Transition:              currSimZTime,
-				EstimatedNextTransition: currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second),
+				EstimatedNextTransition: currSimZTime.Add(tDur),
+				TotalDuration: tDur,
             },
         },
     }
@@ -444,9 +455,11 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 		case flightphase.Unknown:
 			// shouldn't be the case that the phase is unknown at this point, but this acts as a safety net
 			initialPhase, dur := e.determineInitialDepaturePhase(diff)
+			tDur := time.Duration(math.Abs(float64(dur))) * time.Second
 			ac.Flight.Phase.Current = initialPhase.Index()
 			ac.Flight.Phase.Transition = currSimZTime
-			ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second)
+			ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(tDur)
+			ac.Flight.Phase.TotalDuration = tDur
 			e.atcService.SetFlightPhaseClass(ac)
 			continue
 		case flightphase.Parked:
@@ -502,7 +515,6 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 				ac.Flight.Position.Lat = newLat
 				ac.Flight.Position.Long = newLon
 				ac.Flight.Position.Altitude = airport.Elevation + 2500.0
-
 			}
 		case flightphase.Climbout:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
@@ -560,7 +572,9 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
 			logMsg := ""
 			if e.initialised {
-				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Second)
+				tDur := time.Duration(math.Abs(float64(dur))) * time.Minute
+				ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(math.Abs(float64(dur))) * time.Minute)
+				ac.Flight.Phase.TotalDuration = tDur
 				// Notify ATC service of flight phase change
 				e.atcService.NotifyFlightPhaseChange(ac)
 				logMsg = "flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d estimated next transition at %v"
@@ -682,31 +696,48 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int) (flightphase.F
 	}
 }
 
-func (e *D9TrafficEngine) determineInitialArrivalPhase(tta int) (flightphase.FlightPhase, int) {
+func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int) (flightphase.FlightPhase, int) {
     switch {
-    case tta > AMINUS_APPROACH_MINS:
-        // Still far out, spawn in Cruise/Descent
-        dur := (tta - AMINUS_APPROACH_MINS) * 60
-        return flightphase.Cruise, dur + rand.IntN(60)
+    // APPROACH: 
+    case diff <= AMINUS_APPROACH_MINS && diff > AMINUS_FINAL_MINS:
+        estimatedDuration := ((diff - AMINUS_FINAL_MINS) * 60) + 
+            (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
+        return flightphase.Approach, estimatedDuration
 
-    case tta <= AMINUS_APPROACH_MINS && tta > AMINUS_FINAL_MINS:
-        // Between 12 and 4 mins to landing: Approach
-        dur := (tta - AMINUS_FINAL_MINS) * 60
-        return flightphase.Approach, dur + rand.IntN(30)
+    // FINAL: 
+    case diff <= AMINUS_FINAL_MINS && diff > AMINUS_LAND_MINS:
+        estimatedDuration := (diff * 60) + 
+            (rand.IntN((FINAL_JITTER_SECONDS*2)+1) - FINAL_JITTER_SECONDS)
+        return flightphase.Final, estimatedDuration
 
-    case tta <= AMINUS_FINAL_MINS && tta > AMINUS_LAND_MINS:
-        // Between 4 and 0 mins: Final
-        dur := (tta - AMINUS_LAND_MINS) * 60
-        return flightphase.Final, dur + rand.IntN(15)
+    // BRAKING: 
+    case diff <= AMINUS_LAND_MINS && diff > AMINUS_BRAKING:
+        estimatedDuration := ((diff - AMINUS_BRAKING) * 60) + 
+            (rand.IntN((BRAKING_JITTER_SECONDS*2)+1) - BRAKING_JITTER_SECONDS)
+        return flightphase.Braking, estimatedDuration
 
-    case tta <= AMINUS_LAND_MINS && tta > AMINUS_TAXIIN_MINS:
-        // Just landed: Braking
-        dur := (tta - AMINUS_TAXIIN_MINS) * 60
-        return flightphase.Braking, dur
+    // TAXI IN: 
+    case diff <= AMINUS_BRAKING && diff > AMINUS_TAXIIN_MINS:
+        // We use TAXIOUT jitter here as a proxy for movement variance
+        estimatedDuration := ((diff - AMINUS_TAXIIN_MINS) * 60) + 
+            (rand.IntN((TAXIOUT_JITTER_SECONDS*2)+1) - TAXIOUT_JITTER_SECONDS)
+        return flightphase.TaxiIn, estimatedDuration
 
+    // SHUTDOWN: 
+    case diff <= AMINUS_TAXIIN_MINS && diff > AMINUS_SHUTDOWN_MINS:
+        estimatedDuration := ((diff - AMINUS_SHUTDOWN_MINS) * 60) + 
+            (rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS)
+        return flightphase.Shutdown, estimatedDuration
+
+    // PARKED: 
+    case diff <= AMINUS_SHUTDOWN_MINS && diff >= AMINUS_PARKED_MINS:
+        estimatedDuration := ((diff - AMINUS_PARKED_MINS) * 60) + 
+            (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
+        return flightphase.Parked, estimatedDuration
+
+    // DEFAULT: 
     default:
-        // Already should be at the gate or taxiing
-        return flightphase.TaxiIn, 300 // Give them 5 mins to reach gate
+        return flightphase.Cruise, 0
     }
 }
 
