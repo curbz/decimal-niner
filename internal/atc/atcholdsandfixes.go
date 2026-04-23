@@ -17,38 +17,60 @@ type Hold struct {
 	Region   string
 	FullName string
 	ICAO     string // airport ICAO or 'ENRT'
-	Seq      int
-	Inbound  float64
-	LegTime  float64
-	LegDist  float64
-	Turn     string
 	MinAlt   int
 	MaxAlt   int
-	Speed    int
 	LatRad   float64
 	LonRad   float64
 	X, Y, Z  float64
 }
 
-func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, map[string][]*Hold, error) {
+type Fix struct {
+	Ident    string
+	Region   string
+	FullName string
+	LatRad   float64
+	LonRad   float64
+	Hold 	 *Hold // if this fix is also a hold, this field will be populated otherwise nil
+}
+
+type ProcedureFix struct {
+	Fix 	*Fix
+	ConstraintAlt int
+	ConstraintType int // 0 = at, 1 = at or above, 2 = at or below
+}
+
+func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, map[string][]*Hold, map[string]*Fix, error) {
 
 	allFixes, err := parseFixData(fixesFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	logger.Log.Infof("%d fixes read from fix data", len(allFixes))
 
 	namedFixes, err := parseNavData(navDataFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	logger.Log.Infof("%d navaids read from nav data", len(namedFixes))
 
-	globalHolds, airportHolds, err := parseHoldData(holdsDataFile)
+	// Merge maps: namedFixes takes priority over allFixes
+	for key, fix := range allFixes {
+		if _, exists := namedFixes[key]; !exists {
+			namedFixes[key] = fix
+		}
+	}
+	allFixes = namedFixes
+	logger.Log.Infof("consolidated fix count: %d", len(allFixes))	
+
+	allHolds, airportHolds, err := parseHoldData(holdsDataFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	resolveHoldCoordinates(globalHolds, namedFixes, allFixes)
+	logger.Log.Infof("%d holds read from holds data", len(allHolds))
 
-	return globalHolds, airportHolds, nil
+	resolveHoldCoordinates(allHolds, allFixes)
+
+	return allHolds, airportHolds, allFixes, nil
 
 }
 
@@ -74,33 +96,34 @@ func parseInt(s string) int {
 }
 
 // enrich holds with lat/lon from fixes, and precompute unit vectors for nearest-hold search
-func resolveHoldCoordinates(holds map[string]*Hold, namedFixes map[string]Fix, allFixes map[string]Fix) {
+func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix) {
 
-	for _, h := range holds {
+	namedCnt := 0
+	enrichedCnt := 0
+
+	for _, h := range allHolds {
 
 		key := h.Ident + "_" + h.Region
 
-		namedFix, found := namedFixes[key]
+		namedFix, found := allFixes[key]
 		if found {
 			h.FullName = namedFix.FullName
 			h.LatRad = namedFix.LatRad
 			h.LonRad = namedFix.LonRad
-		}
-
-		if h.LatRad == 0 && h.LonRad == 0 {
-			fix, found := allFixes[key]
-			if found {
-				h.LatRad = fix.LatRad
-				h.LonRad = fix.LonRad
-			} else {
-				logger.Log.Warn("hold not found in fix map for key ", key)
-				continue
+			namedFix.Hold = h
+			if h.FullName != "" {
+				namedCnt++
 			}
+			enrichedCnt++
+		} else {
+			logger.Log.Warn("hold not found in fix map for key ", key)
+			continue
 		}
 
 		h.InitUnitVector()
 	}
-
+	logger.Log.Infof("%d holds were enriched with full names", namedCnt)
+	logger.Log.Infof("%d holds were enriched with coordinates", enrichedCnt)
 }
 
 func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
@@ -177,7 +200,7 @@ func parseHoldData(path string) (map[string]*Hold, map[string][]*Hold, error) {
 	}
 	defer f.Close()
 
-	globalHolds := make(map[string]*Hold)
+	allHolds := make(map[string]*Hold)
 	airportHolds := make(map[string][]*Hold)
 
 	scan := bufio.NewScanner(f)
@@ -197,18 +220,12 @@ func parseHoldData(path string) (map[string]*Hold, map[string][]*Hold, error) {
 			Ident:   fields[0],
 			Region:  fields[1],
 			ICAO:    fields[2], // airport ICAO or 'ENRT'
-			Seq:     parseInt(fields[3]),
-			Inbound: parseFloat(fields[4]),
-			LegTime: parseFloat(fields[5]),
-			LegDist: parseFloat(fields[6]),
-			Turn:    fields[7],
 			MinAlt:  parseInt(fields[8]),
 			MaxAlt:  parseInt(fields[9]),
-			Speed:   parseInt(fields[10]),
 		}
 
 		key := h.Ident + "_" + h.Region
-		globalHolds[key] = h
+		allHolds[key] = h
 
 		if h.ICAO != "ENRT" {
 			hSlice, exists := airportHolds[h.ICAO]
@@ -220,17 +237,17 @@ func parseHoldData(path string) (map[string]*Hold, map[string][]*Hold, error) {
 		}
 	}
 
-	return globalHolds, airportHolds, scan.Err()
+	return allHolds, airportHolds, scan.Err()
 }
 
-func parseNavData(path string) (map[string]Fix, error) {
+func parseNavData(path string) (map[string]*Fix, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file %s: %w", path, err)
 	}
 	defer f.Close()
 
-	fixes := make(map[string]Fix)
+	fixes := make(map[string]*Fix)
 	scan := bufio.NewScanner(f)
 
 	for scan.Scan() {
@@ -256,7 +273,7 @@ func parseNavData(path string) (map[string]Fix, error) {
 		fullName := strings.Join(fields[10:], " ")
 
 		key := ident + "_" + region
-		fixes[key] = Fix{
+		fixes[key] = &Fix{
 			Ident:    ident,
 			Region:   region,
 			FullName: cleanFixName(fullName),
@@ -295,9 +312,9 @@ func cleanFixName(name string) string {
 
 }
 
-func parseFixData(path string) (map[string]Fix, error) {
+func parseFixData(path string) (map[string]*Fix, error) {
 
-	fixes := make(map[string]Fix)
+	fixes := make(map[string]*Fix)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -320,7 +337,7 @@ func parseFixData(path string) (map[string]Fix, error) {
 		region := parts[4]
 
 		key := ident + "_" + region
-		fixes[key] = Fix{
+		fixes[key] = &Fix{
 			Ident:  ident,
 			Region: region,
 			LatRad: lat,

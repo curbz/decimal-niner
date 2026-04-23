@@ -46,16 +46,17 @@ type Runway struct {
 	FAFalt                   int     // Final approach fix altitude
 	MAalt                    int     // highest missed approach altitude
 	MAHeading                int     // initial MA course (degrees)
-	MAFix                    string  // only if HM leg exists
+	MAFix                    string  
 	HighestPrecisionApproach string  // highest precision approach type
+	SIDs      []*Procedure
+    STARs     []*Procedure
 }
 
-type Fix struct {
-	Ident    string
-	Region   string
-	FullName string
-	LatRad   float64
-	LonRad   float64
+type Procedure struct {
+	Name 	string
+	Type 	int // 0 = SID, 1 = STAR
+	Entry 	*ProcedureFix
+	Exit 	*ProcedureFix
 }
 
 type aptPoint struct {
@@ -71,6 +72,13 @@ type ParkingSpot struct {
 	WidthClass   string // A, B, C, D, E, F (ICAO standard)
 	SizeType     string // airline / general_aviation / military
 	IsOccupied   bool
+}
+
+type pendingProc struct {
+    Name   string
+    Type   int // 0 = SID, 1 = STAR
+    Runway string // e.g., "09L" or "ALL"
+    Legs   []ProcedureFix
 }
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -101,13 +109,13 @@ func (s *Service) getAirportRunway(icao, rwy string) *Runway {
 }
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
-	airportHolds map[string][]*Hold, globalHolds map[string]*Hold) error {
+	airportHolds map[string][]*Hold, allHolds map[string]*Hold, allFixes map[string]*Fix) error {
 
 	for icao := range requiredAirports {
 
 		// Parse airport CIFP data for runway, approach and fixes data
 		path := filepath.Join(dir, icao+".dat")
-		rwyMap, err := parseCIFP(path)
+		rwyMap, err := parseCIFP(path, allFixes)
 		var pathErr *fs.PathError
 		if err != nil {
 			if errors.As(err, &pathErr) {
@@ -145,7 +153,7 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		for _, rw := range ap.Runways {
 			if rw.MAFix != "" {
 				key := rw.MAFix + "_" + ap.Region
-				if h, ok := globalHolds[key]; ok {
+				if h, ok := allHolds[key]; ok {
 					// check hold not already present in array
 					present := false
 					if len(ap.Holds) > 0 {
@@ -433,7 +441,8 @@ func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 	}
 }
 
-func parseCIFP(cifpPath string) (map[string]Runway, error) {
+func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, error) {
+
 	f, err := os.Open(cifpPath)
 	if err != nil {
 		return nil, err
@@ -468,8 +477,89 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 
 	var sawRunwayLeg bool
 
+	var currentProc *pendingProc
+	pendingProcs := []pendingProc{}
+
+	lastSeq := 1
+
 	for scan.Scan() {
 		line := strings.TrimSpace(scan.Text())
+
+		// --- SID/STAR LOGIC ---
+        if strings.HasPrefix(line, "SID:") || strings.HasPrefix(line, "STAR:") {
+            fields := strings.Split(line, ",")
+            if len(fields) < 12 { continue }
+
+            // Extract Sequence (e.g., "010")
+            seqPart := fields[0][strings.Index(fields[0], ":")+1:]
+            seq, _ := strconv.Atoi(strings.TrimSpace(seqPart))
+            
+            procName := strings.TrimSpace(fields[2])
+			procRwy := strings.TrimSpace(fields[3])
+			var targetRwy string
+			if procRwy == "ALL" {
+				targetRwy = "ALL"
+			} else {
+            	targetRwy = normaliseRunwayName(procRwy)
+			}
+
+            // 1. Initialize a new collector if this is the first leg
+            if seq <= lastSeq {
+                // If we were already working on one, save it before starting new
+				if currentProc != nil {
+					pendingProcs = append(pendingProcs, *currentProc)
+					currentProc = nil
+				}            
+                currentProc = &pendingProc{
+                    Name:   procName,
+                    Runway: targetRwy,
+                    Type:   0, // Default SID
+                }
+                if strings.HasPrefix(line, "STAR:") { currentProc.Type = 1 }
+            }
+			lastSeq = seq
+
+            if currentProc == nil { continue }
+
+            // 2. Extract Leg Info
+            fixID := strings.TrimSpace(fields[4])
+			if fixID == "" { continue }
+			regionID := strings.TrimSpace(fields[5])
+            if regionID == "" { continue }
+
+
+            if fData, ok := allFixes[fixID + "_" + regionID]; ok {
+                pFix := ProcedureFix{
+                    Fix: fData,
+                    ConstraintType: -1, // Initialize as none
+                }
+                
+                // 3. Parse Alt Constraints (CIFP Columns 23-25)
+                atOrAbove := normaliseCIFPAlt(strings.TrimSpace(fields[23]))
+                atAlt := normaliseCIFPAlt(strings.TrimSpace(fields[24]))
+                atOrBelow := normaliseCIFPAlt(strings.TrimSpace(fields[25]))
+
+                if atAlt > 0 {
+                    pFix.ConstraintAlt = atAlt
+                    pFix.ConstraintType = 0
+                } else if atOrAbove > 0 {
+                    pFix.ConstraintAlt = atOrAbove
+                    pFix.ConstraintType = 1
+                } else if atOrBelow > 0 {
+                    pFix.ConstraintAlt = atOrBelow
+                    pFix.ConstraintType = 2
+                }
+
+                currentProc.Legs = append(currentProc.Legs, pFix)
+            }
+            continue
+        }
+        
+        // If we hit a line that isn't a SID/STAR and we have a pending proc, wrap it up
+        if currentProc != nil {
+			pendingProcs = append(pendingProcs, *currentProc)
+            currentProc = nil
+        }
 
 		if strings.HasPrefix(line, "RWY:") {
 			parts := strings.Split(line, ";") // The physical data is usually after the semicolon
@@ -672,7 +762,40 @@ func parseCIFP(cifpPath string) (map[string]Runway, error) {
 		}
 	}
 
+	finalizeProcedures(runways, pendingProcs)
+
 	return runways, scan.Err()
+}
+
+func finalizeProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
+
+	for _, p := range pendingProcs {
+
+		if len(p.Legs) == 0 { continue }
+
+		newProc := &Procedure{
+			Name: p.Name,
+			Type: p.Type,
+		}
+
+		// Assign Entry/Exit based on sequence order
+		newProc.Entry = &p.Legs[0]
+		newProc.Exit = &p.Legs[len(p.Legs)-1]
+
+		// Attach to the appropriate Runway(s)
+		for name, rw := range runways {
+			// If the procedure is for "ALL" runways or matches the name (e.g., "09L")
+			if p.Runway == "ALL" || p.Runway == name {
+				if p.Type == 0 { // SID
+					rw.SIDs = append(rw.SIDs, newProc)
+				} else { // STAR
+					rw.STARs = append(rw.STARs, newProc)
+				}
+				// IMPORTANT: Write the modified Runway struct back to the map
+				runways[name] = rw 
+			}
+		}
+	}
 }
 
 func mergeRunway(existing, incoming Runway, appType string) Runway {
@@ -764,6 +887,29 @@ func normaliseRunwayName(rw string) string {
 	}
 
 	return num + suffix
+}
+
+func normaliseCIFPAlt(altStr string) int {
+    altStr = strings.TrimSpace(altStr)
+    if altStr == "" {
+        return 0
+    }
+
+    // Handle Flight Levels (e.g., FL270)
+    if strings.HasPrefix(altStr, "FL") {
+        flVal, err := strconv.Atoi(altStr[2:])
+        if err != nil {
+            return 0
+        }
+        return flVal * 100 // FL270 -> 27,000 feet
+    }
+
+    // Handle standard feet (e.g., 06000)
+    val, err := strconv.Atoi(altStr)
+    if err != nil {
+        return 0
+    }
+    return val
 }
 
 func getAirportICAObyPhaseClass(ac *Aircraft) string {

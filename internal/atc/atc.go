@@ -97,14 +97,14 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 
 	// load hold data
 	logger.Log.Info("Loading X-Plane Holds data")
-	globalHolds, airportHolds, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
+	allHolds, airportHolds, allFixes, err := loadHolds(cfg.ATC.AtcNavDataFile, cfg.ATC.AtcHoldsFile, cfg.ATC.AtcFixesFile)
 	if err != nil {
 		logger.Log.Errorf("Error loading hold data: %v", err)
 		return nil, err
 	}
-	logger.Log.Infof("Holds data loaded: seeded %d holds\n", len(globalHolds))
+	logger.Log.Infof("Holds data loaded: seeded %d holds\n", len(allHolds))
 
-	// load controller data and create airports
+	// load controller data and airports
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		logger.Log.Errorf("Error parsing airports data file: %v", err)
@@ -126,7 +126,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	// enrich airport data
 	logger.Log.Info("Loading X-Plane airport files")
 
-	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, globalHolds)
+	err = loadAirports(cfg.ATC.AirportCIFPDir, airports, requiredAirports, airportHolds, allHolds, allFixes)
 	if err != nil {
 		logger.Log.Errorf("Error loading airport data from CIFP files: %v", err)
 		return nil, err
@@ -186,7 +186,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 		Config:                cfg,
 		Broadcast:             make(chan *Aircraft, cfg.ATC.MessageBufferSize),
 		Controllers:           db,
-		Holds:                 globalHolds,
+		Holds:                 allHolds,
 		AirlineByICAO:         airlinesData,
 		AirlineByName:         airlineByName,
 		AirlineCodesByCountry: airlineCodesByCountry,
