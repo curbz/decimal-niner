@@ -3,6 +3,8 @@ package geometry
 import "math"
 
 const EarthRadiusNM = 3440.065 // Earth radius in Nautical Miles
+const EarthRadiusFt = 20902231.0
+const EarthRadiusMeter = 6371000.0
 
 // IsPointInPolygon uses a dateline-aware ray-casting algorithm.
 func IsPointInPolygon(lat, lon float64, points [][2]float64) bool {
@@ -111,7 +113,7 @@ func CalculateBearing(lat1, lon1, lat2, lon2 float64) float64 {
 
 // CalculateDistanceFeet returns the distance between two points in Feet
 func CalculateDistanceFeet(lat1, lon1, lat2, lon2 float64) float64 {
-	const EarthRadiusFt = 20902231.0
+
 	radLat1 := lat1 * math.Pi / 180
 	radLat2 := lat2 * math.Pi / 180
 	diffLat := (lat2 - lat1) * math.Pi / 180
@@ -123,4 +125,69 @@ func CalculateDistanceFeet(lat1, lon1, lat2, lon2 float64) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return EarthRadiusFt * c
+}
+
+
+// DistanceFromLine returns the shortest distance in meters from point (lat, lon) 
+// to a line starting at (latStart, lonStart) following a specific heading (degrees).
+func DistanceFromLine(lat, lon, latStart, lonStart, heading float64) float64 {
+    // Convert all to Radians
+    latRad := lat * math.Pi / 180.0
+    lonRad := lon * math.Pi / 180.0
+    latStartRad := latStart * math.Pi / 180.0
+    lonStartRad := lonStart * math.Pi / 180.0
+    bearingRad := heading * math.Pi / 180.0
+
+    // Angular distance from start point to user point
+    // Using Haversine or simple spherical distance
+    distStartToUser := math.Acos(math.Sin(latStartRad)*math.Sin(latRad) +
+        math.Cos(latStartRad)*math.Cos(latRad)*math.Cos(lonRad-lonStartRad))
+
+    // Bearing from start point to user point
+    bearingStartToUser := math.Atan2(
+        math.Sin(lonRad-lonStartRad)*math.Cos(latRad),
+        math.Cos(latStartRad)*math.Sin(latRad)-math.Sin(latStartRad)*math.Cos(latRad)*math.Cos(lonRad-lonStartRad),
+    )
+
+    // Cross-track distance formula
+    // dxt = asin(sin(dist_ad) * sin(bearing_ad - bearing_ab))
+    xtd := math.Asin(math.Sin(distStartToUser) * math.Sin(bearingStartToUser-bearingRad))
+
+    // Convert back to meters
+    return math.Abs(xtd * EarthRadiusMeter)
+}
+
+// AlongTrackDistance returns the distance in meters along the path from the start point.
+// A positive value means the user is "beyond" the threshold.
+func AlongTrackDistance(lat, lon, latStart, lonStart, heading float64) float64 {
+    latRad := lat * math.Pi / 180.0
+    lonRad := lon * math.Pi / 180.0
+    latStartRad := latStart * math.Pi / 180.0
+    lonStartRad := lonStart * math.Pi / 180.0
+    bearingRad := heading * math.Pi / 180.0
+
+    // Angular distance from start to user
+    distStartToUser := math.Acos(math.Sin(latStartRad)*math.Sin(latRad) +
+        math.Cos(latStartRad)*math.Cos(latRad)*math.Cos(lonRad-lonStartRad))
+
+    // Bearing from start to user
+    bearingStartToUser := math.Atan2(
+        math.Sin(lonRad-lonStartRad)*math.Cos(latRad),
+        math.Cos(latStartRad)*math.Sin(latRad)-math.Sin(latStartRad)*math.Cos(latRad)*math.Cos(lonRad-lonStartRad),
+    )
+
+    // Along-track distance formula: 
+    // dat = acos(cos(dist_ad) / cos(dxt))
+    // We use a simpler version for smaller distances:
+    atd := math.Acos(math.Cos(distStartToUser) / math.Cos(math.Asin(math.Sin(distStartToUser)*math.Sin(bearingStartToUser-bearingRad))))
+
+    // Check if the user is behind the threshold
+    diff := bearingStartToUser - bearingRad
+    for diff < -math.Pi { diff += 2 * math.Pi }
+    for diff > math.Pi { diff -= 2 * math.Pi }
+    if math.Abs(diff) > math.Pi/2 {
+        return -(atd * EarthRadiusMeter)
+    }
+
+    return atd * EarthRadiusMeter
 }

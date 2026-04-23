@@ -2,7 +2,9 @@ package atc
 
 import (
 	"fmt"
+	"math"
 
+	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -60,4 +62,28 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	} else {
 		s.UserState.NearestAirport = nil
 	}
+}
+
+func (s *Service) IsUserOnRunway(icao string, rwyName string) bool {
+
+    u := s.GetUserState()
+	if !u.IsOnGround { return false}
+
+    airport, exists := s.Airports[icao]
+	if !exists {return false}
+	
+    rwy, exists := airport.Runways[rwyName] 
+	if !exists {return false}
+
+	// simple AABB (Axis-Aligned Bounding Box) check to avoid expensive maths
+	if math.Abs(u.Position.Lat - rwy.Lat) > 0.1 {
+		return false
+	}
+
+	xtd := geometry.DistanceFromLine(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
+    atd := geometry.AlongTrackDistance(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
+
+    // User is within 50m of centerline AND between the two thresholds
+    // We add a 100m buffer to the end for safety.
+    return xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)			
 }
