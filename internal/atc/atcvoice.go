@@ -308,7 +308,7 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft) {
 func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 
 	phaseICAO := getAirportICAObyPhaseClass(ac)
-	rwy := s.getAirportRunway(phaseICAO, ac.Flight.AssignedRunway)
+	rwy := s.GetAirportRunway(phaseICAO, ac.Flight.AssignedRunway)
 
 	return pcl.PCLContext{
 		// --- RAW DATA ($) ---

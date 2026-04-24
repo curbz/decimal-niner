@@ -47,6 +47,8 @@ type OccupiedSpot struct {
 type ActiveRunwaySet struct {
     Arrival   *atc.Runway
     Departure *atc.Runway
+    LastWindDir float64
+    LastWindSpeed float64
 }
 
 const (
@@ -90,10 +92,10 @@ func New(cfgPath string) (traffic.Engine, error) {
 	}
 
 	return &D9TrafficEngine{
-		FlightPlanPath:  cfg.D9Traffic.FlightPlanPath,
-		ActiveAircraft:         make(map[string]*atc.Aircraft),
-		OccupiedParking: make(map[string]string),
-        AirportConfig: make(map[string]ActiveRunwaySet),
+		FlightPlanPath:     cfg.D9Traffic.FlightPlanPath,
+		ActiveAircraft:     make(map[string]*atc.Aircraft),
+		OccupiedParking:    make(map[string]string),
+        AirportConfig:      make(map[string]ActiveRunwaySet),
 	}, nil
 }
 
@@ -116,6 +118,13 @@ func (e *D9TrafficEngine) Start() {
 			// 2. Run the Spawn Check for all relevant airports
 			relevantICAOs := e.getRelevantICAOs()
 			for _, icao := range relevantICAOs {
+                ap := e.atcService.GetAirport(icao)
+                if ap == nil { continue }
+
+                // Only refresh if config is missing OR wind has changed significantly
+                if e.needsRunwayRefresh(ap) {
+                    e.refreshRunwayConfig(ap)
+                }
 				e.checkForDepartureSpawns(icao, day, hour, min)
 				e.checkForArrivalSpawns(icao, day, hour, min)
 			}
@@ -126,6 +135,20 @@ func (e *D9TrafficEngine) Start() {
 			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total active aircraft: %d", time.Since(start), len(e.ActiveAircraft))
 		}
 	}()
+}
+
+func (e *D9TrafficEngine) needsRunwayRefresh(ap *atc.Airport) bool {
+    config, exists := e.AirportConfig[ap.ICAO]
+    if !exists { return true } // Initial load
+
+    currentWeather := e.atcService.GetWeatherState()
+    
+    // Check if wind shifted by more than 15 degrees 
+    // OR wind speed changed by more than 5 knots
+    dirDelta := math.Abs(currentWeather.Wind.Direction - config.LastWindDir)
+    speedDelta := math.Abs(currentWeather.Wind.Speed - config.LastWindSpeed)
+
+    return dirDelta > 15.0 || speedDelta > 5.0
 }
 
 func (e *D9TrafficEngine) RequiresAircraftData() bool {
@@ -331,7 +354,6 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 			Origin:      f.IcaoOrigin,
 			Destination: f.IcaoDest,
 			Airline: airline,
-			AssignedRunway: e.determineActiveRunway(airport).Name,
 			Comms: atc.Comms{
 				CountryCode: airline.CountryCode,
 				Callsign: fmt.Sprintf("%s %d %s", airline.Callsign, f.Number, sizeClassStr),
@@ -354,6 +376,8 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 		},
 	}
 	e.atcService.SetFlightPhaseClass(newAc)
+
+    e.assignProcedures(newAc, airport, true)
 
 	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
@@ -388,7 +412,6 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
 			Origin:      f.IcaoOrigin,
 			Destination: f.IcaoDest,
 			Airline: airline,
-			AssignedRunway: e.determineActiveRunway(airport).Name,
 			Comms: atc.Comms{
 				CountryCode: airline.CountryCode,
 				Callsign: fmt.Sprintf("%s %d %s", airline.Callsign, f.Number, sizeClassStr),
@@ -407,11 +430,10 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
         },
     }
 
-    e.refreshRunwayConfig(airport)
-    newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
-
 	e.setInitialArrivalPosition(newAc, tta)
 	e.atcService.SetFlightPhaseClass(newAc)
+
+    e.assignProcedures(newAc, airport, false)
 
 	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
@@ -445,6 +467,7 @@ func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
 }
 
 func (e *D9TrafficEngine) updateActiveAircraft() {
+    
     currSimZTime := e.atcService.GetCurrentZuluTime()
 
     for _, ac := range e.ActiveAircraft {
@@ -486,8 +509,6 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.Startup:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                e.refreshRunwayConfig(airport)
-                ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
                 dur := (DMINUS_TAXIOUT_MINS - DMINUS_DEPART_MINS) * 60
                 if ac.Flight.AssignedParkingSpot != nil {
                     e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
@@ -498,15 +519,25 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.TaxiOut:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Departure) {
+                    util.LogWithLabel(ac.Registration, "active departure runway %s occupied by user at %s - delaying departure", 
+                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                    continue
+                }
                 dur := (DMINUS_DEPART_MINS - DMINUS_CLIMBOUT_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Depart, dur, DEPART_JITTER_SECONDS)
                 ac.Flight.Phase.Class = flightclass.Departing
                 // Position at runway threshold
-                if rwy := e.determineActiveRunway(airport); rwy != nil {
+                rwy := e.atcService.GetAirportRunway(airport.ICAO, ac.Flight.AssignedRunway)
+                if rwy != nil {
                     ac.Flight.Position.Lat = rwy.Lat
                     ac.Flight.Position.Long = rwy.Lon
                     ac.Flight.Position.Heading = rwy.Heading
                     ac.Flight.Position.Altitude = math.Max(airport.Elevation, rwy.ThresholdElevation)
+                } else {
+                    util.LogWarnWithLabel(ac.Registration, 
+                        "unable to position aircraft at runway threshold - runway %s not found at airport %s",
+                    ac.Flight.AssignedRunway, airport.ICAO)
                 }
             }
 
@@ -533,12 +564,9 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Cruise:
             tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival 
             if tta <= AMINUS_APPROACH_MINS {
-                e.refreshRunwayConfig(airport)
-                ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
                 durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Approach, durSecs, APPROACH_JITTER_SECONDS) 
                 ac.Flight.Phase.Class = flightclass.Arriving
-                
                 util.LogWithLabel(ac.Registration, "commencing approach into %s (TTA: %d mins)", 
                     f.IcaoDest, tta)
             } else {
@@ -550,6 +578,12 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Approach:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Arrival) {
+                    util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
+                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                    //TODO - initiate go-around
+                    continue
+                }
                 dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Final, dur, FINAL_JITTER_SECONDS)
                 ac.Flight.Phase.Class = flightclass.Arriving
@@ -558,6 +592,12 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Final:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Arrival) {
+                    util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
+                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                    //TODO - initiate go-around
+                    continue
+                }
                 dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
                 e.transitionToPhase(ac, flightphase.Braking, dur, BRAKING_JITTER_SECONDS)
                 ac.Flight.Phase.Class = flightclass.Arriving
@@ -941,36 +981,58 @@ func (e *D9TrafficEngine) releaseParking(icao string, spot *atc.ParkingSpot) {
 }
 
 func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
-
-    viable := e.getViableRunways(ap)
-    if len(viable) == 0 { return }
-
-    // 1. Weather-based orientation
-    primaryRwy := e.determineActiveRunway(ap) 
-    activeOrientation := int(math.Round(primaryRwy.Heading / 10.0))
     
+    weather := e.atcService.GetWeatherState()
+    
+    // 1. Get the primary runway using the smart UTILITY score
+    var primaryRwy *atc.Runway
+    highestScore := -1000.0
+
+    for _, rwy := range ap.Runways {
+        score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
+        if score > highestScore {
+            highestScore = score
+            primaryRwy = rwy
+        }
+    }
+
+    if primaryRwy == nil {
+        util.LogWarnWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s", ap.ICAO) 
+        return 
+    }
+
+    // 2. Orientation Logic -  handle parallel runways
+    activeOrientation := int(math.Round(primaryRwy.Heading / 10.0))
+    viable := e.getViableRunways(ap)
     orientations := e.groupByOrientation(viable)
     candidates := orientations[activeOrientation]
 
-    // 2. Pair Identification
+    // 3. Pair Identification (Outboard/Inboard Logic)
     if len(candidates) >= 2 {
-        // Sort North-to-South
         sort.Slice(candidates, func(i, j int) bool {
             return candidates[i].Lat > candidates[j].Lat
         })
 
-        // Standard Hub Logic: Arrivals on the "Outboards", Departures on the "Inboards"
-        // If we have only 2, 0 is Arrival, 1 is Departure.
+        // Standard Hub Logic: 0 is Outboard (Arrival), 1 is Inboard (Departure)
         e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
             Arrival:   candidates[0],
             Departure: candidates[len(candidates)-1],
+            LastWindSpeed: weather.Wind.Speed,
+            LastWindDir: weather.Wind.Direction,
         }
+        util.LogWithLabel("D9TRAFFIC", "%s runway config update: aircraft arriving %s and departing %s", 
+            ap.ICAO, candidates[0].Name, candidates[len(candidates)-1].Name)
     } else {
         e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
             Arrival:   primaryRwy,
             Departure: primaryRwy,
+            LastWindSpeed: weather.Wind.Speed,
+            LastWindDir: weather.Wind.Direction,
         }
+        util.LogWithLabel("D9TRAFFIC", "%s runway config update: aircraft arriving and departing %s", 
+            ap.ICAO, primaryRwy.Name)
     }
+  
 }
 
 func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
@@ -993,42 +1055,6 @@ func (e *D9TrafficEngine) groupByOrientation(runways []*atc.Runway) map[int][]*a
         groups[orientation] = append(groups[orientation], r)
     }
     return groups
-}
-
-func (e *D9TrafficEngine) determineActiveRunway(airport *atc.Airport) *atc.Runway {
-
-	// 1. Get current weather for the airport
-	// This assumes your atcService can provide wind dir/speed
-	windDir := e.atcService.GetWeatherState().Wind.Direction
-
-	var bestRunway *atc.Runway
-	maxHeadwindScore := -2.0 // Range is -1 to 1
-
-	for _, rwy := range airport.Runways {
-		// Calculate the angular difference
-		diff := float64(windDir) - rwy.Heading
-		radDiff := diff * math.Pi / 180
-
-		// Score is the Cosine of the difference.
-		// 1.0 = Direct Headwind (Perfect)
-		// 0.0 = Direct Crosswind
-		// -1.0 = Direct Tailwind (Avoid!)
-		score := math.Cos(radDiff)
-
-		if score > maxHeadwindScore {
-			maxHeadwindScore = score
-			bestRunway = rwy
-		}
-	}
-
-	// Fallback: If wind is calm, just pick the first runway in the map
-	if bestRunway == nil {
-		for _, r := range airport.Runways {
-			return r
-		}
-	}
-
-	return bestRunway
 }
 
 func (e *D9TrafficEngine) determineSizeClass(f *flightplan.ScheduledFlight, info *atc.AirlineInfo) string {
@@ -1198,32 +1224,64 @@ func (e *D9TrafficEngine) getAssignedRunway(ap *atc.Airport, name string) *atc.R
     return nil
 }
 
-func (e *D9TrafficEngine) getRunwayUtilityScore(ap *atc.Airport, rwy *atc.Runway) int {
-    score := 0
-    // 1. Procedure Weighting (Each SID/STAR adds utility)
-    score += len(rwy.SIDs) * 10
-    score += len(rwy.STARs) * 10
+func (e *D9TrafficEngine) getRunwayUtilityScore(rwy *atc.Runway, windDir float64, windSpeed float64) float64 {
+    // 1. Start with the "Static" score (Length and Procedures)
+    score := float64(len(rwy.SIDs)*10 + len(rwy.STARs)*10)
+    score += rwy.Length / 1000.0
 
-    // 2. Length Weighting (Longer runways are more versatile)
-    score += int(rwy.Length / 1000)
+    // 2. Add the "Dynamic" Weather Component
+    // Calculate the angular difference between wind and runway heading
+    diff := windDir - rwy.Heading
+    radDiff := diff * math.Pi / 180.0
+    
+    // headwindComponent: 1.0 = Direct Headwind, -1.0 = Direct Tailwind
+    headwindComponent := math.Cos(radDiff)
+
+    // 3. Weight the wind heavily
+    // We multiply the component by wind speed. 
+    // A 20kt tailwind should almost always disqualify a runway (-20 points)
+    // A 20kt headwind should make it very attractive (+20 points)
+    score += (headwindComponent * windSpeed)
+
+    // 4. Bonus for Precision (ILS/RNAV)
+    if rwy.HighestPrecisionApproach != "" {
+        score += 50.0
+    }
 
     return score
 }
 
+// Updated logic to ensure we are using the correct Runway Object
 func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airport, isDeparture bool) {
-    rwyName := ac.Flight.AssignedRunway
-    rwy := e.getAssignedRunway(airport, rwyName)
+    // 1. Get the ACTIVE runway set for this airport (from your refreshRunwayConfig result)
+    config := e.AirportConfig[airport.ICAO]
     
+    var targetRwy atc.Runway
     if isDeparture {
-        if len(rwy.SIDs) > 0 {
-            // Pick a SID (ideally matching the first waypoint of the route)
-            ac.Flight.AssignedSID = rwy.SIDs[rand.IntN(len(rwy.SIDs))].Name
-        }
+        targetRwy = *config.Departure
     } else {
-        // Only assign STARs 30% of the time to simulate vectoring
-        if rand.Float32() < 0.3 && len(rwy.STARs) > 0 {
-            ac.Flight.AssignedSTAR = rwy.STARs[rand.IntN(len(rwy.STARs))].Name
+        targetRwy = *config.Arrival
+    }
+
+    // 2. Assign the specific procedure to the aircraft
+    if isDeparture {
+        if len(targetRwy.SIDs) > 0 {
+            // Logic: Pick a SID from the active departure runway
+            selected := targetRwy.SIDs[rand.IntN(len(targetRwy.SIDs))]
+            ac.Flight.AssignedSID = selected.Name
+            ac.Flight.AssignedRunway = targetRwy.Name
         }
+        util.LogWithLabel(ac.Registration, "assigned SID %s runway %s",
+            ac.Flight.AssignedSID, ac.Flight.AssignedRunway)
+    } else {
+        // STAR assignment logic
+        if rand.Float32() < 0.3 && len(targetRwy.STARs) > 0 {
+            selected := targetRwy.STARs[rand.IntN(len(targetRwy.STARs))]
+            ac.Flight.AssignedSTAR = selected.Name
+            ac.Flight.AssignedRunway = targetRwy.Name
+        }
+        util.LogWithLabel(ac.Registration, "assigned STAR %s runway %s",
+            ac.Flight.AssignedSTAR, ac.Flight.AssignedRunway)
     }
 }
 

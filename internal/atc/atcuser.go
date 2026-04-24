@@ -64,16 +64,10 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	}
 }
 
-func (s *Service) IsUserOnRunway(icao string, rwyName string) bool {
+func (s *Service) IsUserOnRunway(rwy *Runway) bool {
 
     u := s.GetUserState()
 	if !u.IsOnGround { return false}
-
-    airport, exists := s.Airports[icao]
-	if !exists {return false}
-	
-    rwy, exists := airport.Runways[rwyName] 
-	if !exists {return false}
 
 	// simple AABB (Axis-Aligned Bounding Box) check to avoid expensive maths
 	if math.Abs(u.Position.Lat - rwy.Lat) > 0.1 {
@@ -85,5 +79,11 @@ func (s *Service) IsUserOnRunway(icao string, rwyName string) bool {
 
     // User is within 50m of centerline AND between the two thresholds
     // We add a 100m buffer to the end for safety.
-    return xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)			
+    result :=  xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)	
+	
+	if result {
+		util.LogWithLabel("USER", "user is occupying runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
+	}
+
+	return result
 }

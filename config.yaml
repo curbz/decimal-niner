@@ -39,5 +39,5 @@ trafficglobal:
   #plugin_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"
   plugin_directory: "/home/dmorris/decimal-niner/X-Plane"
 d9traffic:
-  #flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane"   # uses traffic global bgl
-  flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"  # uses regents pack
+  flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane"   # uses traffic global bgl
+  #flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"  # uses regents pack

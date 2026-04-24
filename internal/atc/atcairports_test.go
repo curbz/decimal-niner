@@ -97,7 +97,7 @@ func TestGetAirportRunway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := s.getAirportRunway(tt.icao, tt.rwy)
+			got := s.GetAirportRunway(tt.icao, tt.rwy)
 			if tt.wantPresent {
 				if got == nil {
 					t.Fatalf("expected runway present for %s/%s", tt.icao, tt.rwy)
@@ -166,8 +166,13 @@ func TestGetClosestAirport(t *testing.T) {
 }
 
 func TestReciprocal(t *testing.T) {
-    if getReciprocalName("09L") != "27R" { t.Errorf("Fail 09L") }
-    if getReciprocalName("27R") != "09L" { t.Errorf("Fail 27R") }
-    if getReciprocalName("18") != "36" { t.Errorf("Fail 18") }
+	if getReciprocalName("09L") != "27R" {
+		t.Errorf("Fail 09L")
+	}
+	if getReciprocalName("27R") != "09L" {
+		t.Errorf("Fail 27R")
+	}
+	if getReciprocalName("18") != "36" {
+		t.Errorf("Fail 18")
+	}
 }
-

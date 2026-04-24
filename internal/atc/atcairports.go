@@ -33,7 +33,7 @@ type Airport struct {
 	Controllers []*Controller
 	Parking     []ParkingSpot
 	HubWeights  map[string]float64 // Airline ICAO -> Strength (0.0 to 1.0)
-    ClassCounts map[string]int     // "E": 20, "C": 100 (Total gates by size)
+	ClassCounts map[string]int     // "E": 20, "C": 100 (Total gates by size)
 }
 
 type Runway struct {
@@ -46,17 +46,17 @@ type Runway struct {
 	FAFalt                   int     // Final approach fix altitude
 	MAalt                    int     // highest missed approach altitude
 	MAHeading                int     // initial MA course (degrees)
-	MAFix                    string  
-	HighestPrecisionApproach string  // highest precision approach type
-	SIDs      []*Procedure
-    STARs     []*Procedure
+	MAFix                    string
+	HighestPrecisionApproach string // highest precision approach type
+	SIDs                     []*Procedure
+	STARs                    []*Procedure
 }
 
 type Procedure struct {
-	Name 	string
-	Type 	int // 0 = SID, 1 = STAR
-	Entry 	*ProcedureFix
-	Exit 	*ProcedureFix
+	Name  string
+	Type  int // 0 = SID, 1 = STAR
+	Entry *ProcedureFix
+	Exit  *ProcedureFix
 }
 
 type aptPoint struct {
@@ -75,10 +75,10 @@ type ParkingSpot struct {
 }
 
 type pendingProc struct {
-    Name   string
-    Type   int // 0 = SID, 1 = STAR
-    Runway string // e.g., "09L" or "ALL"
-    Legs   []ProcedureFix
+	Name   string
+	Type   int    // 0 = SID, 1 = STAR
+	Runway string // e.g., "09L" or "ALL"
+	Legs   []ProcedureFix
 }
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -97,7 +97,7 @@ func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 }
 
 // returns nil if not found
-func (s *Service) getAirportRunway(icao, rwy string) *Runway {
+func (s *Service) GetAirportRunway(icao, rwy string) *Runway {
 	var r *Runway
 	if icao != "" && rwy != "" {
 		ap, found := s.Airports[icao]
@@ -106,6 +106,14 @@ func (s *Service) getAirportRunway(icao, rwy string) *Runway {
 		}
 	}
 	return r
+}
+
+func (s *Service) GetAirport(icao string) *Airport {
+	ap, exists := s.Airports[icao]
+	if !exists {
+		return nil
+	}
+	return ap
 }
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
@@ -424,7 +432,7 @@ func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 		a.Lat, a.Lon = fLat, fLon
 		a.Elevation = elevation
 		// Finalize the hub weights for the airport
-    	finalizeHubWeights(a)
+		finalizeHubWeights(a)
 	}
 
 	// Retroactive update for any controllers created with 0,0
@@ -486,80 +494,89 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 		line := strings.TrimSpace(scan.Text())
 
 		// --- SID/STAR LOGIC ---
-        if strings.HasPrefix(line, "SID:") || strings.HasPrefix(line, "STAR:") {
-            fields := strings.Split(line, ",")
-            if len(fields) < 12 { continue }
+		if strings.HasPrefix(line, "SID:") || strings.HasPrefix(line, "STAR:") {
+			fields := strings.Split(line, ",")
+			if len(fields) < 12 {
+				continue
+			}
 
-            // Extract Sequence (e.g., "010")
-            seqPart := fields[0][strings.Index(fields[0], ":")+1:]
-            seq, _ := strconv.Atoi(strings.TrimSpace(seqPart))
-            
-            procName := strings.TrimSpace(fields[2])
+			// Extract Sequence (e.g., "010")
+			seqPart := fields[0][strings.Index(fields[0], ":")+1:]
+			seq, _ := strconv.Atoi(strings.TrimSpace(seqPart))
+
+			procName := strings.TrimSpace(fields[2])
 			procRwy := strings.TrimSpace(fields[3])
 			var targetRwy string
 			if procRwy == "ALL" {
 				targetRwy = "ALL"
 			} else {
-            	targetRwy = normaliseRunwayName(procRwy)
+				targetRwy = normaliseRunwayName(procRwy)
 			}
 
-            // 1. Initialize a new collector if this is the first leg
-            if seq <= lastSeq {
-                // If we were already working on one, save it before starting new
+			// 1. Initialize a new collector if this is the first leg
+			if seq <= lastSeq {
+				// If we were already working on one, save it before starting new
 				if currentProc != nil {
 					pendingProcs = append(pendingProcs, *currentProc)
 					currentProc = nil
-				}            
-                currentProc = &pendingProc{
-                    Name:   procName,
-                    Runway: targetRwy,
-                    Type:   0, // Default SID
-                }
-                if strings.HasPrefix(line, "STAR:") { currentProc.Type = 1 }
-            }
+				}
+				currentProc = &pendingProc{
+					Name:   procName,
+					Runway: targetRwy,
+					Type:   0, // Default SID
+				}
+				if strings.HasPrefix(line, "STAR:") {
+					currentProc.Type = 1
+				}
+			}
 			lastSeq = seq
 
-            if currentProc == nil { continue }
+			if currentProc == nil {
+				continue
+			}
 
-            // 2. Extract Leg Info
-            fixID := strings.TrimSpace(fields[4])
-			if fixID == "" { continue }
+			// 2. Extract Leg Info
+			fixID := strings.TrimSpace(fields[4])
+			if fixID == "" {
+				continue
+			}
 			regionID := strings.TrimSpace(fields[5])
-            if regionID == "" { continue }
+			if regionID == "" {
+				continue
+			}
 
+			if fData, ok := allFixes[fixID+"_"+regionID]; ok {
+				pFix := ProcedureFix{
+					Fix:            fData,
+					ConstraintType: -1, // Initialize as none
+				}
 
-            if fData, ok := allFixes[fixID + "_" + regionID]; ok {
-                pFix := ProcedureFix{
-                    Fix: fData,
-                    ConstraintType: -1, // Initialize as none
-                }
-                
-                // 3. Parse Alt Constraints (CIFP Columns 23-25)
-                atOrAbove := normaliseCIFPAlt(strings.TrimSpace(fields[23]))
-                atAlt := normaliseCIFPAlt(strings.TrimSpace(fields[24]))
-                atOrBelow := normaliseCIFPAlt(strings.TrimSpace(fields[25]))
+				// 3. Parse Alt Constraints (CIFP Columns 23-25)
+				atOrAbove := normaliseCIFPAlt(strings.TrimSpace(fields[23]))
+				atAlt := normaliseCIFPAlt(strings.TrimSpace(fields[24]))
+				atOrBelow := normaliseCIFPAlt(strings.TrimSpace(fields[25]))
 
-                if atAlt > 0 {
-                    pFix.ConstraintAlt = atAlt
-                    pFix.ConstraintType = 0
-                } else if atOrAbove > 0 {
-                    pFix.ConstraintAlt = atOrAbove
-                    pFix.ConstraintType = 1
-                } else if atOrBelow > 0 {
-                    pFix.ConstraintAlt = atOrBelow
-                    pFix.ConstraintType = 2
-                }
+				if atAlt > 0 {
+					pFix.ConstraintAlt = atAlt
+					pFix.ConstraintType = 0
+				} else if atOrAbove > 0 {
+					pFix.ConstraintAlt = atOrAbove
+					pFix.ConstraintType = 1
+				} else if atOrBelow > 0 {
+					pFix.ConstraintAlt = atOrBelow
+					pFix.ConstraintType = 2
+				}
 
-                currentProc.Legs = append(currentProc.Legs, pFix)
-            }
-            continue
-        }
-        
-        // If we hit a line that isn't a SID/STAR and we have a pending proc, wrap it up
-        if currentProc != nil {
+				currentProc.Legs = append(currentProc.Legs, pFix)
+			}
+			continue
+		}
+
+		// If we hit a line that isn't a SID/STAR and we have a pending proc, wrap it up
+		if currentProc != nil {
 			pendingProcs = append(pendingProcs, *currentProc)
-            currentProc = nil
-        }
+			currentProc = nil
+		}
 
 		if strings.HasPrefix(line, "RWY:") {
 			parts := strings.Split(line, ";") // The physical data is usually after the semicolon
@@ -594,8 +611,8 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 
 			// 2. Parse Coordinates from dataFields
 			if len(dataFields) >= 2 {
-				rwEntry.Lat = ParseCIFPCoord(dataFields[0])
-				rwEntry.Lon = ParseCIFPCoord(dataFields[1])
+				rwEntry.Lat = parseCIFPCoord(dataFields[0])
+				rwEntry.Lon = parseCIFPCoord(dataFields[1])
 			}
 
 			// 3. Parse Threshold Elevation (Token 2 in dataFields)
@@ -752,7 +769,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 				// 150ft is the standard for most commercial runways.
 				// We could even scale this based on the length:
 				if rw.Length > 6000 {
-					rw.Width = 150.0 
+					rw.Width = 150.0
 				} else {
 					rw.Width = 100.0
 				}
@@ -771,7 +788,9 @@ func finalizeProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
 
 	for _, p := range pendingProcs {
 
-		if len(p.Legs) == 0 { continue }
+		if len(p.Legs) == 0 {
+			continue
+		}
 
 		newProc := &Procedure{
 			Name: p.Name,
@@ -792,7 +811,7 @@ func finalizeProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
 					rw.STARs = append(rw.STARs, newProc)
 				}
 				// IMPORTANT: Write the modified Runway struct back to the map
-				runways[name] = rw 
+				runways[name] = rw
 			}
 		}
 	}
@@ -890,26 +909,26 @@ func normaliseRunwayName(rw string) string {
 }
 
 func normaliseCIFPAlt(altStr string) int {
-    altStr = strings.TrimSpace(altStr)
-    if altStr == "" {
-        return 0
-    }
+	altStr = strings.TrimSpace(altStr)
+	if altStr == "" {
+		return 0
+	}
 
-    // Handle Flight Levels (e.g., FL270)
-    if strings.HasPrefix(altStr, "FL") {
-        flVal, err := strconv.Atoi(altStr[2:])
-        if err != nil {
-            return 0
-        }
-        return flVal * 100 // FL270 -> 27,000 feet
-    }
+	// Handle Flight Levels (e.g., FL270)
+	if strings.HasPrefix(altStr, "FL") {
+		flVal, err := strconv.Atoi(altStr[2:])
+		if err != nil {
+			return 0
+		}
+		return flVal * 100 // FL270 -> 27,000 feet
+	}
 
-    // Handle standard feet (e.g., 06000)
-    val, err := strconv.Atoi(altStr)
-    if err != nil {
-        return 0
-    }
-    return val
+	// Handle standard feet (e.g., 06000)
+	val, err := strconv.Atoi(altStr)
+	if err != nil {
+		return 0
+	}
+	return val
 }
 
 func getAirportICAObyPhaseClass(ac *Aircraft) string {
@@ -971,7 +990,7 @@ func cleanAirportName(n string) string {
 	return strings.TrimSpace(n)
 }
 
-func ParseCIFPCoord(coord string) float64 {
+func parseCIFPCoord(coord string) float64 {
 	coord = strings.TrimSpace(coord)
 	if len(coord) < 9 {
 		return 0
@@ -1025,27 +1044,26 @@ func getReciprocalName(name string) string {
 
 // Make sure this is a method on your Airport struct
 func finalizeHubWeights(ap *Airport) {
-    ap.HubWeights = make(map[string]float64)
-    
-    tally := make(map[string]int)
-    totalObservations := 0
+	ap.HubWeights = make(map[string]float64)
 
-    for _, spot := range ap.Parking {
-        // Only count commercial/airline spots
-        if spot.SizeType == "airline" {
-            codes := strings.Fields(spot.AirlineCodes)
-            for _, code := range codes {
-                tally[code]++
-                totalObservations++
-            }
-        }
-    }
+	tally := make(map[string]int)
+	totalObservations := 0
 
-    // Convert tallies to percentage weights (0.0 to 1.0)
-    if totalObservations > 0 {
-        for code, count := range tally {
-            ap.HubWeights[code] = float64(count) / float64(totalObservations)
-        }
-    }
+	for _, spot := range ap.Parking {
+		// Only count commercial/airline spots
+		if spot.SizeType == "airline" {
+			codes := strings.Fields(spot.AirlineCodes)
+			for _, code := range codes {
+				tally[code]++
+				totalObservations++
+			}
+		}
+	}
+
+	// Convert tallies to percentage weights (0.0 to 1.0)
+	if totalObservations > 0 {
+		for code, count := range tally {
+			ap.HubWeights[code] = float64(count) / float64(totalObservations)
+		}
+	}
 }
-
