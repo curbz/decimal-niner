@@ -1371,7 +1371,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway) {
     rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
     delete(e.RunwayLocks, rwyLockKey)
-    util.LogWithLabel(ac.Registration, "released lock on runway %s at %s", rwy.Name, ap.ICAO)
+    util.LogWithLabel("D9TRAFFIC", "lock on runway %s at %s is released", rwy.Name, ap.ICAO)
 }
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
