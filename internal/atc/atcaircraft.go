@@ -39,8 +39,8 @@ type Flight struct {
 	AssignedParkingName string
 	AssignedParkingSpot *ParkingSpot
 	AssignedRunway      string
-	AssignedSID			string
-	AssignedSTAR		string
+	AssignedSID			*Procedure
+	AssignedSTAR		*Procedure
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo

@@ -64,9 +64,14 @@ func (s *Service) NotifyUserStateChange(pos Position, tunedFreqs, tunedFacilityR
 	}
 }
 
-func (s *Service) IsUserOnRunway(rwy *Runway) bool {
+// UserHasRunwayClearance checks if the user occupies the runway or is less than 3nm out on approach.
+func (s *Service) UserHasRunwayClearance(rwy *Runway) bool {
 
-    u := s.GetUserState()
+	if rwy == nil {
+		return false
+	}
+
+	u := s.GetUserState()
 	if !u.IsOnGround { return false}
 
 	// simple AABB (Axis-Aligned Bounding Box) check to avoid expensive maths
@@ -74,16 +79,33 @@ func (s *Service) IsUserOnRunway(rwy *Runway) bool {
 		return false
 	}
 
-	xtd := geometry.DistanceFromLine(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
+
+    xtd := geometry.DistanceFromLine(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
     atd := geometry.AlongTrackDistance(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
 
-    // User is within 50m of centerline AND between the two thresholds
-    // We add a 100m buffer to the end for safety.
-    result :=  xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)	
-	
-	if result {
-		util.LogWithLabel("USER", "user is occupying runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
+    // 1. PHYSICAL CHECK (On Ground)
+    if u.IsOnGround {
+        result := xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)
+		if result == true {
+			util.LogWithLabel("USER", "user is occupying runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
+		}
+		return result
 	}
 
-	return result
+    // 2. APPROACH CHECK (In Air)
+    // 3nm = 5556 meters. We use 1800ft AGL to cover the 3-degree glideslope height at 3nm plus a buffer of 1000
+    if !u.IsOnGround && u.Position.Altitude < (rwy.ThresholdElevation + 2800) {
+        // We widen the XTD slightly (80m) for the air check. 
+        // Players aren't always perfectly on the center line when flying manually.
+        isAligned := xtd < 80.0              
+        isInside3NM := atd < 0 && atd > -5556 
+        
+        if isAligned && isInside3NM {
+            util.LogWithLabel("USER", "User is occupying 3nm approach tunnel for runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
+            return true
+        }
+    }
+
+    return false
 }
+

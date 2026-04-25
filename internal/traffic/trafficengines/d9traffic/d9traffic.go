@@ -519,7 +519,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.TaxiOut:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Departure) {
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Departure) {
                     util.LogWithLabel(ac.Registration, "active departure runway %s occupied by user at %s - delaying departure", 
                         e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
                     continue
@@ -578,7 +578,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Approach:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Arrival) {
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) {
                     util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
                         e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
                     //TODO - initiate go-around
@@ -592,7 +592,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Final:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.IsUserOnRunway(e.AirportConfig[airport.ICAO].Arrival) {
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) {
                     util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
                         e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
                     //TODO - initiate go-around
@@ -1251,39 +1251,82 @@ func (e *D9TrafficEngine) getRunwayUtilityScore(rwy *atc.Runway, windDir float64
     return score
 }
 
-// Updated logic to ensure we are using the correct Runway Object
 func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airport, isDeparture bool) {
-    // 1. Get the ACTIVE runway set for this airport (from your refreshRunwayConfig result)
     config := e.AirportConfig[airport.ICAO]
     
-    var targetRwy atc.Runway
     if isDeparture {
-        targetRwy = *config.Departure
-    } else {
-        targetRwy = *config.Arrival
-    }
+        //SID assignment
+        destAirport := e.atcService.GetAirport(ac.Flight.Destination)
+        if destAirport == nil {
+            util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
+            return
+        }
 
-    // 2. Assign the specific procedure to the aircraft
-    if isDeparture {
-        if len(targetRwy.SIDs) > 0 {
-            // Logic: Pick a SID from the active departure runway
-            selected := targetRwy.SIDs[rand.IntN(len(targetRwy.SIDs))]
-            ac.Flight.AssignedSID = selected.Name
-            ac.Flight.AssignedRunway = targetRwy.Name
+        // Calculate the bearing from the airport to the destination
+        bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+
+        targetRwy := config.Departure
+        var bestSID *atc.Procedure
+        minDiff := 360.0
+
+        for i := range targetRwy.SIDs {
+            sid := targetRwy.SIDs[i]
+            // For a SID, we look at the EXIT fix (where the plane enters the enroute structure)
+            sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.LatRad*180/math.Pi, sid.Exit.Fix.LonRad*180/math.Pi)
+            
+            diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
+            if diff < minDiff {
+                minDiff = diff
+                bestSID = sid
+            }
         }
-        util.LogWithLabel(ac.Registration, "assigned SID %s runway %s",
-            ac.Flight.AssignedSID, ac.Flight.AssignedRunway)
+
+        if bestSID != nil {
+            ac.Flight.AssignedSID = bestSID
+            ac.Flight.AssignedRunway = targetRwy.Name
+            util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
+        }
+
     } else {
-        // STAR assignment logic
+        // STAR assignment
+        targetRwy := config.Arrival
+        // 30% probability of STAR assignment to allow for vectoring as alternative
         if rand.Float32() < 0.3 && len(targetRwy.STARs) > 0 {
-            selected := targetRwy.STARs[rand.IntN(len(targetRwy.STARs))]
-            ac.Flight.AssignedSTAR = selected.Name
-            ac.Flight.AssignedRunway = targetRwy.Name
+            var bestSTAR *atc.Procedure
+            minDiff := 360.0
+
+            origAirport := e.atcService.GetAirport(ac.Flight.Origin)
+            if origAirport == nil {
+                util.LogWarnWithLabel(ac.Registration, "origin airport %s not found - unable to assign STAR", ac.Flight.Origin)
+                return
+            }
+
+            // Calculate the bearing from the origin to the destination
+            bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
+
+            for i := range targetRwy.STARs {
+                star := targetRwy.STARs[i]
+                // For a STAR, we look at the ENTRY fix (where the plane starts the arrival)
+                starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.LatRad*180/math.Pi, star.Entry.Fix.LonRad*180/math.Pi)
+                
+                diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
+                if diff < minDiff {
+                    minDiff = diff
+                    bestSTAR = star
+                }
+            }
+
+            if bestSTAR != nil {
+                ac.Flight.AssignedSTAR = bestSTAR
+                ac.Flight.AssignedRunway = targetRwy.Name
+                util.LogWithLabel(ac.Registration, "assigned %s STAR", bestSTAR.Name)
+            }
+        } else {
+            util.LogWithLabel(ac.Registration, "will be vectored to runway by ATC")
         }
-        util.LogWithLabel(ac.Registration, "assigned STAR %s runway %s",
-            ac.Flight.AssignedSTAR, ac.Flight.AssignedRunway)
     }
 }
+
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
     // 1. Find airlines that exist in BOTH hub weight maps

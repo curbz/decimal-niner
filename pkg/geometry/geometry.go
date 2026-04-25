@@ -191,3 +191,11 @@ func AlongTrackDistance(lat, lon, latStart, lonStart, heading float64) float64 {
 
     return atd * EarthRadiusMeter
 }
+
+// Helper to find the smallest difference between two headings (0-180)
+func BearingDiff(b1, b2 float64) float64 {
+    diff := math.Mod(b2 - b1 + 180, 360) - 180
+    if diff < -180 { return diff + 360 }
+    return diff
+}
+
