@@ -26,6 +26,7 @@ type D9TrafficEngine struct {
 	initialised      bool
 	OccupiedParking  map[string]string
     AirportConfig    map[string]ActiveRunwaySet
+    RunwayLocks      map[string]*RunwayLock
 }
 
 type D9TrafficConfig struct {
@@ -45,24 +46,29 @@ type OccupiedSpot struct {
 }
 
 type ActiveRunwaySet struct {
-    Arrival   *atc.Runway
-    Departure *atc.Runway
-    LastWindDir float64
-    LastWindSpeed float64
+    Arrival         *atc.Runway
+    Departure       *atc.Runway
+    LastWindDir     float64
+    LastWindSpeed   float64
+}
+
+type RunwayLock struct {
+    OccupiedBy      *atc.Aircraft   
+    OccupiedSince   time.Time        // For timeout protection
 }
 
 const (
-	// time difference (minutes) in relation to scheduled departure time - this is NOT a duration!
+	// time difference (minutes) in relation to scheduled departure time - this is NOT a duration but relative time to departure
 	DMINUS_PARKED_MINS   = 25
 	DMINUS_STARTUP_MINS  = 15
 	DMINUS_TAXIOUT_MINS  = 10
 	DMINUS_DEPART_MINS   = 0
-	DMINUS_CLIMBOUT_MINS = -5
-	DMINUS_CRUISE_MINS   = -15
+	DMINUS_CLIMBOUT_MINS = -1
+	DMINUS_CRUISE_MINS   = -12
 
-    // time difference (minutes) in relation to scheduled arrival time - this is NOT a duration!
-    AMINUS_APPROACH_MINS = 15 
-    AMINUS_FINAL_MINS    = 4  
+    // time difference (minutes) in relation to scheduled arrival time - this is NOT a duration but relative time to arrival
+    AMINUS_APPROACH_MINS = 12 
+    AMINUS_FINAL_MINS    = 2  
     AMINUS_LAND_MINS     = 0  
 	AMINUS_BRAKING		 = -1
     AMINUS_TAXIIN_MINS   = -2
@@ -75,13 +81,14 @@ const (
 	STARTUP_JITTER_SECONDS  = 120
 	TAXI_JITTER_SECONDS     = 240
 	DEPART_JITTER_SECONDS   = 120
-	CLIMBOUT_JITTER_SECONDS = 180
+	CLIMBOUT_JITTER_SECONDS = 20
     CRUISE_JITTER_SECONDS   = 240
 	APPROACH_JITTER_SECONDS = 120
-    FINAL_JITTER_SECONDS    = 60
+    FINAL_JITTER_SECONDS    = 30
 	BRAKING_JITTER_SECONDS  = 20
 	SHUTDOWN_JITTER_SECONDS = 120
 
+    RUNWAY_OCCUPIED_TIMEOUT_SECONDS = 300
 )
 
 func New(cfgPath string) (traffic.Engine, error) {
@@ -96,6 +103,7 @@ func New(cfgPath string) (traffic.Engine, error) {
 		ActiveAircraft:     make(map[string]*atc.Aircraft),
 		OccupiedParking:    make(map[string]string),
         AirportConfig:      make(map[string]ActiveRunwaySet),
+        RunwayLocks:        make(map[string]*RunwayLock),        // Key is a unique Runway ID (e.g., "EGLL-09L-27R")
 	}, nil
 }
 
@@ -519,10 +527,11 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.TaxiOut:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Departure) {
-                    util.LogWithLabel(ac.Registration, "active departure runway %s occupied by user at %s - delaying departure", 
-                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-                    continue
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Departure) || 
+                    !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac) {
+                        util.LogWithLabel(ac.Registration, "active departure runway %s is occupied at %s - delaying departure", 
+                            e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                        continue
                 }
                 dur := (DMINUS_DEPART_MINS - DMINUS_CLIMBOUT_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Depart, dur, DEPART_JITTER_SECONDS)
@@ -543,6 +552,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.Depart:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure)
                 dur := (DMINUS_CLIMBOUT_MINS - DMINUS_CRUISE_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Climbout, dur, CLIMBOUT_JITTER_SECONDS)
                 ac.Flight.Phase.Class = flightclass.Departing
@@ -578,11 +588,12 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Approach:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) {
-                    util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
-                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-                    //TODO - initiate go-around
-                    continue
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) ||
+                     !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
+                        util.LogWithLabel(ac.Registration, "active arrival runway %s is occupied at %s - initiating go-around", 
+                            e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                        //TODO - initiate go-around
+                        continue
                 }
                 dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Final, dur, FINAL_JITTER_SECONDS)
@@ -592,11 +603,12 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Final:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) {
-                    util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
-                        e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-                    //TODO - initiate go-around
-                    continue
+                if e.atcService.UserHasRunwayClearance(e.AirportConfig[airport.ICAO].Arrival) ||
+                    !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
+                        util.LogWithLabel(ac.Registration, "active arrival runway %s occupied by user at %s - initiating go-around", 
+                            e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+                        //TODO - initiate go-around
+                        continue
                 }
                 dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
                 e.transitionToPhase(ac, flightphase.Braking, dur, BRAKING_JITTER_SECONDS)
@@ -624,6 +636,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.TaxiIn:
             // Optional: Move aircraft toward gate
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival)
                 e.positionAtDestParking(ac)
                 dur := (AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Shutdown, dur, SHUTDOWN_JITTER_SECONDS)
@@ -1327,6 +1340,37 @@ func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airpor
     }
 }
 
+// getRunwayLock attempts to acquire a lock on the runway for the given aircraft. 
+// It returns true if the lock was successfully acquired, or false if the runway is already locked by another aircraft. 
+// If the runway is currently locked by the same aircraft, it will return true to allow them to maintain their lock.
+// If the runway is currently unlocked, it will be locked for the requesting aircraft with the current timestamp.
+func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *atc.Aircraft) bool {
+    rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
+    lock, locked := e.RunwayLocks[rwyLockKey]
+    if locked {
+        if lock.OccupiedBy.Registration == ac.Registration {
+            return true // Already locked by this aircraft
+        }
+        if lock.OccupiedSince.Add(RUNWAY_OCCUPIED_TIMEOUT_SECONDS * time.Second).Before(e.atcService.GetCurrentZuluTime()) {
+            // Lock has expired, allow new lock
+            locked = false
+            util.LogWarnWithLabel(ac.Registration, "runway lock for %s at %s has expired, overriding previous lock held by %s", rwy.Name, ap.ICAO, lock.OccupiedBy.Registration)
+        }
+    }
+    if !locked {
+        e.RunwayLocks[rwyLockKey] = &RunwayLock{
+            OccupiedBy: ac,
+            OccupiedSince: e.atcService.GetCurrentZuluTime(),
+        }
+        return true
+    }
+    return false
+}
+
+func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway) {
+    rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
+    delete(e.RunwayLocks, rwyLockKey)
+}
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
     // 1. Find airlines that exist in BOTH hub weight maps
@@ -1378,4 +1422,37 @@ func getWeightedRandomAirline(weights map[string]float64) string {
     }
     return ""
 }
+
+// NormalizeRunwayKey creates a consistent ID for the physical concrete
+func normalizeRunwayKey(icao string, rwy *atc.Runway) string {
+    recip := getReciprocalName(rwy.Name)
+    // Sort them so the key is always the same regardless of which end we use
+    if rwy.Name < recip {
+        return fmt.Sprintf("%s-%s-%s", icao, rwy.Name, recip)
+    }
+    return fmt.Sprintf("%s-%s-%s", icao, recip, rwy.Name)
+}
+
+func getReciprocalName(name string) string {
+    // 1. Separate numbers from letters
+    var numPart int
+    var letterPart string
+    fmt.Sscanf(name, "%d%s", &numPart, &letterPart)
+
+    // 2. Flip the number
+    recipNum := numPart + 18
+    if recipNum > 36 {
+        recipNum -= 18
+    }
+
+    // 3. Flip the letter
+    recipLetter := letterPart
+    switch letterPart {
+    case "L": recipLetter = "R"
+    case "R": recipLetter = "L"
+    }
+
+    return fmt.Sprintf("%02d%s", recipNum, recipLetter)
+}
+
 
