@@ -1362,6 +1362,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
             OccupiedBy: ac,
             OccupiedSince: e.atcService.GetCurrentZuluTime(),
         }
+        util.LogWithLabel(ac.Registration, "acquired lock on runway %s at %s", rwy.Name, ap.ICAO)
         return true
     }
     return false
@@ -1370,6 +1371,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway) {
     rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
     delete(e.RunwayLocks, rwyLockKey)
+    util.LogWithLabel(ac.Registration, "released lock on runway %s at %s", rwy.Name, ap.ICAO)
 }
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
