@@ -387,7 +387,10 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 	}
 	e.atcService.SetFlightPhaseClass(newAc)
 
-    e.assignProcedures(newAc, airport, true)
+    if initialPhase.Index() > flightphase.Startup.Index() {
+        newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
+        e.assignProcedures(newAc, airport, true)
+    }
 
 	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
@@ -443,7 +446,13 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
 	e.setInitialArrivalPosition(newAc, tta)
 	e.atcService.SetFlightPhaseClass(newAc)
 
-    e.assignProcedures(newAc, airport, false)
+    if initialPhase.Index() < flightphase.TaxiIn.Index() {
+        newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
+    }
+    
+    if initialPhase.Index() < flightphase.Approach.Index() {
+        e.assignProcedures(newAc, airport, false)
+    }
 
 	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
@@ -519,6 +528,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
         case flightphase.Startup:
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+                ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
                 dur := (DMINUS_TAXIOUT_MINS - DMINUS_DEPART_MINS) * 60
                 if ac.Flight.AssignedParkingSpot != nil {
                     e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
@@ -575,6 +585,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
         case flightphase.Cruise:
             tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival 
             if tta <= AMINUS_APPROACH_MINS {
+                ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
                 durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
                 e.transitionToPhase(ac, flightphase.Approach, durSecs, APPROACH_JITTER_SECONDS) 
                 ac.Flight.Phase.Class = flightclass.Arriving
@@ -585,7 +596,6 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
                     tta - AMINUS_APPROACH_MINS)
             }
 
-        // --- ARRIVAL FLOW ---
         case flightphase.Approach:
             e.updateInboundPosition(ac)
             if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
@@ -1018,8 +1028,13 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
     orientations := e.groupByOrientation(viable)
     candidates := orientations[activeOrientation]
 
+    currArrRwy := e.AirportConfig[ap.ICAO].Arrival
+    currDepRwy := e.AirportConfig[ap.ICAO].Departure
+
     // 3. Pair Identification (Outboard/Inboard Logic)
     if len(candidates) >= 2 {
+
+        // Sort by Latitude to determine outboard vs inboard (assuming north-up data)
         sort.Slice(candidates, func(i, j int) bool {
             return candidates[i].Lat > candidates[j].Lat
         })
@@ -1044,6 +1059,16 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
             ap.ICAO, primaryRwy.Name)
     }
   
+    // 4. Runway Queue Cleanup: If the active runway(s) have changed, we need clear the queues.
+    if currArrRwy != nil && currArrRwy.Name != e.AirportConfig[ap.ICAO].Arrival.Name {
+        currLockKey := normalizeRunwayKey(ap.ICAO, currArrRwy)
+        delete(e.RunwayQueues, currLockKey)
+    }
+    if currDepRwy != nil && currDepRwy.Name != e.AirportConfig[ap.ICAO].Departure.Name {
+        currLockKey := normalizeRunwayKey(ap.ICAO, currDepRwy)
+        delete(e.RunwayQueues, currLockKey)
+    }
+
 }
 
 func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
@@ -1219,15 +1244,13 @@ func (e *D9TrafficEngine) getAssignedRunway(ap *atc.Airport, name string) *atc.R
         return nil
     }
     
-    // Most airports only have a few runways, so a simple loop is efficient.
     for _, rwy := range ap.Runways {
         if rwy.Name == name {
             return rwy
         }
     }
     
-    // Fallback: If for some reason the name doesn't match, 
-    // return the first available runway so the geometry doesn't crash.
+    // Fallback: If for some reason the name doesn't match, return the first available runway 
     for _, rwy := range ap.Runways {
         return rwy
     }
@@ -1294,7 +1317,6 @@ func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airpor
 
         if bestSID != nil {
             ac.Flight.AssignedSID = bestSID
-            ac.Flight.AssignedRunway = targetRwy.Name
             util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
         }
 
@@ -1329,7 +1351,6 @@ func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airpor
 
             if bestSTAR != nil {
                 ac.Flight.AssignedSTAR = bestSTAR
-                ac.Flight.AssignedRunway = targetRwy.Name
                 util.LogWithLabel(ac.Registration, "assigned %s STAR", bestSTAR.Name)
             }
         } else {

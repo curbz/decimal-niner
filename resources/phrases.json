@@ -10,7 +10,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting engine start.", "atc": "{$CALLSIGN}, start approved, {@BARO}, report ready for taxi." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting pushback and start.", "atc": "{$CALLSIGN}, push and start approved, report ready for taxi." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for startup.", "atc": "{$CALLSIGN}, engine start [is] at [y]our discretion, {@BARO}." },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting engine start.", "atc": "{$CALLSIGN}, startup approved, expect runway {@RUNWAY} [for departure]." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting engine start.", "atc": "{$CALLSIGN}, startup approved" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, startup complete, requesting taxi.", "atc": "{$CALLSIGN}, [Roger,] report ready for taxi." }
   ],
   "taxi_out": [
