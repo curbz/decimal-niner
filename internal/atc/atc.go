@@ -261,7 +261,7 @@ func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 // the Depart phase is considered airborne or not given that technically, during the takeoff roll portion, the aircraft
 // is not physically airborne
 func IsAirborne(phase int, departIsAirborne bool) bool {
-	beginPhase := flightphase.Depart
+	beginPhase := flightphase.Takeoff
 	if !departIsAirborne {
 		beginPhase = flightphase.Climbout
 	}

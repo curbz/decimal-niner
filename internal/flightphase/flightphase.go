@@ -13,16 +13,18 @@ const (
 	Parked               //0 - Long period parked.
 	Startup              //1 - Short period of spooling up engines/electrics.
 	TaxiOut              //2 - Any ground movement from the gate to the runway.
-	Depart               //3 - Initial ground roll and first part of climb.
+	Takeoff              //3 - Initial ground roll and first part of climb.
 	Climbout             //4 - Remainder of climb, gear up.
-	Cruise               //5 - Normal cruise phase.
-	Holding              //6 - Holding
-	Approach             //7 - Approach
-	Final                //8 - Gear down on final approach.
-	GoAround             //9 - Unplanned transition from approach to cruise.
-	Braking              //10 - Short period from touchdown to when fast-taxi speed is reached.
-	TaxiIn               //11 - Any ground movement after touchdown.
-	Shutdown             //12 - Short period of spooling down engines/electrics.
+	Departure			 //5 - SID/transition from terminal to enroute
+	Cruise               //6 - Normal cruise phase.
+	Arrival				 //7 - STAR/transition from enroute to terminal	
+	Holding              //8 - Holding
+	Approach             //9 - Approach
+	Final                //10 - Gear down on final approach.
+	GoAround             //11 - Unplanned transition from approach to cruise.
+	Braking              //12 - Short period from touchdown to when fast-taxi speed is reached.
+	TaxiIn               //13 - Any ground movement after touchdown.
+	Shutdown             //14 - Short period of spooling down engines/electrics.
 )
 
 func (fp FlightPhase) String() string {
@@ -31,9 +33,11 @@ func (fp FlightPhase) String() string {
 		"Parked",
 		"Startup",
 		"Taxi_Out",
-		"Depart",
+		"Takeoff",
 		"Climbout",
+		"Departure",
 		"Cruise",
+		"Arrival",
 		"Holding",
 		"Approach",
 		"Final",
@@ -53,6 +57,6 @@ type Phase struct {
 	Current                 int
 	Previous                int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition              time.Time
-	EstimatedNextTransition time.Time	// used by d9 traffic engine to estimate when the next phase transition will occur
+	EstimatedNextTransition time.Time     // used by d9 traffic engine to estimate when the next phase transition will occur
 	TotalDuration           time.Duration //used by d9traffic to record total duration of current phase
 }

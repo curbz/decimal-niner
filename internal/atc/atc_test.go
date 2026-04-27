@@ -39,39 +39,39 @@ func TestIsNorthAmerica(t *testing.T) {
 		// Empty string
 		{"", false},
 		// USA (K prefix)
-		{"KJFK", true},   // New York
-		{"KIND", true},   // Indianapolis
-		{"KORD", true},   // Chicago
-		{"KLAS", true},   // Las Vegas
-		{"K", true},      // single K
-		{"KABC", true},   // any K prefix
+		{"KJFK", true}, // New York
+		{"KIND", true}, // Indianapolis
+		{"KORD", true}, // Chicago
+		{"KLAS", true}, // Las Vegas
+		{"K", true},    // single K
+		{"KABC", true}, // any K prefix
 		// Canada (C prefix)
-		{"CYYZ", true},   // Toronto
-		{"CYUL", true},   // Montreal
-		{"CYVRX", true},  // Vancouver
-		{"C", true},      // single C
+		{"CYYZ", true},  // Toronto
+		{"CYUL", true},  // Montreal
+		{"CYVRX", true}, // Vancouver
+		{"C", true},     // single C
 		// Alaska (PA prefix)
-		{"PANC", true},   // Anchorage
-		{"PAFB", true},   // Fairbanks
+		{"PANC", true}, // Anchorage
+		{"PAFB", true}, // Fairbanks
 		// Hawaii (PH prefix)
-		{"PHNL", true},   // Honolulu
-		{"PHOG", true},   // any PH prefix
+		{"PHNL", true}, // Honolulu
+		{"PHOG", true}, // any PH prefix
 		// Mexico (M prefix)
-		{"MMMX", true},   // Mexico City
-		{"MMUN", true},   // Monterrey
-		{"M", true},      // single M
+		{"MMMX", true}, // Mexico City
+		{"MMUN", true}, // Monterrey
+		{"M", true},    // single M
 		// Non-North American ICAO codes
-		{"LFPG", false},  // Paris, France
-		{"EGLL", false},  // London, UK
-		{"RJTT", false},  // Tokyo, Japan
-		{"UUWW", false},  // Moscow, Russia
-		{"SBGR", false},  // São Paulo, Brazil
-		{"FAOR", false},  // Johannesburg, South Africa
+		{"LFPG", false}, // Paris, France
+		{"EGLL", false}, // London, UK
+		{"RJTT", false}, // Tokyo, Japan
+		{"UUWW", false}, // Moscow, Russia
+		{"SBGR", false}, // São Paulo, Brazil
+		{"FAOR", false}, // Johannesburg, South Africa
 		// Other prefixes
 		{"A", false},
 		{"Z", false},
-		{"P", false},     // P alone (not PA or PH)
-		{"XB-ABC", false},// Mexico prefix in registration style but as ICAO
+		{"P", false},      // P alone (not PA or PH)
+		{"XB-ABC", false}, // Mexico prefix in registration style but as ICAO
 	}
 
 	for _, tc := range tests {
@@ -84,15 +84,15 @@ func TestIsNorthAmerica(t *testing.T) {
 
 func TestIsAirborne(t *testing.T) {
 	tests := []struct {
-		phase int
+		phase            int
 		departIsAirborne bool
-		want  bool
+		want             bool
 	}{
 		{phase: flightphase.Parked.Index(), departIsAirborne: false, want: false},
 		{phase: flightphase.Startup.Index(), departIsAirborne: false, want: false},
 		{phase: flightphase.TaxiOut.Index(), departIsAirborne: false, want: false},
-		{phase: flightphase.Depart.Index(), departIsAirborne: false, want: false},
-		{phase: flightphase.Depart.Index(), departIsAirborne: true, want: true},
+		{phase: flightphase.Takeoff.Index(), departIsAirborne: false, want: false},
+		{phase: flightphase.Takeoff.Index(), departIsAirborne: true, want: true},
 		{phase: flightphase.Climbout.Index(), departIsAirborne: false, want: true},
 		{phase: flightphase.Cruise.Index(), departIsAirborne: false, want: true},
 		{phase: flightphase.Approach.Index(), departIsAirborne: false, want: true},

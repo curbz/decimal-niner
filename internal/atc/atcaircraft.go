@@ -39,8 +39,8 @@ type Flight struct {
 	AssignedParkingName string
 	AssignedParkingSpot *ParkingSpot
 	AssignedRunway      string
-	AssignedSID			*Procedure
-	AssignedSTAR		*Procedure
+	AssignedSID         *Procedure
+	AssignedSTAR        *Procedure
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo
@@ -389,7 +389,7 @@ func (s *Service) SetFlightPhaseClass(ac *Aircraft) {
 		}
 	case flightphase.Startup.Index(),
 		flightphase.TaxiOut.Index(),
-		flightphase.Depart.Index(),
+		flightphase.Takeoff.Index(),
 		flightphase.Climbout.Index():
 		ph.Class = flightclass.Departing
 		return

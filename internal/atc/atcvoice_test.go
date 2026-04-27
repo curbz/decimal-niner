@@ -270,7 +270,7 @@ func TestGenerateHandoffPhraseAndValediction(t *testing.T) {
 	ctrl := &Controller{ICAO: "NEXT", Name: "NextCtrl", RoleID: 4, IsPoint: true, Lat: 51.0, Lon: -0.1, Freqs: []int{118500}}
 	s.Controllers = []*Controller{ctrl}
 
-	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: flightphase.Phase{Current: flightphase.Depart.Index()}}}
+	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.0, Long: -0.1}, Phase: flightphase.Phase{Current: flightphase.Takeoff.Index()}}}
 
 	ph := s.generateHandoffPhrase(ac)
 	if ph == "" {
