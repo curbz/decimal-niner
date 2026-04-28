@@ -352,16 +352,24 @@ var atcFacilityByPhaseMap = map[flightphase.FlightPhase]PhaseFacility{
 		roleId:   2,
 	},
 	flightphase.Takeoff: {
-		atcPhase: "depart",
+		atcPhase: "takeoff",
 		roleId:   3,
 	},
 	flightphase.Climbout: {
 		atcPhase: "climb_out",
 		roleId:   4,
 	},
+	flightphase.Departure: {
+		atcPhase: "departure",
+		roleId:   6,
+	},
 	// --- ENROUTE & ARRIVAL ---
 	flightphase.Cruise: {
 		atcPhase: "cruise",
+		roleId:   6,
+	},
+	flightphase.Arrival: {
+		atcPhase: "arrival",
 		roleId:   6,
 	},
 	flightphase.Approach: {

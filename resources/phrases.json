@@ -27,7 +27,7 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, cleared for take off runway {@RUNWAY}. [wind {@WIND}]" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, ready for departure from runway {@RUNWAY}.", "atc": "{$CALLSIGN}, fly the designated departure, runway {@RUNWAY} cleared for takeoff, wind {@WIND}" }
   ],
-    "departure": [
+  "departure": [
       { "initiator": "atc", "atc": "{$CALLSIGN}, continue [departure under] own navigation" }
   ],
   "climb_out": [
