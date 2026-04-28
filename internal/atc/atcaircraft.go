@@ -390,10 +390,12 @@ func (s *Service) SetFlightPhaseClass(ac *Aircraft) {
 	case flightphase.Startup.Index(),
 		flightphase.TaxiOut.Index(),
 		flightphase.Takeoff.Index(),
-		flightphase.Climbout.Index():
+		flightphase.Climbout.Index(),
+		flightphase.Departure.Index():
 		ph.Class = flightclass.Departing
 		return
-	case flightphase.Approach.Index(),
+	case flightphase.Arrival.Index(),
+		flightphase.Approach.Index(),
 		flightphase.Holding.Index(),
 		flightphase.Final.Index(),
 		flightphase.GoAround.Index(),

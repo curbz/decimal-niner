@@ -562,7 +562,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (DMINUS_STARTUP_MINS - DMINUS_TAXIOUT_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Startup, dur, PARKED_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Departing
 			}
 
 		case flightphase.Startup:
@@ -574,7 +573,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
 				}
 				e.transitionToPhase(ac, flightphase.TaxiOut, dur, TAXI_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Departing
 			}
 
 		case flightphase.TaxiOut:
@@ -586,7 +584,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				}
 				dur := (DMINUS_TAKEOFF_MINS - DMINUS_CLIMBOUT_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Takeoff, dur, TAKEOFF_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Departing
 				// Position at runway threshold
 				rwy := e.atcService.GetAirportRunway(airport.ICAO, ac.Flight.AssignedRunway)
 				if rwy != nil {
@@ -606,7 +603,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac)
 				dur := (DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Climbout, dur, CLIMBOUT_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Departing
 				// Jump 2NM out and up
 				newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, 2.0)
 				ac.Flight.Position.Lat = newLat
@@ -618,7 +614,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
                 dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Departure, DEPARTURE_JITTER_SECONDS, dur)
-				ac.Flight.Phase.Class = flightclass.Departing
 			}
 
         case flightphase.Departure:
@@ -626,7 +621,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Cruise, CRUISE_JITTER_SECONDS, dur)
-				ac.Flight.Phase.Class = flightclass.Cruising
 			}
             
 		case flightphase.Cruise:
@@ -636,7 +630,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				e.assignProcedures(ac, airport, false)
 				durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Arrival, durSecs, ARRIVAL_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 				util.LogWithLabel(ac.Registration, "commencing arrival into %s (TTA: %d mins)",
 					f.IcaoDest, tta)
 			} else {
@@ -657,7 +650,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
                 }
 				dur := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 			}
 
         case flightphase.Holding:
@@ -676,7 +668,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				}
 				dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Final, dur, FINAL_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 			}
 
 		case flightphase.Final:
@@ -690,7 +681,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				}
 				dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
 				e.transitionToPhase(ac, flightphase.Braking, dur, BRAKING_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 				ac.Flight.Position.Altitude = airport.Elevation
 			}
 
@@ -709,7 +699,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 				dur := (AMINUS_BRAKING - AMINUS_TAXIIN_MINS) * 60
 				e.transitionToPhase(ac, flightphase.TaxiIn, dur, TAXI_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 			}
 
 		case flightphase.TaxiIn:
@@ -717,14 +706,12 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				e.positionAtDestParking(ac)
 				dur := (AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Shutdown, dur, SHUTDOWN_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.Arriving
 			}
 
 		case flightphase.Shutdown:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (AMINUS_SHUTDOWN_MINS - AMINUS_PARKED_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Parked, dur, PARKED_JITTER_SECONDS)
-				ac.Flight.Phase.Class = flightclass.PostflightParked
 			}
 		}
 
@@ -929,25 +916,25 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 		estimatedDuration := ((diff - DMINUS_TAXIOUT_MINS) * 60) + (rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS)
 		return flightphase.Startup, estimatedDuration
 
-	// taxi out
-	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAXIOUT_MINS:
+	// taxi out 
+ 	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAKEOFF_MINS:
 		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
 		return flightphase.TaxiOut, estimatedDuration
 
-	// takeoff
+	// takeoff - we do not permit initial spawn in takeoff phase due to runway lock charge so will be initialised in taxi out phase
 	case diff >= DMINUS_CLIMBOUT_MINS && diff <= DMINUS_TAKEOFF_MINS:
 		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAKEOFF_JITTER_SECONDS*2)+1) - TAKEOFF_JITTER_SECONDS)
-		return flightphase.Takeoff, estimatedDuration
+		return flightphase.TaxiOut, estimatedDuration
 
 	// climbout
 	case diff >= DMINUS_DEPARTURE_MINS && diff <= DMINUS_CLIMBOUT_MINS:
 		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
-		return flightphase.Takeoff, estimatedDuration
+		return flightphase.Climbout, estimatedDuration
 
     // departure
 	case diff >= DMINUS_CRUISE_MINS && diff <= DMINUS_DEPARTURE_MINS:
 		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
-		return flightphase.Takeoff, estimatedDuration
+		return flightphase.Departure, estimatedDuration
 
 	default:
 		// cruise
@@ -970,15 +957,15 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.S
 		estimatedDuration := ((diff - AMINUS_FINAL_MINS) * 60) + (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
 		return flightphase.Approach, estimatedDuration
 
-	// FINAL:
+	// FINAL: we do not permit initial spawn in final phase due to runway lock charge so will be initialised in approach phase
 	case diff > AMINUS_LAND_MINS && diff <= AMINUS_FINAL_MINS:
 		estimatedDuration := (diff * 60) + (rand.IntN((FINAL_JITTER_SECONDS*2)+1) - FINAL_JITTER_SECONDS)
-		return flightphase.Final, estimatedDuration
+		return flightphase.Approach, estimatedDuration + AMINUS_APPROACH_MINS*60
 
-	// BRAKING:
+	// BRAKING: we do not permit initial spawn in braking phase due to runway lock charge so will be initialised in approach out phase
 	case diff > AMINUS_BRAKING && diff <= AMINUS_LAND_MINS:
 		estimatedDuration := ((diff - AMINUS_BRAKING) * 60) + (rand.IntN((BRAKING_JITTER_SECONDS*2)+1) - BRAKING_JITTER_SECONDS)
-		return flightphase.Braking, estimatedDuration
+		return flightphase.Approach, estimatedDuration + AMINUS_APPROACH_MINS*60
 
 	// TAXI IN:
 	case diff > AMINUS_TAXIIN_MINS && diff <= AMINUS_BRAKING:
