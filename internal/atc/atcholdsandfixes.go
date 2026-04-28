@@ -30,12 +30,12 @@ type Fix struct {
 	FullName string
 	LatRad   float64
 	LonRad   float64
-	Hold 	 *Hold // if this fix is also a hold, this field will be populated otherwise nil
+	Hold     *Hold // if this fix is also a hold, this field will be populated otherwise nil
 }
 
 type ProcedureFix struct {
-	Fix 	*Fix
-	ConstraintAlt int
+	Fix            *Fix
+	ConstraintAlt  int
 	ConstraintType int // 0 = at, 1 = at or above, 2 = at or below
 }
 
@@ -60,7 +60,7 @@ func loadHolds(navDataFile, holdsDataFile, fixesFile string) (map[string]*Hold, 
 		}
 	}
 	allFixes = namedFixes
-	logger.Log.Infof("consolidated fix count: %d", len(allFixes))	
+	logger.Log.Infof("consolidated fix count: %d", len(allFixes))
 
 	allHolds, airportHolds, err := parseHoldData(holdsDataFile)
 	if err != nil {
@@ -126,7 +126,7 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 	logger.Log.Infof("%d holds were enriched with coordinates", enrichedCnt)
 }
 
-func (s *Service) findNearestHold(ac *Aircraft, icao string) *Hold {
+func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 
 	lat := ac.Flight.Position.Lat
 	lng := ac.Flight.Position.Long
@@ -217,11 +217,11 @@ func parseHoldData(path string) (map[string]*Hold, map[string][]*Hold, error) {
 		}
 
 		h := &Hold{
-			Ident:   fields[0],
-			Region:  fields[1],
-			ICAO:    fields[2], // airport ICAO or 'ENRT'
-			MinAlt:  parseInt(fields[8]),
-			MaxAlt:  parseInt(fields[9]),
+			Ident:  fields[0],
+			Region: fields[1],
+			ICAO:   fields[2], // airport ICAO or 'ENRT'
+			MinAlt: parseInt(fields[8]),
+			MaxAlt: parseInt(fields[9]),
 		}
 
 		key := h.Ident + "_" + h.Region

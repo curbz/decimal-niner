@@ -142,7 +142,7 @@ func (s *Service) startComms() {
 						continue
 					}
 					freqStr := formatFrequency(ac.Flight.Comms.NextController.Freqs[0])
-					phrase := fmt.Sprintf("{$CALLSIGN} contact %s on %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
+					phrase := fmt.Sprintf("{$CALLSIGN} [contact] %s [on] %s {{$VALEDICTION}}", ac.Flight.Comms.Controller.Name, freqStr)
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac)
 					util.GoSafe(func() {
@@ -343,7 +343,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_NAME": func(args ...string) interface{} {
-			holdfix := s.findNearestHold(ac, phaseICAO)
+			holdfix := s.FindNearestHold(ac, phaseICAO)
 			if holdfix == nil {
 				return ""
 			} else {
@@ -352,7 +352,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_IDENT": func(args ...string) interface{} {
-			holdfix := s.findNearestHold(ac, phaseICAO)
+			holdfix := s.FindNearestHold(ac, phaseICAO)
 			if holdfix == nil {
 				return ""
 			} else {
@@ -500,7 +500,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if ac.Flight.Comms.Controller == nil {
 				r = "published hold"
 			} else {
-				holdfix := s.findNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
+				holdfix := s.FindNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
 				if holdfix != nil && holdfix.FullName != "" {
 					r = holdfix.FullName
 					util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)

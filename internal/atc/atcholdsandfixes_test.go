@@ -53,7 +53,7 @@ func TestNearestHold(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ac := &Aircraft{Flight: Flight{Position: Position{Lat: tc.lat, Long: tc.lon}}}
-			h := s.findNearestHold(ac, "")
+			h := s.FindNearestHold(ac, "")
 			if h == nil {
 				t.Fatalf("expected %s, got nil", tc.expected)
 			}
@@ -79,7 +79,7 @@ func TestFindNearestHoldPriority(t *testing.T) {
 	ap := &Airport{ICAO: "EGAA", Name: "Test", Runways: map[string]*Runway{}, Holds: []*Hold{makeHold("LOCAL", 51.50, -0.10)}}
 	s.Airports["EGAA"] = ap
 	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.50, Long: -0.10}}}
-	h := s.findNearestHold(ac, "EGAA")
+	h := s.FindNearestHold(ac, "EGAA")
 	if h == nil || h.Ident != "LOCAL" {
 		t.Fatalf("airport hold not preferred, got %v", h)
 	}
@@ -89,7 +89,7 @@ func TestFindNearestHoldPriority(t *testing.T) {
 	ap2 := &Airport{ICAO: "EGLL", Name: "GA", Runways: map[string]*Runway{"27R": {MAFix: "MA1"}}, Holds: []*Hold{makeHold("MA1", 51.64, 0.15), makeHold("OTHER", 51.65, 0.16)}}
 	s.Airports["EGLL"] = ap2
 	ac2 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.64, Long: 0.16}, AssignedRunway: "27R", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
-	h2 := s.findNearestHold(ac2, "EGLL")
+	h2 := s.FindNearestHold(ac2, "EGLL")
 	if h2 == nil || h2.Ident != "MA1" {
 		t.Fatalf("go-around MAFix not returned, got %v", h2)
 	}
@@ -98,7 +98,7 @@ func TestFindNearestHoldPriority(t *testing.T) {
 	ap3 := &Airport{ICAO: "EGKK", Name: "NoMA", Runways: map[string]*Runway{"09": {MAFix: "MISSING"}}, Holds: []*Hold{makeHold("A1", 51.20, -0.50), makeHold("A2", 51.25, -0.55)}}
 	s.Airports["EGKK"] = ap3
 	ac3 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.21, Long: -0.51}, AssignedRunway: "09", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
-	h3 := s.findNearestHold(ac3, "EGKK")
+	h3 := s.FindNearestHold(ac3, "EGKK")
 	if h3 == nil || (h3.Ident != "A1" && h3.Ident != "A2") {
 		t.Fatalf("expected nearest airport hold fallback, got %v", h3)
 	}
@@ -106,7 +106,7 @@ func TestFindNearestHoldPriority(t *testing.T) {
 	// 4) Airport exists but has no holds -> global fallback
 	s.Airports["EMPTY"] = &Airport{ICAO: "EMPTY", Name: "Empty", Runways: map[string]*Runway{}, Holds: []*Hold{}}
 	ac4 := &Aircraft{Flight: Flight{Position: Position{Lat: 37.60, Long: -122.40}}}
-	h4 := s.findNearestHold(ac4, "EMPTY")
+	h4 := s.FindNearestHold(ac4, "EMPTY")
 	if h4 == nil || h4.Ident != "SFO" {
 		t.Fatalf("expected global fallback to SFO, got %v", h4)
 	}
