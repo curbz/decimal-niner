@@ -466,13 +466,13 @@ func (e *D9TrafficEngine) spawnInboundTraffic(f *flightplan.ScheduledFlight) {
 		newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
 	}
 
-	if initialPhase.Index() < flightphase.Approach.Index() {
+	if initialPhase.Index() == flightphase.Cruise.Index() {
 		e.assignProcedures(newAc, airport, false)
 	}
 
 	e.ActiveAircraft[getActiveAircraftKey(newAc)] = newAc
 
-	util.LogWithLabel(f.AircraftRegistration, "successfully spawned inbound aircraft: %s flight %d - estimated next tranistion: %v",
+	util.LogWithLabel(f.AircraftRegistration, "successfully spawned inbound aircraft: %s flight %d - estimated next transition: %v",
 		f.AirlineName, f.Number, newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
 }
 
@@ -551,6 +551,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 		case flightphase.Startup:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
+				e.assignProcedures(ac, airport, true)
 				dur := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
 				if ac.Flight.AssignedParkingSpot != nil {
 					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
@@ -615,6 +616,7 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 			if tta <= AMINUS_ARRIVAL_MINS {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
+				e.assignProcedures(ac, airport, false)
 				durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Arrival, durSecs, ARRIVAL_JITTER_SECONDS)
 				ac.Flight.Phase.Class = flightclass.Arriving
@@ -716,10 +718,6 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 			logMsg := ""
 			if e.initialised {
 				e.atcService.NotifyFlightPhaseChange(ac)
-				util.LogWithLabel(ac.Registration, "changed phase from %s to %s. Next: %v",
-					flightphase.FlightPhase(ac.Flight.Phase.Previous).String(),
-					flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
-					ac.Flight.Phase.EstimatedNextTransition.Format(time.Kitchen))
 				logMsg = "flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d estimated next transition at %v"
 			} else {
 				logMsg = "flight %d silently initialised with previous phase %s and current phase %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d next transition at %v"
@@ -1464,7 +1462,7 @@ func (e *D9TrafficEngine) assignProcedures(ac *atc.Aircraft, airport *atc.Airpor
 				util.LogWithLabel(ac.Registration, "assigned %s STAR", bestSTAR.Name)
 			}
 		} else {
-			util.LogWithLabel(ac.Registration, "will be vectored to runway by ATC")
+			util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
 		}
 	}
 }
