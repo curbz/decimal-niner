@@ -152,7 +152,7 @@ func (e *D9TrafficEngine) Start() {
 			}
 
 			// 3. Update existing aircraft (Phase transitions)
-			e.updateActiveAircraft()
+			e.updateActiveAircraft(relevantICAOs)
 
 			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total active aircraft: %d", time.Since(start), len(e.ActiveAircraft))
 		}
@@ -501,7 +501,7 @@ func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
 	return diff
 }
 
-func (e *D9TrafficEngine) updateActiveAircraft() {
+func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 
@@ -513,13 +513,30 @@ func (e *D9TrafficEngine) updateActiveAircraft() {
 
 		// We determine the current/next relevant airport based on flight class
 		var airport *atc.Airport
+		var targetICAO string
 		if ac.Flight.Phase.Class >= flightclass.Cruising {
-			airport = e.atcService.Airports[f.IcaoDest]
+			targetICAO= f.IcaoDest
 		} else {
-			airport = e.atcService.Airports[f.IcaoOrigin]
+			targetICAO = f.IcaoOrigin
 		}
+		airport = e.atcService.Airports[targetICAO]
 
-		if airport == nil {
+		// if airport is not relevant to the user's current context, skip it
+		if airport != nil {
+			isRelevant := false
+			for _, icao := range relevantICAOs {
+				if icao == airport.ICAO {
+					isRelevant = true
+					break
+				}
+			}
+			if !isRelevant {
+				util.LogWithLabel(ac.Registration, "skipping update - target icao of %s is no longer related to the user's current context: %v", 
+					airport.ICAO, relevantICAOs)
+				continue
+			}
+		} else {
+			util.LogWarnWithLabel(ac.Registration, "skipping update - target icao not found", targetICAO)
 			continue
 		}
 
