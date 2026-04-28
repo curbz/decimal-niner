@@ -1525,10 +1525,11 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 	return false
 }
 
+// releaseRunwayLock releases the lock on the runway if it is currently held by the given aircraft.
 func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *atc.Aircraft) {
 	rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
-    _, lockExists := e.RunwayLocks[rwyLockKey]
-    if lockExists {
+    lock, lockExists := e.RunwayLocks[rwyLockKey]
+    if lockExists && lock.OccupiedBy.Registration == ac.Registration {
 	    delete(e.RunwayLocks, rwyLockKey)
 	    util.LogWithLabel(ac.Registration, "lock on runway %s at %s is released", rwy.Name, ap.ICAO)
     }
