@@ -898,6 +898,14 @@ func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) *atc.ParkingSp
 	return spot
 }
 
+func AbsDiff(a, b int) int {
+    result := a - b
+    if result < 0 {
+        return -result
+    }
+    return result
+}
+
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
 // of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time.
 func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int) {
@@ -917,43 +925,43 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 		} else {
 			util.LogWarnWithLabel(f.AircraftRegistration, "unable to determine initial departure phase due to missing airport flow for %s", f.IcaoOrigin)
 		}
-		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
 		return flightphase.Parked, estimatedDuration, delay
 
 	// still parked but tracking towards startup
 	case diff > DMINUS_STARTUP_MINS && diff <= DMINUS_PARKED_MINS:
-		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
 		return flightphase.Parked, estimatedDuration, delay
 
 	// startup
 	case diff > DMINUS_TAXIOUT_MINS && diff <= DMINUS_STARTUP_MINS:
-		estimatedDuration := ((diff - DMINUS_TAXIOUT_MINS) * 60) + (rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, DMINUS_TAXIOUT_MINS) * 60) + (rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS)
 		return flightphase.Startup, estimatedDuration, delay
 
-		// taxi out
-	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAKEOFF_MINS:
-		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
+	// taxi out
+	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAXIOUT_MINS:
+		estimatedDuration := (AbsDiff(diff, DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
 		return flightphase.TaxiOut, estimatedDuration, delay
 
 	// takeoff - we do not permit initial spawn in takeoff phase due to runway lock charge so will be initialised in taxi out phase
 	case diff >= DMINUS_CLIMBOUT_MINS && diff <= DMINUS_TAKEOFF_MINS:
-		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAKEOFF_JITTER_SECONDS*2)+1) - TAKEOFF_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(DMINUS_TAXIOUT_MINS, DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
 		return flightphase.TaxiOut, estimatedDuration, delay
 
 	// climbout
 	case diff >= DMINUS_DEPARTURE_MINS && diff <= DMINUS_CLIMBOUT_MINS:
-		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
 		return flightphase.Climbout, estimatedDuration, delay
 
-		// departure
+	// departure
 	case diff >= DMINUS_CRUISE_MINS && diff <= DMINUS_DEPARTURE_MINS:
-		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((DEPARTURE_JITTER_SECONDS*2)+1) - DEPARTURE_JITTER_SECONDS)
 		return flightphase.Departure, estimatedDuration, delay
 
 	default:
 		// cruise
 		tta := e.timeDiffToArrival(f)
-		remainingCruise := ((tta - AMINUS_APPROACH_MINS) * 60) + (rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS)
+		remainingCruise := (AbsDiff(tta, AMINUS_APPROACH_MINS) * 60) + (rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS)
 		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))), delay
 	}
 }
@@ -963,44 +971,44 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.S
 	switch {
 	// ARRIVAL:
 	case diff > AMINUS_APPROACH_MINS && diff <= AMINUS_ARRIVAL_MINS:
-		estimatedDuration := ((diff - AMINUS_APPROACH_MINS) * 60) + (rand.IntN((ARRIVAL_JITTER_SECONDS*2)+1) - ARRIVAL_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, AMINUS_APPROACH_MINS) * 60) + (rand.IntN((ARRIVAL_JITTER_SECONDS*2)+1) - ARRIVAL_JITTER_SECONDS)
 		return flightphase.Approach, estimatedDuration
 
 	// APPROACH:
 	case diff > AMINUS_FINAL_MINS && diff <= AMINUS_APPROACH_MINS:
-		estimatedDuration := ((diff - AMINUS_FINAL_MINS) * 60) + (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, AMINUS_FINAL_MINS) * 60) + (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
 		return flightphase.Approach, estimatedDuration
 
 	// FINAL: we do not permit initial spawn in final phase due to runway lock charge so will be initialised in approach phase
 	case diff > AMINUS_LAND_MINS && diff <= AMINUS_FINAL_MINS:
-		estimatedDuration := (diff * 60) + (rand.IntN((FINAL_JITTER_SECONDS*2)+1) - FINAL_JITTER_SECONDS)
-		return flightphase.Approach, estimatedDuration + AMINUS_APPROACH_MINS*60
+		estimatedDuration := (AbsDiff(AMINUS_APPROACH_MINS, AMINUS_LAND_MINS) * 60) + (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
+		return flightphase.Approach, estimatedDuration
 
 	// BRAKING: we do not permit initial spawn in braking phase due to runway lock charge so will be initialised in approach out phase
 	case diff > AMINUS_BRAKING && diff <= AMINUS_LAND_MINS:
-		estimatedDuration := ((diff - AMINUS_BRAKING) * 60) + (rand.IntN((BRAKING_JITTER_SECONDS*2)+1) - BRAKING_JITTER_SECONDS)
-		return flightphase.Approach, estimatedDuration + AMINUS_APPROACH_MINS*60
+		estimatedDuration := (AbsDiff(AMINUS_APPROACH_MINS, AMINUS_LAND_MINS) * 60) + (rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS)
+		return flightphase.Approach, estimatedDuration
 
 	// TAXI IN:
 	case diff > AMINUS_TAXIIN_MINS && diff <= AMINUS_BRAKING:
 		// We use TAXIOUT jitter here as a proxy for movement variance
-		estimatedDuration := ((diff - AMINUS_TAXIIN_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, AMINUS_TAXIIN_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
 		return flightphase.TaxiIn, estimatedDuration
 
 	// SHUTDOWN:
 	case diff > AMINUS_SHUTDOWN_MINS && diff <= AMINUS_TAXIIN_MINS:
-		estimatedDuration := ((diff - AMINUS_SHUTDOWN_MINS) * 60) + (rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, AMINUS_SHUTDOWN_MINS) * 60) + (rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS)
 		return flightphase.Shutdown, estimatedDuration
 
 	// PARKED:
 	case diff >= AMINUS_PARKED_MINS && diff <= AMINUS_SHUTDOWN_MINS:
-		estimatedDuration := ((diff - AMINUS_PARKED_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
+		estimatedDuration := (AbsDiff(diff, AMINUS_PARKED_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
 		return flightphase.Parked, estimatedDuration
 
 	// DEFAULT:
 	default:
 		tta := e.timeDiffToArrival(f)
-		remainingCruise := ((tta - AMINUS_ARRIVAL_MINS) * 60) + (rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS)
+		remainingCruise := (AbsDiff(tta, AMINUS_ARRIVAL_MINS) * 60) + (rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS)
 		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise)))
 	}
 }
