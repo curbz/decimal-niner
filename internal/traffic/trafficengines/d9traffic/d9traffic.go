@@ -60,17 +60,17 @@ type RunwayLock struct {
 
 const (
 	// time difference (minutes) in relation to scheduled departure time - this is NOT a duration but relative time to departure
-	DMINUS_PARKED_MINS      = 25
-	DMINUS_STARTUP_MINS     = 15
-	DMINUS_TAXIOUT_MINS     = 10
-	DMINUS_TAKEOFF_MINS     = 0
-	DMINUS_CLIMBOUT_MINS    = -1
-    DMINUS_DEPARTURE_MINS   = -5
-	DMINUS_CRUISE_MINS      = -15
+	DMINUS_PARKED_MINS    = 25
+	DMINUS_STARTUP_MINS   = 15
+	DMINUS_TAXIOUT_MINS   = 10
+	DMINUS_TAKEOFF_MINS   = 0
+	DMINUS_CLIMBOUT_MINS  = -1
+	DMINUS_DEPARTURE_MINS = -5
+	DMINUS_CRUISE_MINS    = -15
 
 	// time difference (minutes) in relation to scheduled arrival time - this is NOT a duration but relative time to arrival
 	AMINUS_ARRIVAL_MINS  = 15
-    AMINUS_APPROACH_MINS = 7
+	AMINUS_APPROACH_MINS = 7
 	AMINUS_FINAL_MINS    = 2
 	AMINUS_LAND_MINS     = 0
 	AMINUS_BRAKING       = -1
@@ -80,26 +80,26 @@ const (
 
 	// allowable time variance (minutes) in phase duration. example: Parked jitter of 240 means that the parked phase duration
 	// can be reduced or increased by up to half of this time i.e. 120 seconds
-	PARKED_JITTER_SECONDS       = 240
-	STARTUP_JITTER_SECONDS      = 120
-	TAXI_JITTER_SECONDS         = 240
-	TAKEOFF_JITTER_SECONDS      = 120
-	CLIMBOUT_JITTER_SECONDS     = 20
-    DEPARTURE_JITTER_SECONDS    = 200
-	CRUISE_JITTER_SECONDS       = 240
-    ARRIVAL_JITTER_SECONDS      = 200
-	APPROACH_JITTER_SECONDS     = 120
-	FINAL_JITTER_SECONDS        = 30
-	BRAKING_JITTER_SECONDS      = 20
-	SHUTDOWN_JITTER_SECONDS     = 120
+	PARKED_JITTER_SECONDS    = 240
+	STARTUP_JITTER_SECONDS   = 120
+	TAXI_JITTER_SECONDS      = 240
+	TAKEOFF_JITTER_SECONDS   = 120
+	CLIMBOUT_JITTER_SECONDS  = 20
+	DEPARTURE_JITTER_SECONDS = 200
+	CRUISE_JITTER_SECONDS    = 240
+	ARRIVAL_JITTER_SECONDS   = 200
+	APPROACH_JITTER_SECONDS  = 120
+	FINAL_JITTER_SECONDS     = 30
+	BRAKING_JITTER_SECONDS   = 20
+	SHUTDOWN_JITTER_SECONDS  = 120
 
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300
 
-    HOLDING_MIN_DURATION_MINS                   = 4
-    TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD   = 10
-    STAR_PROBABILITY_FACTOR                     = 0.3
-    GOAROUND_TO_HOLD_PROBABILITY_FACTOR         = 0.3
-
+	HOLDING_MIN_DURATION_MINS                     = 4
+	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 10
+	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 90
+	STAR_PROBABILITY_FACTOR                       = 0.3
+	GOAROUND_TO_HOLD_PROBABILITY_FACTOR           = 0.3
 )
 
 func New(cfgPath string) (traffic.Engine, error) {
@@ -347,8 +347,8 @@ func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int
 func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 
 	ttd := e.timeDiffToDeparture(f)
-	initialPhase, dur := e.determineInitialDepaturePhase(ttd, f)
-	tDur := time.Duration(math.Abs(float64(dur))) * time.Second
+	initialPhase, dur, delay := e.determineInitialDepaturePhase(ttd, f)
+	tDur := time.Duration(math.Abs(float64(dur+delay))) * time.Second
 
 	if initialPhase == flightphase.Unknown {
 		return
@@ -399,6 +399,7 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 				EstimatedNextTransition: currSimZTime.Add(tDur),
 				TotalDuration:           tDur,
 			},
+			DepartureDelay: delay,
 		},
 	}
 	e.atcService.SetFlightPhaseClass(newAc)
@@ -515,7 +516,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		var airport *atc.Airport
 		var targetICAO string
 		if ac.Flight.Phase.Class >= flightclass.Cruising {
-			targetICAO= f.IcaoDest
+			targetICAO = f.IcaoDest
 		} else {
 			targetICAO = f.IcaoOrigin
 		}
@@ -531,7 +532,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				}
 			}
 			if !isRelevant {
-				util.LogWithLabel(ac.Registration, "skipping update - target icao of %s is no longer related to the user's current context: %v", 
+				util.LogWithLabel(ac.Registration, "skipping update - target icao of %s is no longer related to the user's current context: %v",
 					airport.ICAO, relevantICAOs)
 				continue
 			}
@@ -544,12 +545,12 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		case flightphase.Unknown:
 			diff := e.timeDiffToDeparture(f)
-			initialPhase, dur := e.determineInitialDepaturePhase(diff, f)
-			e.transitionToPhase(ac, initialPhase, dur*60, 0)
+			initialPhase, dur, delay := e.determineInitialDepaturePhase(diff, f)
+			ac.Flight.DepartureDelay = delay
+			e.transitionToPhase(ac, initialPhase, (dur+delay)*60, 0)
 			e.atcService.SetFlightPhaseClass(ac)
 
 		// --- DEPARTURE FLOW ---
-
 		case flightphase.Parked:
 			if ac.Flight.Phase.Class == flightclass.PostflightParked {
 				e.endFlight(ac) // Cleanup logic
@@ -612,17 +613,17 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		case flightphase.Climbout:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
+				dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Departure, DEPARTURE_JITTER_SECONDS, dur)
 			}
 
-        case flightphase.Departure:
+		case flightphase.Departure:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Cruise, CRUISE_JITTER_SECONDS, dur)
 			}
-            
+
 		case flightphase.Cruise:
 			tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 			if tta <= AMINUS_ARRIVAL_MINS {
@@ -637,25 +638,25 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					tta-AMINUS_APPROACH_MINS)
 			}
 
-        case flightphase.Arrival:
+		case flightphase.Arrival:
 			e.updateInboundPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                qKey := normalizeRunwayKey(airport.ICAO, e.AirportConfig[airport.ICAO].Arrival)
-                if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
-                    // send to hold
-                    dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-                    e.transitionToPhase(ac, flightphase.Holding, dur, 0)
-                } else {
-                    util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high", qKey, airport.ICAO)
-                }
+				qKey := normalizeRunwayKey(airport.ICAO, e.AirportConfig[airport.ICAO].Arrival)
+				if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+					// send to hold
+					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
+					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+				} else {
+					util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high", qKey, airport.ICAO)
+				}
 				dur := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
 			}
 
-        case flightphase.Holding:
-            if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-                e.tryExitHold(ac, airport)
-            }
+		case flightphase.Holding:
+			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				e.tryExitHold(ac, airport)
+			}
 
 		case flightphase.Approach:
 			e.updateInboundPosition(ac)
@@ -898,56 +899,69 @@ func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) *atc.ParkingSp
 }
 
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
-// of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time
-func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int) {
+// of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time.
+func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int) {
+	delay := 0
 	switch {
 	// long term parked
 	case diff > DMINUS_PARKED_MINS:
+		//  if the departure runway is busy we add a delay based on q length at this time - update ac.Flight.Delayed with this value
+		flow, found := e.AirportConfig[f.IcaoOrigin]
+		if found {
+			qKey := normalizeRunwayKey(f.IcaoOrigin, flow.Departure)
+			if len(e.RunwayQueues[qKey]) < TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+				delay = len(e.RunwayQueues[qKey]) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS
+				util.LogWithLabel(f.AircraftRegistration, "initial departure delay of %d seconds applied based on current traffic queue of %d for runway %s at %s",
+					delay, len(e.RunwayQueues[qKey]), e.AirportConfig[f.IcaoOrigin].Departure.Name, f.IcaoOrigin)
+			}
+		} else {
+			util.LogWarnWithLabel(f.AircraftRegistration, "unable to determine initial departure phase due to missing airport flow for %s", f.IcaoOrigin)
+		}
 		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
-		return flightphase.Parked, estimatedDuration
+		return flightphase.Parked, estimatedDuration, delay
 
 	// still parked but tracking towards startup
 	case diff > DMINUS_STARTUP_MINS && diff <= DMINUS_PARKED_MINS:
 		estimatedDuration := ((diff - DMINUS_STARTUP_MINS) * 60) + (rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS)
-		return flightphase.Parked, estimatedDuration
+		return flightphase.Parked, estimatedDuration, delay
 
 	// startup
 	case diff > DMINUS_TAXIOUT_MINS && diff <= DMINUS_STARTUP_MINS:
 		estimatedDuration := ((diff - DMINUS_TAXIOUT_MINS) * 60) + (rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS)
-		return flightphase.Startup, estimatedDuration
+		return flightphase.Startup, estimatedDuration, delay
 
-	// taxi out 
- 	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAKEOFF_MINS:
+		// taxi out
+	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAKEOFF_MINS:
 		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAXI_JITTER_SECONDS*2)+1) - TAXI_JITTER_SECONDS)
-		return flightphase.TaxiOut, estimatedDuration
+		return flightphase.TaxiOut, estimatedDuration, delay
 
 	// takeoff - we do not permit initial spawn in takeoff phase due to runway lock charge so will be initialised in taxi out phase
 	case diff >= DMINUS_CLIMBOUT_MINS && diff <= DMINUS_TAKEOFF_MINS:
 		estimatedDuration := ((diff - DMINUS_TAKEOFF_MINS) * 60) + (rand.IntN((TAKEOFF_JITTER_SECONDS*2)+1) - TAKEOFF_JITTER_SECONDS)
-		return flightphase.TaxiOut, estimatedDuration
+		return flightphase.TaxiOut, estimatedDuration, delay
 
 	// climbout
 	case diff >= DMINUS_DEPARTURE_MINS && diff <= DMINUS_CLIMBOUT_MINS:
 		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
-		return flightphase.Climbout, estimatedDuration
+		return flightphase.Climbout, estimatedDuration, delay
 
-    // departure
+		// departure
 	case diff >= DMINUS_CRUISE_MINS && diff <= DMINUS_DEPARTURE_MINS:
 		estimatedDuration := ((diff - DMINUS_CLIMBOUT_MINS) * 60) + (rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS)
-		return flightphase.Departure, estimatedDuration
+		return flightphase.Departure, estimatedDuration, delay
 
 	default:
 		// cruise
 		tta := e.timeDiffToArrival(f)
 		remainingCruise := ((tta - AMINUS_APPROACH_MINS) * 60) + (rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS)
-		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise)))
+		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))), delay
 	}
 }
 
 func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int) {
-	
-    switch {
-    // ARRIVAL:
+
+	switch {
+	// ARRIVAL:
 	case diff > AMINUS_APPROACH_MINS && diff <= AMINUS_ARRIVAL_MINS:
 		estimatedDuration := ((diff - AMINUS_APPROACH_MINS) * 60) + (rand.IntN((ARRIVAL_JITTER_SECONDS*2)+1) - ARRIVAL_JITTER_SECONDS)
 		return flightphase.Approach, estimatedDuration
@@ -1018,33 +1032,33 @@ func (e *D9TrafficEngine) setInitialArrivalPosition(ac *atc.Aircraft, tta int) {
 }
 
 func (e *D9TrafficEngine) executeGoAround(ac *atc.Aircraft, ap *atc.Airport, rwy *atc.Runway) {
-    
-    e.releaseRunwayLock(ap, rwy, ac)
 
-    // Randomized hold or back into approach flow
-    if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
-        // send to hold
-        dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-        e.transitionToPhase(ac, flightphase.Holding, dur, 0)
-    } else {
-        // send back around to approach
-        e.tryExitHold(ac, ap)
-    }
+	e.releaseRunwayLock(ap, rwy, ac)
+
+	// Randomized hold or back into approach flow
+	if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
+		// send to hold
+		dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
+		e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+	} else {
+		// send back around to approach
+		e.tryExitHold(ac, ap)
+	}
 }
 
 func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
-    qKey := normalizeRunwayKey(ap.ICAO, e.AirportConfig[ap.ICAO].Arrival)
-    if len(e.RunwayQueues[qKey]) < TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
-        // exit hold
-        dur := ((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + 60
-        e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
-    } else {
-        // continue in hold
-        dur := HOLDING_MIN_DURATION_MINS * 60 * time.Second
-        ac.Flight.Phase.EstimatedNextTransition = e.atcService.GetCurrentZuluTime().Add(dur)
-        util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high - estimated hold exit %v", 
-            qKey, ap.ICAO, ac.Flight.Phase.EstimatedNextTransition)
-    }
+	qKey := normalizeRunwayKey(ap.ICAO, e.AirportConfig[ap.ICAO].Arrival)
+	if len(e.RunwayQueues[qKey]) < TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+		// exit hold
+		dur := ((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + 60
+		e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
+	} else {
+		// continue in hold
+		dur := HOLDING_MIN_DURATION_MINS * 60 * time.Second
+		ac.Flight.Phase.EstimatedNextTransition = e.atcService.GetCurrentZuluTime().Add(dur)
+		util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high - estimated hold exit %v",
+			qKey, ap.ICAO, ac.Flight.Phase.EstimatedNextTransition)
+	}
 }
 
 func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass string, airlineICAO string) *atc.ParkingSpot {
@@ -1101,7 +1115,7 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 
 	// 1. Get the primary runway using the smart UTILITY score
 	var primaryRwy *atc.Runway
-    var fallbackRwy *atc.Runway
+	var fallbackRwy *atc.Runway
 	highestScore := -1000.0
 
 	for _, rwy := range ap.Runways {
@@ -1110,25 +1124,25 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 			highestScore = score
 			primaryRwy = rwy
 		} else {
-            fallbackRwy = rwy
-        }
+			fallbackRwy = rwy
+		}
 	}
 
 	if primaryRwy == nil {
-        if fallbackRwy != nil {
-            util.LogWarnWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s" +
-                " fallback to %s for arrivals and departures",
-                ap.ICAO, fallbackRwy.Name)
-            e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
-                Arrival:       fallbackRwy,
-                Departure:     fallbackRwy,
-                LastWindSpeed: weather.Wind.Speed,
-                LastWindDir:   weather.Wind.Direction,
-            }
-        } else {
-            util.LogErrWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s and no fallback available" +
-                " - skipping runway config update which is likely to cause fatal errors in application", ap.ICAO)
-        }
+		if fallbackRwy != nil {
+			util.LogWarnWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s"+
+				" fallback to %s for arrivals and departures",
+				ap.ICAO, fallbackRwy.Name)
+			e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
+				Arrival:       fallbackRwy,
+				Departure:     fallbackRwy,
+				LastWindSpeed: weather.Wind.Speed,
+				LastWindDir:   weather.Wind.Direction,
+			}
+		} else {
+			util.LogErrWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s and no fallback available"+
+				" - skipping runway config update which is likely to cause fatal errors in application", ap.ICAO)
+		}
 		return
 	}
 
@@ -1501,7 +1515,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 			OccupiedBy:    ac,
 			OccupiedSince: e.atcService.GetCurrentZuluTime(),
 		}
-        // we got the lock, so no longer queuing for the runway, remove queue entry
+		// we got the lock, so no longer queuing for the runway, remove queue entry
 		e.removeFromQueue(rwyLockKey, ac.Registration)
 		util.LogWithLabel(ac.Registration, "acquired lock on runway %s at %s", rwy.Name, ap.ICAO)
 		return true
@@ -1515,11 +1529,11 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 // releaseRunwayLock releases the lock on the runway if it is currently held by the given aircraft.
 func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *atc.Aircraft) {
 	rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
-    lock, lockExists := e.RunwayLocks[rwyLockKey]
-    if lockExists && lock.OccupiedBy.Registration == ac.Registration {
-	    delete(e.RunwayLocks, rwyLockKey)
-	    util.LogWithLabel(ac.Registration, "lock on runway %s at %s is released", rwy.Name, ap.ICAO)
-    }
+	lock, lockExists := e.RunwayLocks[rwyLockKey]
+	if lockExists && lock.OccupiedBy.Registration == ac.Registration {
+		delete(e.RunwayLocks, rwyLockKey)
+		util.LogWithLabel(ac.Registration, "lock on runway %s at %s is released", rwy.Name, ap.ICAO)
+	}
 }
 
 func (e *D9TrafficEngine) addToQueue(lockKey string, reg string) {

@@ -45,6 +45,7 @@ type Flight struct {
 	PlanAssigned        bool
 	Airline             *AirlineInfo
 	Schedule            *flightplan.ScheduledFlight
+	DepartureDelay      int
 }
 
 type Position struct {
