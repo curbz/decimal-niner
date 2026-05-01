@@ -661,12 +661,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Approach:
 			e.updateInboundPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
-					util.LogWithLabel(ac.Registration, "on final but active arrival runway %s is occupied at %s - initiating go-around",
-						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-					e.executeGoAround(ac, airport, e.AirportConfig[airport.ICAO].Arrival)
-					continue
-				}
 				dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Final, dur, FINAL_JITTER_SECONDS)
 			}
@@ -675,14 +669,29 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			e.updateInboundPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
-					util.LogWithLabel(ac.Registration, "over runway threshold but active arrival runway %s is occupied at %s - initiating go-around",
+					util.LogWithLabel(ac.Registration, "active arrival runway %s is occupied at %s - initiating go-around",
 						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-					e.executeGoAround(ac, airport, e.AirportConfig[airport.ICAO].Arrival)
+						e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
 					continue
 				}
 				dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
 				e.transitionToPhase(ac, flightphase.Braking, dur, BRAKING_JITTER_SECONDS)
 				ac.Flight.Position.Altitude = airport.Elevation
+			}
+		
+		case flightphase.GoAround:
+			e.updateInboundPosition(ac)
+			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
+				// Randomized hold or back into approach flow
+				if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
+					// send to hold
+					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
+					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+				} else {
+					// send back around to approach
+					e.tryExitHold(ac, airport)
+				}
 			}
 
 		case flightphase.Braking:
@@ -917,7 +926,7 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 		flow, found := e.AirportConfig[f.IcaoOrigin]
 		if found {
 			qKey := normalizeRunwayKey(f.IcaoOrigin, flow.Departure)
-			if len(e.RunwayQueues[qKey]) < TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+			if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
 				delay = len(e.RunwayQueues[qKey]) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS
 				util.LogWithLabel(f.AircraftRegistration, "initial departure delay of %d seconds applied based on current traffic queue of %d for runway %s at %s",
 					delay, len(e.RunwayQueues[qKey]), e.AirportConfig[f.IcaoOrigin].Departure.Name, f.IcaoOrigin)
@@ -1037,21 +1046,6 @@ func (e *D9TrafficEngine) setInitialArrivalPosition(ac *atc.Aircraft, tta int) {
 	ac.Flight.Position.Long = lon
 	ac.Flight.Position.Heading = rwy.Heading
 	ac.Flight.Position.Altitude = airport.Elevation + (distance * 300)
-}
-
-func (e *D9TrafficEngine) executeGoAround(ac *atc.Aircraft, ap *atc.Airport, rwy *atc.Runway) {
-
-	e.releaseRunwayLock(ap, rwy, ac)
-
-	// Randomized hold or back into approach flow
-	if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
-		// send to hold
-		dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-		e.transitionToPhase(ac, flightphase.Holding, dur, 0)
-	} else {
-		// send back around to approach
-		e.tryExitHold(ac, ap)
-	}
 }
 
 func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
