@@ -661,6 +661,11 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Approach:
 			e.updateInboundPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
+					util.LogWithLabel(ac.Registration, "on approach: active arrival runway %s is occupied at %s - remianing in approach phase",
+						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+					continue
+				}
 				dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Final, dur, FINAL_JITTER_SECONDS)
 			}
@@ -669,7 +674,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			e.updateInboundPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
-					util.LogWithLabel(ac.Registration, "active arrival runway %s is occupied at %s - initiating go-around",
+					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
 						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
 						e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
 					continue
