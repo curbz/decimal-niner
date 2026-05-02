@@ -90,7 +90,7 @@ const (
 	ARRIVAL_JITTER_SECONDS   = 200
 	APPROACH_JITTER_SECONDS  = 120
 	FINAL_JITTER_SECONDS     = 30
-	BRAKING_JITTER_SECONDS   = 20
+	BRAKING_JITTER_SECONDS   = 5
 	SHUTDOWN_JITTER_SECONDS  = 120
 
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300
@@ -1539,7 +1539,7 @@ func (e *D9TrafficEngine) releaseRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac
 	lock, lockExists := e.RunwayLocks[rwyLockKey]
 	if lockExists && lock.OccupiedBy.Registration == ac.Registration {
 		delete(e.RunwayLocks, rwyLockKey)
-		util.LogWithLabel(ac.Registration, "lock on runway %s at %s is released", rwy.Name, ap.ICAO)
+		util.LogWithLabel(ac.Registration, "released lock on runway %s at %s", rwy.Name, ap.ICAO)
 	}
 }
 

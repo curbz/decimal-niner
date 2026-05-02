@@ -50,6 +50,8 @@ type Runway struct {
 	HighestPrecisionApproach string // highest precision approach type
 	SIDs                     []*Procedure
 	STARs                    []*Procedure
+	DepartureTaxiways 		 map[string]struct{}
+    ArrivalTaxiways   		 map[string]struct{}
 }
 
 type Procedure struct {
@@ -143,12 +145,21 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 			airports[icao] = ap
 		}
 
-		ap.Runways = make(map[string]*Runway)
+		if ap.Runways == nil {
+			ap.Runways = make(map[string]*Runway)
+		}
+		
 		ap.Holds = []*Hold{}
 
 		// Add runways
-		for rwy, data := range rwyMap {
-			ap.Runways[rwy] = &data
+		for rwyName, rwy := range rwyMap {
+			aptRwy, exists := ap.Runways[rwyName]
+			if !exists {
+				aptRwy = getOrCreateRunway(ap, rwyName)
+			}
+			rwy.DepartureTaxiways = aptRwy.DepartureTaxiways
+			rwy.ArrivalTaxiways = aptRwy.ArrivalTaxiways
+			ap.Runways[rwyName] = &rwy
 		}
 
 		// Add airport holds
@@ -204,6 +215,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	var batchStartIdx int
 	var airportPoints []aptPoint
 	var curParking *ParkingSpot // Temporary pointer to the spot being built
+	curTaxiNames := []string{}
+	canClearTaxiNames := false
 
 	roleMap := map[string]int{
 		"1050": 7, // Information (Weather)
@@ -248,7 +261,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					curAirport = &Airport{
 						ICAO:        curICAO,
 						Name:        curName,
-						Controllers: []*Controller{}}
+						Controllers: []*Controller{},
+						Runways:	 make(map[string]*Runway),
+					}
 					airports[curICAO] = curAirport
 				} else {
 					curAirport = nil
@@ -278,7 +293,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}
 
 		// 1301: PARKING METADATA (Follows a 1300)
-		//1301 C airline baw afr klm dlh vir sas aza ibe sva ber ryr vlg ezy
+		// 1301 C airline baw afr klm dlh vir sas aza ibe sva ber ryr vlg ezy
 		if code == "1301" && curParking != nil && curAirport != nil {
 			airlineCodes := ""
 			if len(p) >= 3 {
@@ -390,6 +405,47 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 			}
 		}
+
+		// 5. TAXIWAY EXTRACTION
+		if curAirport != nil {
+			if code == "1202" {
+				if canClearTaxiNames {
+					curTaxiNames = []string{}
+					canClearTaxiNames = false
+				}
+				fields := strings.Fields(line)
+				if len(fields) >= 6 {
+					name := fields[5]
+					if isTaxiwayName(name) {
+						curTaxiNames = append(curTaxiNames, cleanTaxiName(name))
+					}
+				}
+			}
+			if code == "1204" {
+				canClearTaxiNames = false
+				fields := strings.Fields(line)
+
+				if len(curTaxiNames) == 0 || len(fields) < 3 { continue }
+		
+				usage := fields[1]
+				rwyList := strings.Split(fields[2], ",")
+
+				for _, rwyID := range rwyList {
+					// This creates the runway if it was previously unknown
+					rwy := getOrCreateRunway(curAirport, rwyID)					
+					for _, taxiName := range curTaxiNames {
+						switch usage {
+						case "departure":
+							rwy.DepartureTaxiways[taxiName] = struct{}{}
+							canClearTaxiNames = true
+						case "arrival":
+							rwy.ArrivalTaxiways[taxiName] = struct{}{}
+							canClearTaxiNames = true
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Finalize final block
@@ -397,7 +453,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev)
 	}
 
-	// 5. FINAL MBB INITIALIZATION
+	// FINAL MBB INITIALIZATION
 	for i := range controllers {
 		c := controllers[i]
 		if c.Lat == 0 && c.Lon == 0 {
@@ -1066,4 +1122,40 @@ func finalizeHubWeights(ap *Airport) {
 			ap.HubWeights[code] = float64(count) / float64(totalObservations)
 		}
 	}
+}
+
+func isTaxiwayName(name string) bool {
+    low := strings.ToLower(name)
+    // Ignore generic links or empty names
+    if name == "" || strings.HasPrefix(low, "link") || strings.Contains(low, "runway") || strings.Contains(low, "/") {
+        return false
+    }
+    // Ignore if the name is just a number (internal node ID)
+    if _, err := strconv.Atoi(name); err == nil {
+        return false
+    }
+    return true
+}
+
+// cleanTaxiName strips prefixes like "taxiway_F" to just "F"
+func cleanTaxiName(raw string) string {
+    if strings.HasPrefix(raw, "taxiway_") {
+        return raw[8:]
+    }
+    return raw
+}
+
+func getOrCreateRunway(ap *Airport, rwyID string) *Runway {
+    if rwy, exists := ap.Runways[rwyID]; exists {
+        return rwy
+    }
+
+    // Create a new runway shell to hold taxiway data
+    newRwy := &Runway{
+        Name:        		rwyID,
+        DepartureTaxiways: 	make(map[string]struct{}),
+        ArrivalTaxiways:   	make(map[string]struct{}),
+    }
+    ap.Runways[rwyID] = newRwy
+    return newRwy
 }
