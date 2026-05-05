@@ -1645,3 +1645,20 @@ func getReciprocalName(name string) string {
 
 	return fmt.Sprintf("%02d%s", recipNum, recipLetter)
 }
+
+// TODO: call at runtime
+func getBestPath(rwy *atc.Runway, spot *atc.ParkingSpot) string {
+    var bestTaxiName string
+    minDistToGate := math.MaxFloat64
+
+    // We iterate over the map of "Tied" or "Close" taxiway entries
+    for name, coord := range rwy.DepartureAccess {
+        // Which of these qualified entries is closest to our PARKED position?
+        dist := geometry.DistNM(spot.Lat, spot.Lon, coord.Lat, coord.Lon)
+        if dist < minDistToGate {
+            minDistToGate = dist
+            bestTaxiName = name
+        }
+    }
+    return bestTaxiName // Returns Alpha for North gates, Bravo for South gates
+}

@@ -77,6 +77,11 @@ type config struct {
 	} `yaml:"atc"`
 }
 
+type Coordinate struct {
+	Lat float64
+	Lon float64
+}	
+
 func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requiredAirports map[string]bool) (*Service, error) {
 
 	logger.Log.Info("Starting ATC service - loading all configurations")
