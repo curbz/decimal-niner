@@ -1074,7 +1074,7 @@ func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass st
 	// Pass 1: Fallback to any spot that fits the Size
 	for pass := 0; pass < 2; pass++ {
 		for i := range airport.Parking {
-			spot := &airport.Parking[i]
+			spot := airport.Parking[i]
 
 			// 1. Physical constraint: Must be at least as big as the aircraft
 			if spot.WidthClass < reqClass {

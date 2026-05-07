@@ -33,7 +33,7 @@ type Airport struct {
 	RunwayUsageData    UsageMap	// temporary field used whilst loading data
 	Holds       []*Hold
 	Controllers []*Controller
-	Parking     []ParkingSpot
+	Parking     []*ParkingSpot
 	HubWeights  map[string]float64 // Airline ICAO -> Strength (0.0 to 1.0)
 	ClassCounts map[string]int     // "E": 20, "C": 100 (Total gates by size)
 }
@@ -41,6 +41,7 @@ type Airport struct {
 type Runway struct {
 	Name                     string  // e.g., "09L"
 	Lat, Lon                 float64 // The coordinates of the threshold
+	EndLat, EndLon           float64 // The coordinates of the opposite threshold (used for runway access logic)
 	Heading                  float64 // The magnetic or true heading of the runway
 	Length                   float64 // Length in meters
 	Width                    float64 // Width in meters
@@ -87,7 +88,7 @@ type ParkingSpot struct {
 	WidthClass   string // A, B, C, D, E, F (ICAO standard)
 	SizeType     string // airline / general_aviation / military
 	IsOccupied   bool
-	AccessTaxiway string
+	EntryNode 	 int    // The closest node in the taxi network
 }
 
 type pendingProc struct {
@@ -338,7 +339,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 			}
 			curParking.AirlineCodes = airlineCodes
-			curAirport.Parking = append(curAirport.Parking, *curParking)
+			curAirport.Parking = append(curAirport.Parking, curParking)
 			curParking = nil // Reset for next spot
 			continue
 		}
@@ -355,44 +356,56 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			case "region_code":
 				region = p[2]
 			}
-			if curAirport != nil {
-				curAirport.TransAlt, curAirport.Region = transAlt, region
-			}
+			curAirport.TransAlt, curAirport.Region = transAlt, region
 			continue
 		}
 
-		if curAirport != nil && code == "100" || code == "101" {
+		// Runway records (100 = Asphalt/Concrete, 101 = Water)
+		if curAirport != nil && code == "100"  {
+			// fields is often more reliable than manual slicing if columns shift
+			fields := strings.Fields(line)
+			
+			if len(fields) >= 20 {
+				// Parse Dimensions
+				width, _ := strconv.ParseFloat(fields[1], 64)
+				// Note: fields[3] is length in meters in the spec
+				length, _ := strconv.ParseFloat(fields[3], 64)
 
-			if len(p) >= 20 {
-
-				lat1, _ := strconv.ParseFloat(p[9], 64)
-				lon1, _ := strconv.ParseFloat(p[10], 64)
-				lat2, _ := strconv.ParseFloat(p[18], 64)
-				lon2, _ := strconv.ParseFloat(p[19], 64)
-						
-				// Handle the first end of the runway (e.g., 09L)
-				fields := strings.Fields(line)
-				id1 := fields[8]
+				// Threshold 1 Coordinates
+				lat1, _ := strconv.ParseFloat(fields[9], 64)
+				lon1, _ := strconv.ParseFloat(fields[10], 64)
 				
+				// Threshold 2 Coordinates
+				lat2, _ := strconv.ParseFloat(fields[18], 64)
+				lon2, _ := strconv.ParseFloat(fields[19], 64)
+
+				// --- Handle Primary End (e.g., 09L) ---
+				id1 := fields[8]
 				rwy1 := getOrCreateRunway(curAirport, id1)
 				rwy1.Lat = lat1
 				rwy1.Lon = lon1
+				rwy1.EndLat = lat2 // The "Finish Line" for 09L
+				rwy1.EndLon = lon2
+				rwy1.Width = width
+				rwy1.Length = length
 
-				// Handle the second end of the runway (e.g., 27R)
-				id2 := fields[17]	
-				// Guard against missing/invalid reciprocal	
-				if id2 != "" && id2 != "xxx" && id2 != "nil" {		
+				// --- Handle Reciprocal End (e.g., 27R) ---
+				id2 := fields[17]
+				if id2 != "" && id2 != "xxx" && id2 != "nil" {
 					rwy2 := getOrCreateRunway(curAirport, id2)
 					rwy2.Lat = lat2
 					rwy2.Lon = lon2
+					rwy2.EndLat = lat1 // The "Finish Line" for 27R is 09L's start
+					rwy2.EndLon = lon1
+					rwy2.Width = width
+					rwy2.Length = length
 				}
 
-				// AIRPORT POSITION FALLBACK: Runways (100/101)	
+				// AIRPORT POSITION FALLBACK
 				if lat1 != 0 && lat2 != 0 {
 					airportPoints = append(airportPoints, aptPoint{lat1, lon1}, aptPoint{lat2, lon2})
 				}
 			}
-
 			continue
 		}
 
@@ -489,7 +502,6 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			}
 
 			if code == "1204" {
-				//canClearTaxiNames = false
 				fields := strings.Fields(line)
 
 				if len(curTaxiNames) == 0 || len(fields) < 3 { continue }
@@ -590,6 +602,7 @@ func finaliseAirport(a *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []
 	finalizeHubWeights(a)
 	// Finalise the runway usage data for the airport
 	finaliseRuwayAccess(a, nodeBuffer, edgeBuffer)
+	linkParkingToTaxiways(a, nodeBuffer)
 
 	// Retroactive update for any controllers created with 0,0
 	for i := len(allCtrls) - 1; i >= 0; i-- {
@@ -978,44 +991,65 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
         rwy.DepartureAccess = make(map[string]Coordinate)
         rwy.ArrivalAccess = make(map[string]Coordinate)
 
+        // 1. Calculate total runway length for the "End-Zone" math
+        // Assuming rwy.Lat/Lon is Threshold A and rwy.EndLat/Lon is Threshold B
+        totalRwyLen := geometry.DistNM(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
+        arrivalZoneStart := totalRwyLen * 0.60
+        
+        const proximityThreshold = 0.15 
+
         for _, edge := range edgeBuffer {
             if edge.TaxiName == "" { continue }
 
             coordA := nodeBuffer[edge.NodeA]
             coordB := nodeBuffer[edge.NodeB]
 
-            // Distance from threshold to both ends of this segment
-            distA := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-            distB := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-
-            // The "Qualifying Zone" (approx 275 meters)
-            const proximityThreshold = 0.15 
+            // Distance from START (Threshold A)
+            distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
+            distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
+            
+            // Distance from END (Threshold B)
+            distAEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
+            distBEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
 
             usage := getUsage(ap, edge.TaxiName, rwy.Name)
 
-            // DEPARTURE HANDLING
+            // DEPARTURE HANDLING: Must be near Threshold A (the takeoff start)
             if usage == "departure" || usage == "both" {
-                if distA < proximityThreshold { 
-                    updateIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distA, rwy) 
+                if distAStart < proximityThreshold { 
+                    updateIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distAStart, rwy) 
                 }
-                if distB < proximityThreshold { 
-                    updateIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distB, rwy) 
+                if distBStart < proximityThreshold { 
+                    updateIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distBStart, rwy) 
                 }
             }
 
-            // ARRIVAL HANDLING
-            if usage == "arrival" || usage == "both" {
-                if distA < proximityThreshold { 
-                    updateIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordA, distA, rwy) 
-                }
-                if distB < proximityThreshold { 
-                    updateIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordB, distB, rwy) 
-                }
-            }
+            // ARRIVAL HANDLING: Must be in the final 40% of length AND near the pavement
+			if usage == "arrival" || usage == "both" {
+				
+				// Check Node A
+				if distAStart > arrivalZoneStart {
+					// Instead of distAEnd < 0.15, we check if it's near the centerline
+					// crossTrack is the perpendicular distance from the runway line
+					crossTrackA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
+					
+					if crossTrackA < 0.05 { // approx 90 meters from centerline
+						updateIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordA, distAEnd, rwy)
+					}
+				}
+
+				// Check Node B
+				if distBStart > arrivalZoneStart {
+					crossTrackB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
+					
+					if crossTrackB < 0.05 { 
+						updateIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordB, distBEnd, rwy)
+					}
+				}
+			}
         }
     }
-	// clear data - no longer required
-	ap.RunwayUsageData = nil
+    ap.RunwayUsageData = nil
 }
 
 func getUsage(ap *Airport, taxiName string, rwyName string) string {
@@ -1027,6 +1061,24 @@ func getUsage(ap *Airport, taxiName string, rwyName string) string {
     }
     // Default fallback if no 1204 record exists for this taxiway
     return "both" 
+}
+
+func linkParkingToTaxiways(ap *Airport, nodeBuffer map[int]Coordinate) {
+    for _, park := range ap.Parking {
+        var closestNode int
+        minDist := 999.9
+
+        for id, coord := range nodeBuffer {
+            dist := geometry.DistNM(park.Lat, park.Lon, coord.Lat, coord.Lon)
+            if dist < minDist {
+                minDist = dist
+                closestNode = id
+            }
+        }
+        // This node is now the starting point for the pathfinder (Departure)
+        // or the destination (Arrival).
+        park.EntryNode = closestNode
+    }
 }
 
 func mergeRunway(existing, incoming Runway, appType string) Runway {

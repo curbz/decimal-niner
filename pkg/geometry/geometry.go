@@ -192,10 +192,51 @@ func AlongTrackDistance(lat, lon, latStart, lonStart, heading float64) float64 {
     return atd * EarthRadiusMeter
 }
 
+// Bearing takes latitude and longitude pairs and returns the initial bearing in degrees ($0^\circ$ to $360^\circ$).
+func Bearing(lat1, lon1, lat2, lon2 float64) float64 {
+    // Convert degrees to radians
+    phi1 := lat1 * math.Pi / 180
+    phi2 := lat2 * math.Pi / 180
+    lambda1 := lon1 * math.Pi / 180
+    lambda2 := lon2 * math.Pi / 180
+
+    y := math.Sin(lambda2-lambda1) * math.Cos(phi2)
+    x := math.Cos(phi1)*math.Sin(phi2) -
+         math.Sin(phi1)*math.Cos(phi2)*math.Cos(lambda2-lambda1)
+
+    theta := math.Atan2(y, x)
+
+    // Convert back to degrees and normalize to 0-360
+    bearing := math.Mod(theta*180/math.Pi+360, 360)
+    
+    return bearing
+}
+
 // Helper to find the smallest difference between two headings (0-180)
 func BearingDiff(b1, b2 float64) float64 {
     diff := math.Mod(b2 - b1 + 180, 360) - 180
     if diff < -180 { return diff + 360 }
     return diff
 }
+
+func CrossTrackDistance(lat1, lon1, lat2, lon2, lat3, lon3 float64) float64 {
+    const earthRadiusNM = 3440.065 // Nautical Miles
+    
+    dist13 := DistNM(lat1, lon1, lat3, lon3)
+    
+    // Convert bearings to radians for the math
+    brng12 := Bearing(lat1, lon1, lat2, lon2) * math.Pi / 180
+    brng13 := Bearing(lat1, lon1, lat3, lon3) * math.Pi / 180
+    
+    // The angular distance
+    d13Ang := dist13 / earthRadiusNM
+    
+    // Cross-track distance in radians
+    xtdAng := math.Asin(math.Sin(d13Ang) * math.Sin(brng13-brng12))
+    
+    // Return absolute distance in Nautical Miles
+    return math.Abs(xtdAng * earthRadiusNM)
+}
+
+
 
