@@ -1070,7 +1070,7 @@ func getUsage(ap *Airport, taxiName string, rwyName string) string {
 func finaliseParking(ap *Airport, edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) {
     for _, park := range ap.Parking {
         // We pass the Coordinate, not a NodeID
-        park.TaxiwayName = findTaxiwayNearPoint(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
+        park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
     }
 }
 
@@ -1400,14 +1400,15 @@ func isIgnorable(name string) bool {
            strings.Contains(uName, "UNNAMED")
 }
 
-func findTaxiwayNearPoint(lat, lon float64, edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) string {
+func findArterialNearParking(lat, lon float64, edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) string {
     var bestName string
-    maxWeight := -1
-    minDist := 0.06 // ~110m search radius
+    maxScore := -1.0
+    
+    const searchRadius = 0.08
 
     for _, edge := range edgeBuffer {
         name := edge.TaxiName
-        if name == "" { continue }
+        if name == "" || isIgnorable(name) { continue }
 
         dist := geometry.CrossTrackDistance(
             nodeBuffer[edge.NodeA].Lat, nodeBuffer[edge.NodeA].Lon,
@@ -1415,13 +1416,16 @@ func findTaxiwayNearPoint(lat, lon float64, edgeBuffer []RawEdge, nodeBuffer map
             lat, lon,
         )
 
-        if dist < minDist {
-            weight := importance[name]
+        if dist < searchRadius {
+            weight := float64(importance[name])
             
-            // If this taxiway is significantly more "important" (common) than 
-            // our current best, or if it's much closer, update.
-            if weight > maxWeight {
-                maxWeight = weight
+            // Exponential Distance Penalty: 
+            // We divide the weight by the distance squared (plus a small buffer to avoid div by zero).
+            // This means a taxiway twice as far away needs 4x the importance to win.
+            distScore := weight / ((dist * dist) + 0.001)
+
+            if distScore > maxScore {
+                maxScore = distScore
                 bestName = name
             }
         }
