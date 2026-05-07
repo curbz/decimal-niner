@@ -1652,9 +1652,9 @@ func getBestPath(rwy *atc.Runway, spot *atc.ParkingSpot) string {
     minDistToGate := math.MaxFloat64
 
     // We iterate over the map of "Tied" or "Close" taxiway entries
-    for name, coord := range rwy.DepartureAccess {
+    for name, access := range rwy.DepartureAccess {
         // Which of these qualified entries is closest to our PARKED position?
-        dist := geometry.DistNM(spot.Lat, spot.Lon, coord.Lat, coord.Lon)
+        dist := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
         if dist < minDistToGate {
             minDistToGate = dist
             bestTaxiName = name
