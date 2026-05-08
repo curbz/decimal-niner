@@ -502,7 +502,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					edgeBuffer = append(edgeBuffer, RawEdge{
 						NodeA:    id1,
 						NodeB:    id2,
-						TaxiName: name,
+						TaxiName: strings.TrimSpace(name),
 					})
 
 					// Add to the usage list so the 1204 block can "bless" it
@@ -1025,13 +1025,13 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
                 if distAStart < proximityThreshold { 
                     // CRITICAL: Pass edge.TaxiName to exclude it from the search!
-                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.25)
+                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.3, true)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distAStart, touching) 
                 }
                 // Check Node B
                 distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
                 if distBStart < proximityThreshold { 
-                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.25)
+                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.3, true)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distBStart, touching) 
                 }
             }
@@ -1043,7 +1043,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 if distAStart > arrivalZoneStart {
                     xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                     if xtdA < 0.05 { 
-                        touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.25)
+                        touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.3, true)
                         distAEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordA, distAEnd, touching)
                     }
@@ -1052,7 +1052,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 if distBStart > arrivalZoneStart {
                     xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                     if xtdB < 0.05 { 
-                        touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.25)
+                        touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.3, true)
                         distBEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordB, distBEnd, touching)
                     }
@@ -1077,7 +1077,7 @@ func finaliseParking(ap *Airport, namedNodes []NamedNode) {
     for _, park := range ap.Parking {
         // We pass the Coordinate, not a NodeID
         //park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
-		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.15)
+		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.15, false)
     }
 }
 
@@ -1477,7 +1477,7 @@ func buildNamedNodes(edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, import
     return nodes
 }
 
-func findArterialFast(targetLat, targetLon float64, currentSegmentName string, namedNodes []NamedNode, searchRadiusNM float64) string {
+func findArterialFast(targetLat, targetLon float64, currentName string, namedNodes []NamedNode, searchRadiusNM float64, strictArterial bool) string {
     var bestName string
     maxScore := -1.0
     
@@ -1487,14 +1487,18 @@ func findArterialFast(targetLat, targetLon float64, currentSegmentName string, n
     for i := range namedNodes {
         nn := &namedNodes[i]
         
-        // --- THE "NOT ME" CHECK ---
-        // If the candidate node has the same name as our current segment, 
-        // we skip it. We are looking for the NEXT level up.
-        if nn.TaxiName == "" || nn.TaxiName == currentSegmentName || isIgnorable(nn.TaxiName) {
+        // 1. Basic Exclusions
+        if nn.TaxiName == "" || nn.TaxiName == currentName {
             continue
         }
 
-        // --- SPEED PRUNING ---
+        // 2. THE RUNWAY FIX: If strict, only accept A, B, K, M, etc.
+        // This prevents "A" from picking "A3" and "LINK56" from picking "A13"
+        if strictArterial && len(nn.TaxiName) > 2 {
+            continue
+        }
+
+        // 3. Distance Check
         dLat := targetLat - nn.Lat
         dLon := targetLon - nn.Lon
         approxDistSq := (dLat * dLat) + (dLon * dLon)
@@ -1504,23 +1508,14 @@ func findArterialFast(targetLat, targetLon float64, currentSegmentName string, n
 
         dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
         if dist < searchRadiusNM {
-			// TIERED SCORING
-			weight := float64(nn.Importance)
-			nameLen := len(nn.TaxiName)
+            weight := float64(nn.Importance)
+            
+            // Give 1-2 char names a boost regardless
+            if len(nn.TaxiName) <= 2 {
+                weight *= 100.0 
+            }
 
-			if nameLen <= 2 {
-				// ARTERIAL TIER: We give these infinite gravity. 
-				// This ensures 'A' beats 'A13' or any other connector regardless of distance.
-				weight *= 10000.0 
-			} else if nameLen == 3 {
-				// CONNECTOR TIER: (e.g., A12, N4E)
-				weight *= 10.0
-			}
-
-			// SCORE: Using a slightly larger distance stabilizer (0.01) helps the Tier
-			// weight dominate the distance factor.
-			score := weight / (dist + 0.01)
-
+            score := weight / (dist + 0.005)
             if score > maxScore {
                 maxScore = score
                 bestName = nn.TaxiName
@@ -1529,4 +1524,3 @@ func findArterialFast(targetLat, targetLon float64, currentSegmentName string, n
     }
     return bestName
 }
-
