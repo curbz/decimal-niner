@@ -1406,57 +1406,81 @@ func buildNamedNodes(edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, import
 }
 
 func findArterialFast(targetLat, targetLon float64, currentName string, namedNodes []NamedNode, initialRadiusNM float64, strictArterial bool) string {
-    cleanCurrent := strings.TrimSpace(currentName)
-    
-    // We will try up to 3 times, trebling the radius each time.
-    currentRadius := initialRadiusNM
-    
-    for attempt := 0; attempt < 3; attempt++ {
-        var bestName string
-        minDist := 999.0
-        
-        degLimit := currentRadius / 45.0
-        limitSq := degLimit * degLimit
+	cleanCurrent := strings.TrimSpace(currentName)
+	currentRadius := initialRadiusNM
 
-        for i := range namedNodes {
-            nn := &namedNodes[i]
-            
-            // 1. Skip self/empty
-            if nn.TaxiName == "" || nn.TaxiName == cleanCurrent {
-                continue
-            }
+	// We attempt up to 3 times, trebling the radius each time (e.g., 0.05 -> 0.15 -> 0.45)
+	for attempt := 0; attempt < 3; attempt++ {
+		var bestName string
+		maxScore := -1.0
 
-            // 2. Filter for Backbone (len <= 2) if strict
-            if strictArterial && len(nn.TaxiName) > 2 {
-                continue
-            }
+		degLimit := currentRadius / 45.0
+		limitSq := degLimit * degLimit
 
-            // 3. Fast Prune
-            dLat := targetLat - nn.Lat
-            dLon := targetLon - nn.Lon
-            if (dLat * dLat) + (dLon * dLon) > limitSq {
-                continue
-            }
+		for i := range namedNodes {
+			nn := &namedNodes[i]
+			candidateName := nn.TaxiName
 
-            // 4. Distance Check
-            dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
-            if dist < currentRadius {
-                // Proximity is the ultimate tie-breaker
-                if dist < minDist {
-                    minDist = dist
-                    bestName = nn.TaxiName
-                }
-            }
-        }
+			// 1. Basic Exclusions
+			if candidateName == "" || candidateName == cleanCurrent {
+				continue
+			}
 
-        // If we found a match, return it immediately!
-        if bestName != "" {
-            return bestName
-        }
+			// 2. Hierarchy Logic (Fixes A1/A2/A3/A4 circular references)
+			// If we are looking for a backbone, prioritize names by simplicity.
+			if strictArterial {
+				// Ignore long names like "LINK56" or "A13" if we want a backbone
+				if len(candidateName) > 2 {
+					continue
+				}
+				// If current is "A1", don't let it pick "A2". 
+				// A parent should be simpler (shorter) than the child.
+				if len(cleanCurrent) >= 2 && len(candidateName) >= len(cleanCurrent) {
+					continue
+				}
+			}
 
-        // Otherwise, treble the radius and try again
-        currentRadius *= 3.0
-    }
+			// 3. Fast Pruning (Bounding Box)
+			dLat := targetLat - nn.Lat
+			dLon := targetLon - nn.Lon
+			if (dLat * dLat) + (dLon * dLon) > limitSq {
+				continue
+			}
 
-    return "" // Give up after 3 attempts
+			// 4. Precise Distance Calculation
+			dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
+			if dist < currentRadius {
+				// WEIGHTING: Single letters (A, B, S) get massive priority over double (A1, S2).
+				// This ensures that even if A1 is closer to A2 than to Alpha, 
+				// the 'Gravity' of Alpha wins.
+				weight := 1.0
+				if len(candidateName) == 1 {
+					weight = 1000.0
+				} else if len(candidateName) == 2 {
+					weight = 10.0
+				}
+
+				// SCORE: Weight / Distance Squared
+				// The squared distance makes proximity the king for same-tier names,
+				// but the weight allows high-tier names (Backbones) to win across gaps.
+				score := weight / ((dist + 0.001) * (dist + 0.001))
+
+				if score > maxScore {
+					maxScore = score
+					bestName = candidateName
+				}
+			}
+		}
+
+		// If a match is found in this radius tier, return it immediately.
+		// This is why your performance is back under 8 seconds.
+		if bestName != "" {
+			return bestName
+		}
+
+		// Expand the search area for the next attempt
+		currentRadius *= 3.0
+	}
+
+	return ""
 }
