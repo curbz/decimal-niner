@@ -104,6 +104,12 @@ type aptPoint struct {
 	Lat, Lon float64
 }
 
+type NamedNode struct {
+    Lat, Lon   float64
+    TaxiName   string
+    Importance int
+}
+
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	var closestICAO string
 	for icao, coords := range s.Airports {
@@ -608,9 +614,11 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls [
 	finaliseHubWeights(ap)
 	// Finalise the runway usage data for the airport
 	im := buildImportanceMap(edgeBuffer)
-	finaliseRuwayAccess(ap, nodeBuffer, edgeBuffer, im)
+	nnm := buildNamedNodes(edgeBuffer, nodeBuffer, im)
+
+	finaliseRuwayAccess(ap, nodeBuffer, edgeBuffer, nnm)
 	// Finalize the parking spots for the airport (link to taxiway nodes, etc.)
-	finaliseParking(ap, edgeBuffer, nodeBuffer, im)
+	finaliseParking(ap, nnm)
 
 	// Retroactive update for any controllers created with 0,0
 	for i := len(allCtrls) - 1; i >= 0; i-- {
@@ -994,66 +1002,64 @@ func finaliseProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
 	}
 }
 
-func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge, importance map[string]int) {
-
+func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge, namedNodes []NamedNode) {
     for _, rwy := range ap.Runways {
-        // Updated to use AccessPoint map
         rwy.DepartureAccess = make(map[string]AccessPoint)
         rwy.ArrivalAccess = make(map[string]AccessPoint)
 
         totalRwyLen := geometry.DistNM(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
         arrivalZoneStart := totalRwyLen * 0.60
-        
         const proximityThreshold = 0.15 
 
         for _, edge := range edgeBuffer {
             if edge.TaxiName == "" { continue }
 
+            // Optimization: Get coordinates once
             coordA := nodeBuffer[edge.NodeA]
             coordB := nodeBuffer[edge.NodeB]
 
-            distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-            distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-            
-            distAEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
-            distBEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
-
-            usage := getUsage(ap, edge.TaxiName, rwy.Name)
-
             // DEPARTURE HANDLING
+            usage := getUsage(ap, edge.TaxiName, rwy.Name)
             if usage == "departure" || usage == "both" {
+                // Check Node A
+                distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
                 if distAStart < proximityThreshold { 
-                    // NEW: Find what this holding point touches
-                    touching := findArterialNearby(edge.NodeA, edge.TaxiName, edgeBuffer, nodeBuffer, importance)
+                    // CRITICAL: Pass edge.TaxiName to exclude it from the search!
+                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.25)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distAStart, touching) 
                 }
+                // Check Node B
+                distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
                 if distBStart < proximityThreshold { 
-                    touching := findArterialNearby(edge.NodeB, edge.TaxiName, edgeBuffer, nodeBuffer, importance)
+                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.25)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distBStart, touching) 
                 }
             }
 
             // ARRIVAL HANDLING
             if usage == "arrival" || usage == "both" {
+                // Only do CrossTrack if we are actually in the arrival zone (Cheap check first)
+                distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
                 if distAStart > arrivalZoneStart {
                     xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                     if xtdA < 0.05 { 
-                        touching := findArterialNearby(edge.NodeA, edge.TaxiName, edgeBuffer, nodeBuffer, importance)
+                        touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.25)
+                        distAEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordA, distAEnd, touching)
                     }
                 }
-
+                distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
                 if distBStart > arrivalZoneStart {
                     xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                     if xtdB < 0.05 { 
-                        touching := findArterialNearby(edge.NodeB, edge.TaxiName, edgeBuffer, nodeBuffer, importance)
+                        touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.25)
+                        distBEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordB, distBEnd, touching)
                     }
                 }
             }
         }
     }
-    ap.RunwayUsageData = nil
 }
 
 func getUsage(ap *Airport, taxiName string, rwyName string) string {
@@ -1067,10 +1073,11 @@ func getUsage(ap *Airport, taxiName string, rwyName string) string {
     return "both" 
 }
 
-func finaliseParking(ap *Airport, edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) {
+func finaliseParking(ap *Airport, namedNodes []NamedNode) {
     for _, park := range ap.Parking {
         // We pass the Coordinate, not a NodeID
-        park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
+        //park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
+		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.15)
     }
 }
 
@@ -1441,5 +1448,85 @@ func buildImportanceMap(edgeBuffer []RawEdge) map[string]int {
         importance[edge.TaxiName]++
     }
     return importance
+}
+
+
+func buildNamedNodes(edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) []NamedNode {
+    nodes := make([]NamedNode, 0)
+    seen := make(map[string]map[int]bool)
+
+    for _, edge := range edgeBuffer {
+        name := edge.TaxiName
+        if name == "" || isIgnorable(name) { continue }
+
+        // Only include "Backbone" taxiways.
+        // If a taxiway only appears once or twice (like A13), it's a connector, not an arterial.
+        if importance[name] < 3 { 
+            continue 
+        }
+
+        if seen[name] == nil { seen[name] = make(map[int]bool) }
+        for _, id := range []int{edge.NodeA, edge.NodeB} {
+            if !seen[name][id] {
+                c := nodeBuffer[id]
+                nodes = append(nodes, NamedNode{c.Lat, c.Lon, name, importance[name]})
+                seen[name][id] = true
+            }
+        }
+    }
+    return nodes
+}
+
+func findArterialFast(targetLat, targetLon float64, currentSegmentName string, namedNodes []NamedNode, searchRadiusNM float64) string {
+    var bestName string
+    maxScore := -1.0
+    
+    degLimit := searchRadiusNM / 45.0 
+    limitSq := degLimit * degLimit
+
+    for i := range namedNodes {
+        nn := &namedNodes[i]
+        
+        // --- THE "NOT ME" CHECK ---
+        // If the candidate node has the same name as our current segment, 
+        // we skip it. We are looking for the NEXT level up.
+        if nn.TaxiName == "" || nn.TaxiName == currentSegmentName || isIgnorable(nn.TaxiName) {
+            continue
+        }
+
+        // --- SPEED PRUNING ---
+        dLat := targetLat - nn.Lat
+        dLon := targetLon - nn.Lon
+        approxDistSq := (dLat * dLat) + (dLon * dLon)
+        if approxDistSq > limitSq {
+            continue
+        }
+
+        dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
+        if dist < searchRadiusNM {
+			// TIERED SCORING
+			weight := float64(nn.Importance)
+			nameLen := len(nn.TaxiName)
+
+			if nameLen <= 2 {
+				// ARTERIAL TIER: We give these infinite gravity. 
+				// This ensures 'A' beats 'A13' or any other connector regardless of distance.
+				weight *= 10000.0 
+			} else if nameLen == 3 {
+				// CONNECTOR TIER: (e.g., A12, N4E)
+				weight *= 10.0
+			}
+
+			// SCORE: Using a slightly larger distance stabilizer (0.01) helps the Tier
+			// weight dominate the distance factor.
+			score := weight / (dist + 0.01)
+
+            if score > maxScore {
+                maxScore = score
+                bestName = nn.TaxiName
+            }
+        }
+    }
+    return bestName
 }
 
