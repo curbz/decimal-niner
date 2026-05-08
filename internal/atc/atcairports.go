@@ -1025,13 +1025,13 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
                 if distAStart < proximityThreshold { 
                     // CRITICAL: Pass edge.TaxiName to exclude it from the search!
-                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.5, true)
+                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.05, true)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distAStart, touching) 
                 }
                 // Check Node B
                 distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
                 if distBStart < proximityThreshold { 
-                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.5, true)
+                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.05, true)
                     updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distBStart, touching) 
                 }
             }
@@ -1043,7 +1043,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 if distAStart > arrivalZoneStart {
                     xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                     if xtdA < 0.05 { 
-                        touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.5, true)
+                        touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.05, true)
                         distAEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordA, distAEnd, touching)
                     }
@@ -1052,7 +1052,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 if distBStart > arrivalZoneStart {
                     xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                     if xtdB < 0.05 { 
-                        touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.5, true)
+                        touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.05, true)
                         distBEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
                         updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, coordB, distBEnd, touching)
                     }
@@ -1077,7 +1077,7 @@ func finaliseParking(ap *Airport, namedNodes []NamedNode) {
     for _, park := range ap.Parking {
         // We pass the Coordinate, not a NodeID
         //park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
-		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.15, false)
+		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.05, false)
     }
 }
 
@@ -1405,27 +1405,58 @@ func buildNamedNodes(edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, import
     return nodes
 }
 
-func findArterialFast(targetLat, targetLon float64, currentName string, namedNodes []NamedNode, searchRadiusNM float64, strictArterial bool) string {
-    var bestName string
-    maxScore := -1.0
+func findArterialFast(targetLat, targetLon float64, currentName string, namedNodes []NamedNode, initialRadiusNM float64, strictArterial bool) string {
+    cleanCurrent := strings.TrimSpace(currentName)
     
-    for i := range namedNodes {
-        nn := &namedNodes[i]
-        if nn.TaxiName == currentName || nn.TaxiName == "" { continue }
-        if strictArterial && len(nn.TaxiName) > 2 { continue }
+    // We will try up to 3 times, trebling the radius each time.
+    currentRadius := initialRadiusNM
+    
+    for attempt := 0; attempt < 3; attempt++ {
+        var bestName string
+        minDist := 999.0
+        
+        degLimit := currentRadius / 45.0
+        limitSq := degLimit * degLimit
 
-        dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
-        if dist < searchRadiusNM {
-            // FOR RUNWAYS: Ignore raw node counts. 
-            // All 1-2 char taxiways are equally "Important". 
-            // Only Distance should decide who wins.
-            score := 1.0 / (dist + 0.001)
+        for i := range namedNodes {
+            nn := &namedNodes[i]
+            
+            // 1. Skip self/empty
+            if nn.TaxiName == "" || nn.TaxiName == cleanCurrent {
+                continue
+            }
 
-            if score > maxScore {
-                maxScore = score
-                bestName = nn.TaxiName
+            // 2. Filter for Backbone (len <= 2) if strict
+            if strictArterial && len(nn.TaxiName) > 2 {
+                continue
+            }
+
+            // 3. Fast Prune
+            dLat := targetLat - nn.Lat
+            dLon := targetLon - nn.Lon
+            if (dLat * dLat) + (dLon * dLon) > limitSq {
+                continue
+            }
+
+            // 4. Distance Check
+            dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
+            if dist < currentRadius {
+                // Proximity is the ultimate tie-breaker
+                if dist < minDist {
+                    minDist = dist
+                    bestName = nn.TaxiName
+                }
             }
         }
+
+        // If we found a match, return it immediately!
+        if bestName != "" {
+            return bestName
+        }
+
+        // Otherwise, treble the radius and try again
+        currentRadius *= 3.0
     }
-    return bestName
+
+    return "" // Give up after 3 attempts
 }
