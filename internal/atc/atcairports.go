@@ -1404,7 +1404,7 @@ func findArterialNearParking(lat, lon float64, edgeBuffer []RawEdge, nodeBuffer 
     var bestName string
     maxScore := -1.0
     
-    const searchRadius = 0.08
+    const searchRadius = 0.06
 
     for _, edge := range edgeBuffer {
         name := edge.TaxiName
