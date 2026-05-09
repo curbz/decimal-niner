@@ -1009,27 +1009,35 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
             coordA := nodeBuffer[edge.NodeA]
             coordB := nodeBuffer[edge.NodeB]
 
-            // DEPARTURE HANDLING
-            usage := getUsage(ap, edge.TaxiName, rwy.Name)
-            if usage == "departure" || usage == "both" {
-                // Check Node A
-                distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-                if distAStart < 0.2 { 
-                    // CRITICAL: Pass edge.TaxiName to exclude it from the search!
-                    touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.05, true)
-					// Direction: B -> A (Inbound to runway)
-        			entryBrg := geometry.Bearing(coordB.Lat, coordB.Lon, coordA.Lat, coordA.Lon)
-                    updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordA, distAStart, touching, entryBrg) 
-                }
-                // Check Node B
-                distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-                if distBStart < 0.2 { 
-                    touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.05, true)
-					// Direction: A -> B (Inbound to runway)
-        			entryBrg := geometry.Bearing(coordA.Lat, coordA.Lon, coordB.Lat, coordB.Lon)
-                    updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, coordB, distBStart, touching, entryBrg) 
-                }
-            }
+			// DEPARTURE HANDLING
+			usage := getUsage(ap, edge.TaxiName, rwy.Name)
+			if usage == "departure" || usage == "both" {
+				
+				// Helper for Departure logic to avoid code duplication
+				processDeparture := func(nodeOnRwy, offRwyNode Coordinate, distToStart float64) {
+					// NEW: XTD check ensures the node is actually ON the runway pavement
+					xtd := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
+					
+					if xtd < 0.03 { // 0.03 NM (~50m) is roughly half a runway width
+						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.05, true)
+						entryBrg := geometry.Bearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
+						
+						updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, nodeOnRwy, distToStart, touching, entryBrg)
+					}
+				}
+
+				// Check Node A
+				distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
+				if distAStart < 0.2 { 
+					processDeparture(coordA, coordB, distAStart) 
+				}
+
+				// Check Node B
+				distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
+				if distBStart < 0.2 { 
+					processDeparture(coordB, coordA, distBStart) 
+				}
+			}
 
 			// ARRIVAL HANDLING
             if usage == "arrival" || usage == "both" {
