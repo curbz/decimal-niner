@@ -81,10 +81,11 @@ type ParkingSpot struct {
 // AccessPoint is used to define pathways for runways and parking spots
 type AccessPoint struct {
     Coord        Coordinate
-    TaxiwayName  string // e.g., "Alpha" (The main taxiway this holding point feeds into)
+    TaxiwayName  string 	// e.g., "Alpha" (The main taxiway this holding point feeds into)
 	Dist 		 float64
 	Bearing 	 float64
-	IsHighSpeed  bool
+	IsHighSpeed  bool		// true when designated as a high speed (RTE) exit for an arrival runway
+	IsNearEnd	 bool		// true when access point is close to the end of an arrival runway
 }
 
 type pendingProc struct {
@@ -1077,6 +1078,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 								if acp != nil {
 									// RETs (Rapid Exit Taxiways) 
 									acp.IsHighSpeed = (angleDiff <= 49.0) 
+									acp.IsNearEnd = isLastChance
 								}
 							}
 						}
