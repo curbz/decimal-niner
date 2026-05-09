@@ -53,8 +53,6 @@ type Runway struct {
 	HighestPrecisionApproach string // highest precision approach type
 	SIDs                     []*Procedure
 	STARs                    []*Procedure
-	DepartureTaxiways 		 map[string]struct{}
-    ArrivalTaxiways   		 map[string]struct{}
 	DepartureAccess  		 map[string]*AccessPoint // Key: "A13", Value: AccessPoint{Coord, "Foxtrot"}
     ArrivalAccess    		 map[string]*AccessPoint
 }
@@ -114,9 +112,9 @@ type NamedNode struct {
     Importance int
 }
 
-const minArrivalDistNM = 0.8   // Discards early exits (e.g., A5 on 27R)
-const lastExitBufferNM = 0.15  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
-const highSpeedExitThreshold = 0.47 // High speed (RTE) max angle - anything more and access point is not considered high speed
+const minArrivalDistNM = 0.8   // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
+const lastExitBufferNM = 0.1  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
+const highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	var closestICAO string
@@ -188,12 +186,10 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 
 		// Add runways
 		for rwyName, rwy := range rwyMap {
-			aptRwy, exists := ap.Runways[rwyName]
+			_, exists := ap.Runways[rwyName]
 			if !exists {
-				aptRwy = getOrCreateRunway(ap, rwyName)
+				getOrCreateRunway(ap, rwyName)
 			}
-			rwy.DepartureTaxiways = aptRwy.DepartureTaxiways
-			rwy.ArrivalTaxiways = aptRwy.ArrivalTaxiways
 			ap.Runways[rwyName] = &rwy
 		}
 
@@ -539,7 +535,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 					for _, rwyID := range rwyList {
 						// This creates the runway if it was previously unknown
-						rwy := getOrCreateRunway(curAirport, rwyID)		
+						getOrCreateRunway(curAirport, rwyID)		
 						
 						// Initialize the sub-map for this specific runway
 						if curAirport.RunwayUsageData[rwyID] == nil {
@@ -559,15 +555,6 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 								curAirport.RunwayUsageData[rwyID][taxiName] = "both"
 							}
 
-							switch usage {
-							case "departure":
-								rwy.DepartureTaxiways[taxiName] = struct{}{}
-							case "arrival":
-								rwy.ArrivalTaxiways[taxiName] = struct{}{}
-							case "both":
-								rwy.DepartureTaxiways[taxiName] = struct{}{}
-								rwy.ArrivalTaxiways[taxiName] = struct{}{}
-							}
 						}
 					}
 					canClearTaxiNames = true
@@ -1015,8 +1002,6 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
         rwy.DepartureAccess = make(map[string]*AccessPoint)
         rwy.ArrivalAccess = make(map[string]*AccessPoint)
 
-        const proximityThreshold = 0.05
-
         for _, edge := range edgeBuffer {
             if edge.TaxiName == "" { continue }
 
@@ -1029,7 +1014,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
             if usage == "departure" || usage == "both" {
                 // Check Node A
                 distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-                if distAStart < proximityThreshold { 
+                if distAStart < 0.2 { 
                     // CRITICAL: Pass edge.TaxiName to exclude it from the search!
                     touching := findArterialFast(coordA.Lat, coordA.Lon, edge.TaxiName, namedNodes, 0.05, true)
 					// Direction: B -> A (Inbound to runway)
@@ -1038,7 +1023,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
                 }
                 // Check Node B
                 distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-                if distBStart < proximityThreshold { 
+                if distBStart < 0.2 { 
                     touching := findArterialFast(coordB.Lat, coordB.Lon, edge.TaxiName, namedNodes, 0.05, true)
 					// Direction: A -> B (Inbound to runway)
         			entryBrg := geometry.Bearing(coordA.Lat, coordA.Lon, coordB.Lat, coordB.Lon)
@@ -1382,8 +1367,6 @@ func getOrCreateRunway(ap *Airport, rwyID string) *Runway {
     // Create a new runway shell to hold taxiway data
     newRwy := &Runway{
         Name:        		rwyID,
-        DepartureTaxiways: 	make(map[string]struct{}),
-        ArrivalTaxiways:   	make(map[string]struct{}),
     }
     ap.Runways[rwyID] = newRwy
     return newRwy
