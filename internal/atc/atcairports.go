@@ -275,13 +275,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		// 1. HEADER RECORD (New Airport Start)
 		if code == "1" || code == "16" || code == "17" {
 			if curAirport != nil {
-				if curAirport.ICAO == "EGLL" {
-					logger.Log.Infof("breakpoint")
-				}
 				finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev, nodeBuffer, edgeBuffer)
-				if curAirport.ICAO == "EGLL" {
-					logger.Log.Infof("breakpoint")
-				}
 			}
 
 			if len(p) >= 5 {
