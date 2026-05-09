@@ -115,7 +115,8 @@ type NamedNode struct {
 }
 
 const minArrivalDistNM = 0.8   // Discards early exits (e.g., A5 on 27R)
-const lastExitBufferNM = 0.15  // "Last Chance" zone at the very end of runway
+const lastExitBufferNM = 0.15  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
+const highSpeedExitThreshold = 0.47 // High speed (RTE) max angle - anything more and access point is not considered high speed
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	var closestICAO string
@@ -1014,7 +1015,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
         rwy.DepartureAccess = make(map[string]*AccessPoint)
         rwy.ArrivalAccess = make(map[string]*AccessPoint)
 
-        const proximityThreshold = 0.15 
+        const proximityThreshold = 0.05
 
         for _, edge := range edgeBuffer {
             if edge.TaxiName == "" { continue }
@@ -1077,7 +1078,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 								acp := updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, nodeOnRwy, distFromEnd, touching, exitBrg)
 								if acp != nil {
 									// RETs (Rapid Exit Taxiways) 
-									acp.IsHighSpeed = (angleDiff <= 49.0) 
+									acp.IsHighSpeed = (angleDiff <= highSpeedExitThreshold) 
 									acp.IsNearEnd = isLastChance
 								}
 							}
