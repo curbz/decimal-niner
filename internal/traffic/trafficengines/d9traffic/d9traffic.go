@@ -577,9 +577,11 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiOut:
+			// TODO: calculate position - bear in mind that we cannot move aircraft position beyond assigned access point 
+			// and that transition to the Takeoff phase can be indefinitely held if the runway lock cannot be obtained.
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac) {
-					util.LogWithLabel(ac.Registration, "active departure runway %s is occupied at %s - delaying departure",
+					util.LogWithLabel(ac.Registration, "active departure runway %s is occupied at %s - remaining in TaxiOut phase",
 						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
 					continue
 				}
@@ -600,11 +602,12 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.Takeoff:
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac)
 				dur := (DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Climbout, dur, CLIMBOUT_JITTER_SECONDS)
-				// Jump 2NM out and up
+				// Jump 2NM out and up - TODO: remove this code as it should be handled by the Clombout phase positioning
 				newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, 2.0)
 				ac.Flight.Position.Lat = newLat
 				ac.Flight.Position.Long = newLon
@@ -612,12 +615,14 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.Climbout:
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Departure, DEPARTURE_JITTER_SECONDS, dur)
 			}
 
 		case flightphase.Departure:
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
@@ -625,6 +630,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.Cruise:
+			//TODO: calculate position
 			tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 			if tta <= AMINUS_ARRIVAL_MINS {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
@@ -647,22 +653,23 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
 					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
 				} else {
-					util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high", qKey, airport.ICAO)
+					// start approach
+					dur := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
+					e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
 				}
-				dur := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
-				e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
 			}
 
 		case flightphase.Holding:
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.tryExitHold(ac, airport)
 			}
 
 		case flightphase.Approach:
-			e.updateInboundPosition(ac)
+			e.updateInboundPosition(ac) //TODO may need to move this as we might 'freeze' aircraft indefintely in this phase
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
-					util.LogWithLabel(ac.Registration, "on approach: active arrival runway %s is occupied at %s - remianing in approach phase",
+					util.LogWithLabel(ac.Registration, "on approach: active arrival runway %s is occupied at %s - remaining in approach phase",
 						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
 					continue
 				}
@@ -685,7 +692,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 		
 		case flightphase.GoAround:
-			e.updateInboundPosition(ac)
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
 				// Randomized hold or back into approach flow
@@ -717,6 +724,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiIn:
+			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.positionAtDestParking(ac)
 				dur := (AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
@@ -804,9 +812,6 @@ func (e *D9TrafficEngine) updateInboundPosition(ac *atc.Aircraft) {
 
 	// 1. Calculate how much time is left vs total duration
 	timeRemaining := ac.Flight.Phase.EstimatedNextTransition.Sub(currSimZTime).Seconds()
-
-	// We need the total duration of this specific phase.
-	// You may need to store 'TotalDuration' in your Phase struct during transition.
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 	if totalDuration <= 0 {
 		return
@@ -927,7 +932,7 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 	switch {
 	// long term parked
 	case diff > DMINUS_PARKED_MINS:
-		//  if the departure runway is busy we add a delay based on q length at this time - update ac.Flight.Delayed with this value
+		//  if the departure runway is busy we add a delay based on queue length at this time - update ac.Flight.Delayed with this value
 		flow, found := e.AirportConfig[f.IcaoOrigin]
 		if found {
 			qKey := normalizeRunwayKey(f.IcaoOrigin, flow.Departure)
