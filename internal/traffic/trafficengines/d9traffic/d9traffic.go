@@ -569,6 +569,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
 				e.assignProcedures(ac, airport, true)
+				ac.Flight.DepartureAccess = e.assignRunwayAccessPoint(ac, airport, 0)
 				dur := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
 				if ac.Flight.AssignedParkingSpot != nil {
 					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
@@ -577,7 +578,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiOut:
-			// TODO: calculate position - bear in mind that we cannot move aircraft position beyond assigned access point 
+			// TODO: calculate position - bear in mind that we cannot move aircraft position beyond assigned DepartureAccess
 			// and that transition to the Takeoff phase can be indefinitely held if the runway lock cannot be obtained.
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac) {
@@ -607,7 +608,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac)
 				dur := (DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Climbout, dur, CLIMBOUT_JITTER_SECONDS)
-				// Jump 2NM out and up - TODO: remove this code as it should be handled by the Clombout phase positioning
+				// Jump 2NM out and up - TODO: remove this code as it should be handled by the Climbout phase positioning
 				newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, 2.0)
 				ac.Flight.Position.Lat = newLat
 				ac.Flight.Position.Long = newLon
@@ -683,14 +684,14 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
 					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
 						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
-						e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
+					e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
 					continue
 				}
 				dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
 				e.transitionToPhase(ac, flightphase.Braking, dur, BRAKING_JITTER_SECONDS)
 				ac.Flight.Position.Altitude = airport.Elevation
 			}
-		
+
 		case flightphase.GoAround:
 			//TODO: calculate position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
@@ -718,13 +719,13 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					e.OccupiedParking[fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)] = ac.Registration
 					spot.IsOccupied = true
 				}
-
+				ac.Flight.ArrivalAccess = e.assignRunwayAccessPoint(ac, airport, 1)
 				dur := (AMINUS_BRAKING - AMINUS_TAXIIN_MINS) * 60
 				e.transitionToPhase(ac, flightphase.TaxiIn, dur, TAXI_JITTER_SECONDS)
 			}
 
 		case flightphase.TaxiIn:
-			//TODO: calculate position
+			//TODO: calculate position - can use assigned ArrivalAccess as start position
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.positionAtDestParking(ac)
 				dur := (AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
@@ -918,11 +919,11 @@ func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) *atc.ParkingSp
 }
 
 func AbsDiff(a, b int) int {
-    result := a - b
-    if result < 0 {
-        return -result
-    }
-    return result
+	result := a - b
+	if result < 0 {
+		return -result
+	}
+	return result
 }
 
 // DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
@@ -1074,7 +1075,7 @@ func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
 }
 
 func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass string, airlineICAO string) *atc.ParkingSpot {
-	// In v2, the top-level functions are automatically seeded and 
+	// In v2, the top-level functions are automatically seeded and
 	// more performant than creating a new local generator.
 
 	for pass := 0; pass < 2; pass++ {
@@ -1657,19 +1658,32 @@ func getReciprocalName(name string) string {
 	return fmt.Sprintf("%02d%s", recipNum, recipLetter)
 }
 
-// TODO: call at runtime
-func getBestPath(rwy *atc.Runway, spot *atc.ParkingSpot) string {
-    var bestTaxiName string
-    minDistToGate := math.MaxFloat64
+func (e *D9TrafficEngine) assignRunwayAccessPoint(ac *atc.Aircraft, ap *atc.Airport, arrOrDep int) *atc.AccessPoint {
+	
+	minDistToGate := math.MaxFloat64
+	var closest *atc.AccessPoint
+	spot := ac.Flight.AssignedParkingSpot
 
-    // We iterate over the map of "Tied" or "Close" taxiway entries
-    for name, access := range rwy.DepartureAccess {
-        // Which of these qualified entries is closest to our PARKED position?
-        dist := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
-        if dist < minDistToGate {
-            minDistToGate = dist
-            bestTaxiName = name
-        }
-    }
-    return bestTaxiName // Returns Alpha for North gates, Bravo for South gates
+	rwy, exists := ap.Runways[ac.Flight.AssignedRunway]
+	if !exists {
+		return nil
+	}
+
+	var accessMap map[string]*atc.AccessPoint
+	if arrOrDep == 1 {
+		accessMap = rwy.ArrivalAccess
+	} else {
+		accessMap = rwy.DepartureAccess
+	}
+
+	for _, access := range accessMap {
+		// Which of these qualified entries is closest to our PARKED position?
+		dist := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
+		if dist < minDistToGate {
+			minDistToGate = dist
+			closest = access
+		}
+	}
+
+	return closest
 }

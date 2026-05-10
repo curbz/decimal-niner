@@ -46,6 +46,8 @@ type Flight struct {
 	Airline             *AirlineInfo
 	Schedule            *flightplan.ScheduledFlight
 	DepartureDelay      int
+	ArrivalAccess       *AccessPoint
+	DepartureAccess     *AccessPoint
 }
 
 type Position struct {
