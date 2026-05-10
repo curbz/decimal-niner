@@ -109,7 +109,7 @@ func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requir
 	}
 	logger.Log.Infof("Holds data loaded: seeded %d holds\n", len(allHolds))
 
-	// load controller data and airports
+	// load airports and controller data
 	arptControllers, airports, err := parseApt(cfg.ATC.AirportsDataFile, requiredAirports)
 	if err != nil {
 		logger.Log.Errorf("Error parsing airports data file: %v", err)

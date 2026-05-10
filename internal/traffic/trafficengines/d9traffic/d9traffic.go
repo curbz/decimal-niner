@@ -402,6 +402,7 @@ func (e *D9TrafficEngine) spawnGroundTraffic(f *flightplan.ScheduledFlight) {
 			DepartureDelay: delay,
 		},
 	}
+	e.setInitialDeparturePosition(newAc)
 	e.atcService.SetFlightPhaseClass(newAc)
 
 	if initialPhase.Index() > flightphase.Startup.Index() {
@@ -544,6 +545,8 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 
 		case flightphase.Unknown:
+			// should never happen - safety net
+			util.LogWarnWithLabel(ac.Registration, "unexpected flight phase of unknown - treating as new aircraft")
 			diff := e.timeDiffToDeparture(f)
 			initialPhase, dur, delay := e.determineInitialDepaturePhase(diff, f)
 			ac.Flight.DepartureDelay = delay
@@ -552,20 +555,18 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		// --- DEPARTURE FLOW ---
 		case flightphase.Parked:
+			if ac.Flight.AssignedParkingSpot == nil { continue }
 			if ac.Flight.Phase.Class == flightclass.PostflightParked {
 				e.endFlight(ac) // Cleanup logic
 				continue
 			}
-			if e.positionAtOriginParking(ac) == nil {
-				continue
-			}
-
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (DMINUS_STARTUP_MINS - DMINUS_TAXIOUT_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Startup, dur, PARKED_JITTER_SECONDS)
 			}
 
 		case flightphase.Startup:
+			if ac.Flight.AssignedParkingSpot == nil { continue }
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
 				e.assignProcedures(ac, airport, true)
@@ -578,6 +579,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiOut:
+			if ac.Flight.AssignedParkingSpot == nil { continue }
 			// TODO: calculate position - bear in mind that we cannot move aircraft position beyond assigned DepartureAccess
 			// and that transition to the Takeoff phase can be indefinitely held if the runway lock cannot be obtained.
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
@@ -926,7 +928,7 @@ func AbsDiff(a, b int) int {
 	return result
 }
 
-// DetermineInitialPhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
+// DetermineInitialDeparturePhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
 // of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time.
 func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int) {
 	delay := 0
@@ -1033,6 +1035,15 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.S
 	}
 }
 
+func (e* D9TrafficEngine) setInitialDeparturePosition(ac *atc.Aircraft) {
+	if flightphase.FlightPhase(ac.Flight.Phase.Current) >= flightphase.Parked &&
+		flightphase.FlightPhase(ac.Flight.Phase.Current) <= flightphase.TaxiOut {
+		if ac.Flight.AssignedParkingSpot == nil {
+			e.positionAtOriginParking(ac)
+		}
+	}
+}
+
 func (e *D9TrafficEngine) setInitialArrivalPosition(ac *atc.Aircraft, tta int) {
 	airport := e.atcService.Airports[ac.Flight.Destination]
 	rwy := e.getAssignedRunway(airport, ac.Flight.AssignedRunway)
@@ -1041,6 +1052,8 @@ func (e *D9TrafficEngine) setInitialArrivalPosition(ac *atc.Aircraft, tta int) {
 	var distance float64
 	switch phase {
 	case flightphase.Cruise:
+		distance = float64(tta) * 5.0 // ~300kts ground speed
+	case flightphase.Arrival:
 		distance = float64(tta) * 4.0 // ~240kts ground speed
 	case flightphase.Approach:
 		distance = float64(tta) * 3.0 // ~180kts ground speed
@@ -1672,6 +1685,7 @@ func (e *D9TrafficEngine) assignRunwayAccessPoint(ac *atc.Aircraft, ap *atc.Airp
 	var accessMap map[string]*atc.AccessPoint
 	if arrOrDep == 1 {
 		accessMap = rwy.ArrivalAccess
+		//TODO: decide on if we want logic to consider IsHighSpeed, aircraft size, IsNearEnd etc. for arrivals
 	} else {
 		accessMap = rwy.DepartureAccess
 	}
