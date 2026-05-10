@@ -1069,19 +1069,21 @@ func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
 }
 
 func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass string, airlineICAO string) *atc.ParkingSpot {
-	// We run two passes:
-	// Pass 0: Try to find a match for Size AND Airline
-	// Pass 1: Fallback to any spot that fits the Size
+	// In v2, the top-level functions are automatically seeded and 
+	// more performant than creating a new local generator.
+
 	for pass := 0; pass < 2; pass++ {
+		var candidates []*atc.ParkingSpot
+
 		for i := range airport.Parking {
 			spot := airport.Parking[i]
 
-			// 1. Physical constraint: Must be at least as big as the aircraft
+			// 1. Physical constraint
 			if spot.WidthClass < reqClass {
 				continue
 			}
 
-			// 2. Occupancy check (Global map)
+			// 2. Occupancy check
 			key := fmt.Sprintf("%s_%s", airport.ICAO, spot.Name)
 			if _, occupied := e.OccupiedParking[key]; occupied {
 				continue
@@ -1095,14 +1097,18 @@ func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass st
 
 			// 4. Airline Preference (Pass 0 only)
 			if pass == 0 && airlineICAO != "" {
-				// spot.AirlineCodes is usually space-separated: "BAW VIR BEE"
 				if !strings.Contains(spot.AirlineCodes, airlineICAO) {
 					continue
 				}
 			}
 
-			// If we are in Pass 1, or we found an airline match in Pass 0, return it
-			return spot
+			candidates = append(candidates, spot)
+		}
+
+		// 5. Randomized selection from the candidate pool
+		if len(candidates) > 0 {
+			// In rand/v2, we use N(len) for a type-safe integer range
+			return candidates[rand.N(len(candidates))]
 		}
 	}
 
