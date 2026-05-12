@@ -132,7 +132,7 @@ func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	return closestICAO
 }
 
-// returns nil if not found
+// GetAirportRunway returns the Runway instance for the given runway name and nil if not found
 func (s *Service) GetAirportRunway(icao, rwy string) *Runway {
 	var r *Runway
 	if icao != "" && rwy != "" {
@@ -625,7 +625,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 	scan := bufio.NewScanner(f)
 
 	var currentRunway string
-	var rw Runway
+	var rw Runway // keep as value - not pointer
 	var inApproach bool
 	var currentAppType string
 

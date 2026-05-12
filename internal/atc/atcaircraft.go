@@ -30,7 +30,6 @@ type Flight struct {
 	Position            Position
 	LastCheckedPosition Position
 	Number              int
-	TaxiRoute           string
 	Origin              string
 	Destination         string
 	Phase               flightphase.Phase
@@ -41,6 +40,8 @@ type Flight struct {
 	AssignedRunway      string
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
+	Vectoring			bool
+	AssignedHold		*Hold
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo

@@ -57,6 +57,7 @@ type Phase struct {
 	Current                 int
 	Previous                int // used for detecting changes, previous refers to last update and not necessarily the actual previous phase
 	Transition              time.Time
-	EstimatedNextTransition time.Time     // used by d9 traffic engine to estimate when the next phase transition will occur
+	EstimatedNextTransition time.Time     // used by d9traffic engine to estimate when the next phase transition will occur
 	TotalDuration           time.Duration // used by d9traffic to record total duration of current phase
+	StartAltitude			float64		  // used by d9traffic for altitude calculations on phase changes
 }

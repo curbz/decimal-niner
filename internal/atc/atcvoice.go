@@ -343,7 +343,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_NAME": func(args ...string) interface{} {
-			holdfix := s.FindNearestHold(ac, phaseICAO)
+			holdfix := ac.Flight.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -352,7 +352,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_IDENT": func(args ...string) interface{} {
-			holdfix := s.FindNearestHold(ac, phaseICAO)
+			holdfix := ac.Flight.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -500,7 +500,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if ac.Flight.Comms.Controller == nil {
 				r = "published hold"
 			} else {
-				holdfix := s.FindNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
+				holdfix := ac.Flight.AssignedHold
 				if holdfix != nil && holdfix.FullName != "" {
 					r = holdfix.FullName
 					util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)

@@ -126,7 +126,12 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 	logger.Log.Infof("%d holds were enriched with coordinates", enrichedCnt)
 }
 
-func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
+// AssignHold will return the most appropriate hold based on flight phase.
+// For go around phase, the first attempt is to assign the assigned runway's missed approach fix.
+// For the arrival phase, a check is performed to see if a STAR is assigned and if the STAR exit 
+// is a defined hold, this will be the assigned hold.
+// For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
+func (s *Service) AssignHold(ac *Aircraft, icao string) {
 
 	lat := ac.Flight.Position.Lat
 	lng := ac.Flight.Position.Long
@@ -156,14 +161,23 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 				// Search the airport's local holds for this name
 				for _, h := range airport.Holds {
 					if h.Ident == targetFix {
-						return h
+						ac.Flight.AssignedHold = h
 					}
 				}
 			}
 			// If no MAFix match found, fall back to nearest airport hold
 		}
 
-		// B. OTHER PHASES (or Go-Around fallback): Find nearest hold in Airport.Holds
+		// B. Arrival phase - if STAR is assigned return exit fix if this is a defined holding point
+		if phase == flightphase.Arrival.Index() {
+			if ac.Flight.AssignedSTAR != nil {
+				if ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
+					ac.Flight.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
+				}
+			}
+		}
+
+		// C. OTHER PHASES (or fallback): Find nearest hold in Airport.Holds
 		var bestAirportHold *Hold
 		bestDot := -2.0
 		for _, h := range airport.Holds {
@@ -174,7 +188,7 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 			}
 		}
 		if bestAirportHold != nil {
-			return bestAirportHold
+			ac.Flight.AssignedHold = bestAirportHold
 		}
 	}
 
@@ -189,7 +203,7 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 		}
 	}
 
-	return bestGlobalHold
+	ac.Flight.AssignedHold = bestGlobalHold
 }
 
 // extract all holds from hold data file. returns two maps or an error

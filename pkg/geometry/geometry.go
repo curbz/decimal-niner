@@ -238,5 +238,23 @@ func CrossTrackDistance(lat1, lon1, lat2, lon2, lat3, lon3 float64) float64 {
     return math.Abs(xtdAng * earthRadiusNM)
 }
 
+// RadToDeg converts radians to decimal degrees.
+// Useful for converting SID/STAR Radian coordinates to X-Plane degrees.
+func RadToDeg(rad float64) float64 {
+	return rad * (180.0 / math.Pi)
+}
 
+// DegToRad converts decimal degrees to radians.
+// Useful for passing degrees into trigonometric functions like math.Sin or math.Cos.
+func DegToRad(deg float64) float64 {
+	return deg * (math.Pi / 180.0)
+}
+// NormalizeHeading prevents headings ever exceeding 360 or going below 0
+func NormalizeHeading(deg float64) float64 {
+	deg = math.Mod(deg, 360)
+	if deg < 0 {
+		deg += 360
+	}
+	return deg
+}
 
