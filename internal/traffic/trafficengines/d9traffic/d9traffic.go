@@ -1971,8 +1971,8 @@ func (e *D9TrafficEngine) addToQueue(lockKey string, reg string) {
 func (e *D9TrafficEngine) removeFromQueue(lockKey string, reg string) {
 	if e.RunwayQueues[lockKey] != nil {
 		delete(e.RunwayQueues[lockKey], reg)
+		util.LogWithLabel(reg, "dequeued from runway %s queue length is %d", lockKey, len(e.RunwayQueues[lockKey]))
 	}
-	util.LogWithLabel(reg, "dequeued from runway %s queue length is %d", lockKey, len(e.RunwayQueues[lockKey]))
 }
 
 func getWeightedCommonAirline(origin, dest *atc.Airport) string {
