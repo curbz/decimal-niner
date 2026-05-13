@@ -1724,25 +1724,6 @@ func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) f
 	return earthRadiusNM * c
 }
 
-func (e *D9TrafficEngine) getAssignedRunway(ap *atc.Airport, name string) *atc.Runway {
-	if ap == nil {
-		return nil
-	}
-
-	for _, rwy := range ap.Runways {
-		if rwy.Name == name {
-			return rwy
-		}
-	}
-
-	// Fallback: If for some reason the name doesn't match, return the first available runway
-	for _, rwy := range ap.Runways {
-		return rwy
-	}
-
-	return nil
-}
-
 func (e *D9TrafficEngine) getRunwayUtilityScore(rwy *atc.Runway, windDir float64, windSpeed float64) float64 {
 	// 1. Start with the "Static" score (Length and Procedures)
 	score := float64(len(rwy.SIDs)*10 + len(rwy.STARs)*10)
