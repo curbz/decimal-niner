@@ -82,9 +82,9 @@ func DistNM(lat1, lon1, lat2, lon2 float64) float64 {
 // Project calculates a new Lat/Lon point based on a starting point,
 // heading (degrees), and distance (Nautical Miles).
 func Project(lat, lon, heading, distanceNM float64) (float64, float64) {
-	radLat := lat * math.Pi / 180
-	radLon := lon * math.Pi / 180
-	radHeading := heading * math.Pi / 180
+	radLat := DegToRad(lat)
+	radLon := DegToRad(lon)
+	radHeading := DegToRad(heading)
 
 	distAng := distanceNM / EarthRadiusNM
 
@@ -99,16 +99,23 @@ func Project(lat, lon, heading, distanceNM float64) (float64, float64) {
 
 // CalculateBearing returns the true bearing from point 1 to point 2
 func CalculateBearing(lat1, lon1, lat2, lon2 float64) float64 {
-	radLat1 := lat1 * math.Pi / 180
-	radLat2 := lat2 * math.Pi / 180
-	diffLon := (lon2 - lon1) * math.Pi / 180
+    radLat1 := lat1 * math.Pi / 180
+    radLat2 := lat2 * math.Pi / 180
+    diffLon := (lon2 - lon1) * math.Pi / 180
 
-	y := math.Sin(diffLon) * math.Cos(radLat2)
-	x := math.Cos(radLat1)*math.Sin(radLat2) -
-		math.Sin(radLat1)*math.Cos(radLat2)*math.Cos(diffLon)
+    y := math.Sin(diffLon) * math.Cos(radLat2)
+    x := math.Cos(radLat1)*math.Sin(radLat2) -
+        math.Sin(radLat1)*math.Cos(radLat2)*math.Cos(diffLon)
 
-	bearing := math.Atan2(y, x)
-	return math.Mod((bearing*180/math.Pi)+360, 360)
+    bearingRad := math.Atan2(y, x)
+    bearingDeg := bearingRad * 180 / math.Pi
+
+    // Standard normalization to 0-360
+    if bearingDeg < 0 {
+        bearingDeg += 360
+    }
+    
+    return math.Mod(bearingDeg, 360) 
 }
 
 // CalculateDistanceFeet returns the distance between two points in Feet
@@ -250,11 +257,14 @@ func DegToRad(deg float64) float64 {
 	return deg * (math.Pi / 180.0)
 }
 // NormalizeHeading prevents headings ever exceeding 360 or going below 0
-func NormalizeHeading(deg float64) float64 {
-	deg = math.Mod(deg, 360)
-	if deg < 0 {
-		deg += 360
-	}
-	return deg
+func NormalizeHeading(heading float64) float64 {
+    h := math.Mod(heading, 360)
+    if h <= 0 {
+        h += 360
+    }
+    // Now, even if h was 0, it becomes 360.
+    // If it was -10, it becomes 350.
+    // If it was 360, math.Mod makes it 0, then we add 360.
+    return h
 }
 

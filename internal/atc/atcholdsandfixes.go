@@ -10,6 +10,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
 type Hold struct {
@@ -291,8 +292,8 @@ func parseNavData(path string) (map[string]*Fix, error) {
 			Ident:    ident,
 			Region:   region,
 			FullName: cleanFixName(fullName),
-			LatRad:   lat * math.Pi / 180,
-			LonRad:   lon * math.Pi / 180,
+			LatRad:   geometry.DegToRad(lat),
+			LonRad:   geometry.DegToRad(lon),
 		}
 	}
 
@@ -347,6 +348,11 @@ func parseFixData(path string) (map[string]*Fix, error) {
 
 		lat, _ := strconv.ParseFloat(parts[0], 64)
 		lon, _ := strconv.ParseFloat(parts[1], 64)
+
+		if lat < -90 || lat > 90 {
+			continue
+		}
+
 		ident := parts[2]
 		region := parts[4]
 

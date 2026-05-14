@@ -25,6 +25,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/pcl"
 
+	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -324,7 +325,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		},
 		"$SQUAWK": func(args ...string) interface{} { return ac.Flight.Squawk },
 		"$HEADING": func(args ...string) interface{} {
-			return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))
+			return fmt.Sprintf("%03d", int(math.Round(geometry.NormalizeHeading(ac.Flight.Position.Heading))))
 		},
 		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
 		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },

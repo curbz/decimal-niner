@@ -1190,7 +1190,7 @@ func normaliseRunwayName(rw string) string {
 		num = "0" + num
 	}
 
-	return num + suffix
+	return strings.TrimSpace(num + suffix)
 }
 
 func normaliseCIFPAlt(altStr string) int {
