@@ -143,8 +143,8 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 	runway := ac.Flight.AssignedRunway
 	phase := ac.Flight.Phase.Current
 
-	latRad := lat * math.Pi / 180
-	lonRad := lng * math.Pi / 180
+	latRad := geometry.DegToRad(lat)
+	lonRad := geometry.DegToRad(lng)
 	ux, uy, uz := toUnit(latRad, lonRad)
 
 	// 1. Get the Airport from the Service
@@ -167,6 +167,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 				for _, h := range airport.Holds {
 					if h.Ident == targetFix {
 						ac.Flight.AssignedHold = h
+						return
 					}
 				}
 			}
@@ -178,6 +179,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 			if ac.Flight.AssignedSTAR != nil {
 				if ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
 					ac.Flight.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
+					return
 				}
 			}
 		}
@@ -194,6 +196,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 		}
 		if bestAirportHold != nil {
 			ac.Flight.AssignedHold = bestAirportHold
+			return
 		}
 	}
 
