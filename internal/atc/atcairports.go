@@ -1277,27 +1277,50 @@ func cleanAirportName(n string) string {
 
 func parseCIFPCoord(coord string) float64 {
 	coord = strings.TrimSpace(coord)
-	if len(coord) < 9 {
+	// CIFP coords are typically N51283900 (9 chars) or W000290597 (10 chars)
+	if len(coord) < 7 {
 		return 0
 	}
 
 	dir := coord[0]
-	// For Lat (N/S), deg is 2 digits. For Lon (E/W), deg is 3 digits.
+	
+	// Latitude (N/S) uses 2 digits for degrees: [1:3]
+	// Longitude (E/W) uses 3 digits for degrees: [1:4]
 	degLen := 2
 	if dir == 'E' || dir == 'W' {
 		degLen = 3
 	}
 
+	// 1. Extract Degrees
 	deg, _ := strconv.ParseFloat(coord[1:1+degLen], 64)
+	
+	// 2. Extract Minutes (always 2 digits following degrees)
 	min, _ := strconv.ParseFloat(coord[1+degLen:3+degLen], 64)
-	sec, _ := strconv.ParseFloat(coord[3+degLen:], 64)
 
-	// DD + MM/60 + SS.ss/3600
-	decimal := deg + (min / 60.0) + (sec / 360000.0)
+	// 3. Extract Seconds (everything remaining)
+	secStr := coord[3+degLen:]
+	rawSec, _ := strconv.ParseFloat(secStr, 64)
 
+	// Determine the power of 10 for the seconds denominator.
+	// If input is "SSss" (len 4), we need to divide rawSec by 100 to get SS.ss.
+	// If input is "SS" (len 2), we divide by 1 (10^0).
+	// Then we divide by 3600 to get degrees.
+	precisionPower := len(secStr) - 2
+	if precisionPower < 0 {
+		precisionPower = 0
+	}
+	
+	actualSec := rawSec / math.Pow(10, float64(precisionPower))
+	secDecimal := actualSec / 3600.0
+
+	// 4. Combine into Decimal Degrees
+	decimal := deg + (min / 60.0) + secDecimal
+
+	// 5. Apply Hemisphere Sign
 	if dir == 'S' || dir == 'W' {
 		decimal = -decimal
 	}
+
 	return decimal
 }
 

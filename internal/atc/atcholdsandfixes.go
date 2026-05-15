@@ -20,8 +20,8 @@ type Hold struct {
 	ICAO     string // airport ICAO or 'ENRT'
 	MinAlt   int
 	MaxAlt   int
-	LatRad   float64
-	LonRad   float64
+	Lat      float64
+	Lon      float64
 	X, Y, Z  float64
 }
 
@@ -29,8 +29,8 @@ type Fix struct {
 	Ident    string
 	Region   string
 	FullName string
-	LatRad   float64
-	LonRad   float64
+	Lat      float64
+	Lon      float64
 	Hold     *Hold // if this fix is also a hold, this field will be populated otherwise nil
 }
 
@@ -83,7 +83,11 @@ func toUnit(latRad, lonRad float64) (x, y, z float64) {
 }
 
 func (h *Hold) InitUnitVector() {
-	h.X, h.Y, h.Z = toUnit(h.LatRad, h.LonRad)
+	// Input is Degrees, convert to Radian for the math
+	radLat := geometry.DegToRad(h.Lat)
+	radLon := geometry.DegToRad(h.Lon)
+
+	h.X, h.Y, h.Z = toUnit(radLat, radLon)
 }
 
 func parseFloat(s string) float64 {
@@ -109,8 +113,8 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 		namedFix, found := allFixes[key]
 		if found {
 			h.FullName = namedFix.FullName
-			h.LatRad = namedFix.LatRad
-			h.LonRad = namedFix.LonRad
+			h.Lat = namedFix.Lat
+			h.Lon = namedFix.Lon
 			namedFix.Hold = h
 			if h.FullName != "" {
 				namedCnt++
@@ -129,7 +133,7 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 
 // AssignHold will return the most appropriate hold based on flight phase.
 // For go around phase, the first attempt is to assign the assigned runway's missed approach fix.
-// For the arrival phase, a check is performed to see if a STAR is assigned and if the STAR exit 
+// For the arrival phase, a check is performed to see if a STAR is assigned and if the STAR exit
 // is a defined hold, this will be the assigned hold.
 // For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
 func (s *Service) AssignHold(ac *Aircraft, icao string) {
@@ -292,8 +296,8 @@ func parseNavData(path string) (map[string]*Fix, error) {
 			Ident:    ident,
 			Region:   region,
 			FullName: cleanFixName(fullName),
-			LatRad:   geometry.DegToRad(lat),
-			LonRad:   geometry.DegToRad(lon),
+			Lat:      lat,
+			Lon:      lon,
 		}
 	}
 
@@ -360,8 +364,8 @@ func parseFixData(path string) (map[string]*Fix, error) {
 		fixes[key] = &Fix{
 			Ident:  ident,
 			Region: region,
-			LatRad: lat,
-			LonRad: lon,
+			Lat:    lat,
+			Lon:    lon,
 		}
 	}
 	return fixes, nil

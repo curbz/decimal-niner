@@ -1,27 +1,24 @@
 package atc
 
 import (
-	"math"
 	"testing"
 
 	"github.com/curbz/decimal-niner/internal/flightphase"
 )
 
-func rad(deg float64) float64 { return deg * math.Pi / 180 }
-
 // Test dataset: 7 real-world holds (VOR-based)
 func testHolds() map[string]*Hold {
 	holds := map[string]*Hold{
 		// Heathrow stacks
-		"LAM": {Ident: "LAM", Region: "EG", LatRad: rad(51.646025), LonRad: rad(0.151702778)},
-		"BNN": {Ident: "BNN", Region: "EG", LatRad: rad(51.721), LonRad: rad(-0.561)},
-		"BIG": {Ident: "BIG", Region: "EG", LatRad: rad(51.330), LonRad: rad(0.033)},
-		"OCK": {Ident: "OCK", Region: "EG", LatRad: rad(51.237), LonRad: rad(-0.561)},
+		"LAM": {Ident: "LAM", Region: "EG", Lat: 51.646025, Lon: 0.151702778},
+		"BNN": {Ident: "BNN", Region: "EG", Lat: 51.721, Lon: -0.561},
+		"BIG": {Ident: "BIG", Region: "EG", Lat: 51.330, Lon: 0.03},
+		"OCK": {Ident: "OCK", Region: "EG", Lat: 51.237, Lon: -0.561},
 
 		// Global holds
-		"SFO": {Ident: "SFO", Region: "US", LatRad: rad(37.619), LonRad: rad(-122.374)}, // SFO VOR
-		"HNL": {Ident: "HNL", Region: "US", LatRad: rad(21.318), LonRad: rad(-157.922)}, // Honolulu
-		"SYD": {Ident: "SYD", Region: "AU", LatRad: rad(-33.946), LonRad: rad(151.177)}, // Sydney
+		"SFO": {Ident: "SFO", Region: "US", Lat: 37.619, Lon: -122.374}, // SFO VOR
+		"HNL": {Ident: "HNL", Region: "US", Lat: 21.318, Lon: -157.922}, // Honolulu
+		"SYD": {Ident: "SYD", Region: "AU", Lat: -33.946, Lon: 151.177}, // Sydney
 	}
 
 	// Precompute unit vectors
@@ -70,7 +67,7 @@ func TestAssignHoldPriority(t *testing.T) {
 
 	// Helper to create airport hold
 	makeHold := func(name string, lat, lon float64) *Hold {
-		h := &Hold{Ident: name, LatRad: rad(lat), LonRad: rad(lon)}
+		h := &Hold{Ident: name, Lat: lat, Lon: lon}
 		h.InitUnitVector()
 		return h
 	}
