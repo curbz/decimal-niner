@@ -127,7 +127,7 @@ func CalculateBearing(lat1, lon1, lat2, lon2 float64) float64 {
     x := math.Cos(radLat1) * math.Sin(radLat2) - math.Sin(radLat1) * math.Cos(radLat2) * math.Cos(diffLon)
 
     bearingRad := math.Atan2(y, x)
-    bearingDeg := DegToRad(bearingRad)
+    bearingDeg := RadToDeg(bearingRad)
 
     // Standard normalization to 0-360
     if bearingDeg < 0 {

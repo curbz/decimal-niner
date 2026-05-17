@@ -88,7 +88,7 @@ const (
 	ARRIVAL_JITTER_SECONDS   = 120
 	APPROACH_JITTER_SECONDS  = 60
 
-	SHUTDOWN_JITTER_SECONDS  = 120
+	SHUTDOWN_JITTER_SECONDS = 120
 
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300 // Safety mechanism in case aircraft does not voluntarily release the lock
 
@@ -355,7 +355,7 @@ func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int
 func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
 	ttd := e.timeDiffToDeparture(f)
-	initialPhase, remainingDurSecs, fullDurationSecs, delay := e.determineInitialDepaturePhase(ttd, f)
+	initialPhase, remainingDurSecs, fullDurationSecs, delay := e.determineInitialDeparturePhase(ttd, f)
 	if initialPhase == flightphase.Unknown {
 		return
 	}
@@ -429,17 +429,20 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		}
 	}
 
+	newAc.Flight.Phase.Transition = transitionTime // BACKDATED
+	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
+	newAc.Flight.Phase.TotalDuration = time.Duration(fullDurationSecs) * time.Second
+	// set initial altitude
+	newAc.Flight.Phase.StartAltitude = e.estimatePhaseInitialAltitude(newAc, ip)
+
 	// Determine which positioning functions should handle the initial placement
 	if ip >= flightphase.Climbout.Index() {
 		// If Cruise, flip to destination (arrival) runway BEFORE initializing, this will be revaluated at the start of the arrival phase
 		if ip == flightphase.Cruise.Index() {
-			//TODO: consider what to do -terminate tracking?
+			//TODO: consider what to do when a departure spawn results in a cruise phase -terminate tracking?
 			rwy := e.getFallbackRunway(f.IcaoDest, ARRIVAL_CONTEXT)
 			newAc.Flight.AssignedRunway = rwy.Name
 		}
-
-		e.initialiseMidAirPhase(newAc, ip, remainingDurSecs)
-
 		// Initial Position Snap
 		if ip == flightphase.Cruise.Index() {
 			// assign destination procedure
@@ -449,12 +452,8 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		} else {
 			e.updateLinearPosition(newAc)
 		}
+		//e.initialiseMidAirPhase(newAc)
 	} else {
-		newAc.Flight.Phase.Transition = transitionTime // BACKDATED
-		newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
-		newAc.Flight.Phase.TotalDuration = time.Duration(fullDurationSecs) * time.Second
-		// set initial altitude
-		newAc.Flight.Phase.StartAltitude = e.estimatePhaseInitialAltitude(newAc, ip)
 		switch {
 		case ip <= flightphase.Startup.Index():
 			// For Parked/Startup, use the static parking logic
@@ -547,17 +546,16 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 		e.assignProcedures(newAc, airport, false)
 	}
 
+	newAc.Flight.Phase.TotalDuration = time.Duration(remainingDurSecs) * time.Second
+	newAc.Flight.Phase.Transition = transitionTime
+	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
+	newAc.Flight.Phase.StartAltitude = e.estimatePhaseInitialAltitude(newAc, initialPhaseIdx)
+
 	// Only initialise mid-air (backdated) logic if the aircraft is flying.
 	// For TaxiIn, Shutdown, or Parked, we want a fresh T+0 transition.
-	if initialPhaseIdx >= flightphase.Climbout.Index() && initialPhaseIdx <= flightphase.Final.Index() {
-		e.initialiseMidAirPhase(newAc, initialPhaseIdx, remainingDurSecs)
-	} else {
-		// Standard initialization for ground/terminal phases
-		newAc.Flight.Phase.TotalDuration = time.Duration(remainingDurSecs) * time.Second
-		newAc.Flight.Phase.Transition = transitionTime
-		newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
-		newAc.Flight.Phase.StartAltitude = e.estimatePhaseInitialAltitude(newAc, initialPhaseIdx)
-	}
+	// if initialPhaseIdx >= flightphase.Climbout.Index() && initialPhaseIdx <= flightphase.Final.Index() {
+	// 	e.initialiseMidAirPhase(newAc)
+	// }
 
 	switch {
 	case initialPhaseIdx == flightphase.Cruise.Index():
@@ -591,44 +589,84 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 		newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
 }
 
-func (e *D9TrafficEngine) calculateFullPhaseDuration(phase int, f *flightplan.ScheduledFlight) float64 {
+func (e *D9TrafficEngine) initialiseMidAirPhase(ac *atc.Aircraft) {
 
-	origApt := e.atcService.GetAirport(f.IcaoOrigin)
-	destApt := e.atcService.GetAirport(f.IcaoDest)
+	origin := e.atcService.Airports[ac.Flight.Schedule.IcaoOrigin]
+	dest := e.atcService.Airports[ac.Flight.Schedule.IcaoDest]
 
-	switch flightphase.FlightPhase(phase) {
-	case flightphase.Cruise:
-		dist := geometry.DistNM(origApt.Lat, origApt.Lon, destApt.Lat, destApt.Lon)
-		return (dist / 420.0) * 3600.0 // Assuming ~420kts ground speed for cruise duration
-	case flightphase.Departure:
-		return 600.0 // Default 10 mins to get from Climbout to Cruise
-	case flightphase.Climbout:
-		return 300.0 // Default 5 mins
-	case flightphase.Approach:
-		return 480.0 // ~8 mins for 15NM to 4NM
-	default:
-		return 300.0
+	currentPhaseIdx := ac.Flight.Phase.Current
+
+	// 2. Hydrate Altitudes Defensively
+	if ac.Flight.Position.Altitude <= 1.0 {
+		switch currentPhaseIdx {
+		case flightphase.Cruise.Index():
+			if ac.Flight.CruiseAlt == 0 {
+				ac.Flight.CruiseAlt = 35000 
+			}
+			ac.Flight.Position.Altitude = float64(ac.Flight.CruiseAlt)
+		case flightphase.Arrival.Index(), flightphase.Approach.Index(): 
+			ac.Flight.Position.Altitude = 10000.0
+		case flightphase.Climbout.Index(), flightphase.Departure.Index(), flightphase.Takeoff.Index():
+			// Initial safe altitude clearance out of the terminal zone
+			ac.Flight.Position.Altitude = 5000.0
+		}
+		ac.Flight.Phase.StartAltitude = ac.Flight.Position.Altitude
 	}
-}
 
-func (e *D9TrafficEngine) initialiseMidAirPhase(ac *atc.Aircraft, phase int, remainingDur int) {
-	currSimZTime := e.atcService.GetCurrentZuluTime()
-	f := ac.Flight.Schedule
+	// 3. Hydrate Vector/Heading Tracking Gates
+	var targetLat, targetLon float64
+	hasTarget := false
 
-	// 1. Calculate the FULL theoretical duration for this phase
-	fullDurationSecs := e.calculateFullPhaseDuration(phase, f)
+	switch currentPhaseIdx {
+	// BUNDLE DEPARTURE STATES: Track the SID Exit point or fly Runway Heading
+	case flightphase.Climbout.Index(), flightphase.Departure.Index(), flightphase.Takeoff.Index():
+		if sid := ac.Flight.AssignedSID; sid != nil && sid.Exit.Fix.Lat != 0 {
+			targetLat, targetLon = sid.Exit.Fix.Lat, sid.Exit.Fix.Lon
+			hasTarget = true
+		} else if origin != nil {
+			// If no SID is assigned yet, fallback to tracking along the runway alignment
+			targetLat, targetLon = origin.Lat, origin.Lon
+			hasTarget = true
+		}
 
-	// 2. Calculate the offset (How far into the phase are we?)
-	elapsedOffset := math.Max(0, fullDurationSecs-float64(remainingDur))
+	case flightphase.Cruise.Index():
+		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
+			targetLat, targetLon = star.Entry.Fix.Lat, star.Entry.Fix.Lon
+			hasTarget = true
+		} else if dest != nil {
+			targetLat, targetLon = dest.Lat, dest.Lon
+			hasTarget = true
+		}
 
-	// 3. Set the Phase Context
-	ac.Flight.Phase.Transition = currSimZTime.Add(-time.Duration(elapsedOffset) * time.Second)
-	ac.Flight.Phase.TotalDuration = time.Duration(fullDurationSecs) * time.Second
-	ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDur) * time.Second)
+	case flightphase.Arrival.Index(), flightphase.Approach.Index():
+		if ac.Flight.Vectoring {
+			if ac.Flight.Position.Heading != 0 {
+				ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading)
+				return
+			}
+		}
+		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
+			targetLat, targetLon = star.Exit.Fix.Lat, star.Exit.Fix.Lon
+			hasTarget = true
+		} else if dest != nil {
+			targetLat, targetLon = dest.Lat, dest.Lon
+			hasTarget = true
+		}
+	}
 
-	// 4. Set the StartAltitude (The vertical "floor" anchor)
-	ac.Flight.Phase.StartAltitude = e.estimatePhaseInitialAltitude(ac, phase)
-	ac.Flight.Position.Altitude = float64(ac.Flight.CruiseAlt)
+	// 4. Calculate Track Vector
+	if hasTarget {
+		hdg := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetLat, targetLon)
+		ac.Flight.Position.Heading = geometry.NormalizeHeading(hdg)
+	} else {
+		// Hard safety net targeting destination center directly
+		if dest != nil {
+			hdg := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, dest.Lat, dest.Lon)
+			ac.Flight.Position.Heading = geometry.NormalizeHeading(hdg)
+		} else {
+			ac.Flight.Position.Heading = 360.0
+		}
+	}
 }
 
 // getFallbackRunway tries to get the active runway for the given flight context, if not set/available, fallsback to any runway.
@@ -1347,7 +1385,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	// 4. Update Lat/Lon via Linear Interpolation
 	ac.Flight.Position.Lat = startPos.Lat + (progress * (targetPos.Lat - startPos.Lat))
-	ac.Flight.Position.Long = startPos.Long + (targetPos.Long - startPos.Long)
+	ac.Flight.Position.Long = startPos.Long + (progress * (targetPos.Long - startPos.Long))
 
 	// 5. Vertical Profile using the 3-to-1 Rule for Descent
 	distToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
@@ -1457,7 +1495,7 @@ func AbsInt(v int) int {
 
 // DetermineInitialDeparturePhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
 // of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time.
-func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
+func (e *D9TrafficEngine) determineInitialDeparturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
 	delay := 0
 	switch {
 	// long term parked
@@ -1476,7 +1514,7 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 		}
 		jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
 		estimatedDuration := (AbsDiff(diff, DMINUS_STARTUP_MINS) * 60) + jitter
-		return flightphase.Parked, estimatedDuration, AbsInt((diff - DMINUS_STARTUP_MINS) * 60) + jitter, delay
+		return flightphase.Parked, estimatedDuration, AbsInt((diff-DMINUS_STARTUP_MINS)*60) + jitter, delay
 
 	// still parked but tracking towards startup
 	case diff > DMINUS_STARTUP_MINS && diff <= DMINUS_PARKED_MINS:
@@ -1499,10 +1537,10 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 	// takeoff - we do not permit initial spawn in takeoff phase due to runway lock charge so will be initialised in taxi out phase
 	case diff >= DMINUS_CLIMBOUT_MINS && diff <= DMINUS_TAKEOFF_MINS:
 		estimatedDuration := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
-		return flightphase.TaxiOut, estimatedDuration, AbsInt(DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60, delay
+		return flightphase.TaxiOut, estimatedDuration, AbsInt(DMINUS_TAXIOUT_MINS-DMINUS_TAKEOFF_MINS) * 60, delay
 
 	// climbout
-	case diff >= DMINUS_DEPARTURE_MINS && diff <= DMINUS_CLIMBOUT_MINS:
+	case diff >= DMINUS_DEPARTURE_MINS && diff < DMINUS_CLIMBOUT_MINS:
 		jitter := rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS
 		estimatedDuration := (AbsDiff(diff, DMINUS_DEPARTURE_MINS) * 60) + jitter
 		return flightphase.Climbout, estimatedDuration, AbsInt(((DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60) + jitter), delay
@@ -1518,8 +1556,8 @@ func (e *D9TrafficEngine) determineInitialDepaturePhase(diff int, f *flightplan.
 		tta := e.timeDiffToArrival(f)
 		jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
 		remainingCruise := (AbsDiff(tta, AMINUS_APPROACH_MINS) * 60) + jitter
-		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))), 
-					AbsInt(AbsInt(diff) + tta - AMINUS_ARRIVAL_MINS) * 60, delay
+		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))),
+			AbsInt(AbsInt(diff)+tta-AMINUS_ARRIVAL_MINS) * 60, delay
 	}
 }
 
@@ -1540,31 +1578,31 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.S
 
 	// FINAL: we do not permit initial spawn in final phase due to runway lock charge so will be initialised in approach phase
 	case diff > AMINUS_LAND_MINS && diff <= AMINUS_FINAL_MINS:
-		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
+		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
 		return flightphase.Approach, estimatedDuration, estimatedDuration
 
 	// BRAKING: we do not permit initial spawn in braking phase due to runway lock charge so will be initialised in approach out phase
 	case diff > AMINUS_BRAKING && diff <= AMINUS_LAND_MINS:
-		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
+		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
 		return flightphase.Approach, estimatedDuration, estimatedDuration
 
 	// TAXI IN:
 	case diff > AMINUS_TAXIIN_MINS && diff <= AMINUS_BRAKING:
 		// note: no jitter for taxi phase as this will be recalculated based on distance
-		estimatedDuration := AbsInt(AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
+		estimatedDuration := AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60
 		return flightphase.TaxiIn, estimatedDuration, estimatedDuration
 
 	// SHUTDOWN:
 	case diff > AMINUS_SHUTDOWN_MINS && diff <= AMINUS_TAXIIN_MINS:
 		jitter := rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS
 		estimatedDuration := (AbsDiff(diff, AMINUS_SHUTDOWN_MINS) * 60) + jitter
-		return flightphase.Shutdown, AbsInt(AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60, estimatedDuration
+		return flightphase.Shutdown, AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60, estimatedDuration
 
 	// PARKED:
 	case diff >= AMINUS_PARKED_MINS && diff <= AMINUS_SHUTDOWN_MINS:
 		jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
 		estimatedDuration := (AbsDiff(diff, AMINUS_PARKED_MINS) * 60) + jitter
-		return flightphase.Parked, AbsInt(AMINUS_SHUTDOWN_MINS - AMINUS_PARKED_MINS) * 60, estimatedDuration
+		return flightphase.Parked, AbsInt(AMINUS_SHUTDOWN_MINS-AMINUS_PARKED_MINS) * 60, estimatedDuration
 
 	default:
 		// CRUISE:
@@ -1572,7 +1610,7 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.S
 		jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
 		remainingCruise := (AbsDiff(tta, DMINUS_DEPARTURE_MINS) * 60) + jitter
 		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))),
-					AbsInt(AbsInt(diff) + tta - AMINUS_ARRIVAL_MINS) * 60
+			AbsInt(AbsInt(diff)+tta-AMINUS_ARRIVAL_MINS) * 60
 	}
 }
 
