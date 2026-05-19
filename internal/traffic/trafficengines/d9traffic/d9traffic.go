@@ -868,7 +868,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
 					util.LogWithLabel(ac.Registration, "on approach: active arrival runway %s is occupied at %s - remaining in approach phase",
-						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
 					continue
 				}
 				dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
@@ -880,7 +880,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
 					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
-						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
 					e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
 					continue
 				}
@@ -2124,7 +2124,7 @@ func normalizeRunwayKey(icao string, rwy *atc.Runway) string {
 	return fmt.Sprintf("%s-%s-%s", icao, recip, rwy.Name)
 }
 
-func getReciprocalName(name string) string {
+func 	getReciprocalName(name string) string {
 	// 1. Separate numbers from letters
 	var numPart int
 	var letterPart string
