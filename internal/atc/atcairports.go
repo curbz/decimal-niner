@@ -1213,6 +1213,11 @@ func normaliseCIFPAlt(altStr string) int {
 	if err != nil {
 		return 0
 	}
+
+	// Handle ARINC 424 Metric Shift: Hundreds vs. Tens of Feet when < 1000
+	 if val < 1000 && val > 0 {
+        return val * 10.0 // Scale up to true feet
+    }
 	return val
 }
 

@@ -443,9 +443,6 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 			//TODO: consider what to do when a departure spawn results in a cruise phase -terminate tracking?
 			rwy := e.getFallbackRunway(f.IcaoDest, ARRIVAL_CONTEXT)
 			newAc.Flight.AssignedRunway = rwy.Name
-		}
-		// Initial Position Snap
-		if ip == flightphase.Cruise.Index() {
 			// assign destination procedure
 			destApt := e.atcService.Airports[f.IcaoDest]
 			e.assignProcedures(newAc, destApt, ARRIVAL_CONTEXT)
