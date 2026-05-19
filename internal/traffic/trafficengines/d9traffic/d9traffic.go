@@ -809,7 +809,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			e.updateLinearPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
-				e.transitionToPhase(ac, flightphase.Departure, DEPARTURE_JITTER_SECONDS, dur)
+				e.transitionToPhase(ac, flightphase.Departure, dur, DEPARTURE_JITTER_SECONDS)
 			}
 
 		case flightphase.Departure:
@@ -817,7 +817,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
-				e.transitionToPhase(ac, flightphase.Cruise, CRUISE_JITTER_SECONDS, dur)
+				e.transitionToPhase(ac, flightphase.Cruise, dur, CRUISE_JITTER_SECONDS)
 			}
 
 		case flightphase.Cruise:
