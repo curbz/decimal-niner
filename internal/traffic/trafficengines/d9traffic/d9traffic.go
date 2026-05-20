@@ -70,7 +70,7 @@ const (
 
 	// time difference (minutes) in relation to scheduled arrival time - this is NOT a duration but relative time to arrival
 	AMINUS_ARRIVAL_MINS  = 15
-	AMINUS_APPROACH_MINS = 7
+	AMINUS_APPROACH_MINS = 5
 	AMINUS_FINAL_MINS    = 1
 	AMINUS_LAND_MINS     = 0
 	AMINUS_BRAKING       = -1
@@ -93,8 +93,8 @@ const (
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300 // Safety mechanism in case aircraft does not voluntarily release the lock
 
 	HOLDING_MIN_DURATION_MINS                     = 4
-	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 10
-	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 90
+	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 6   // both arrivals and departure
+	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	STAR_PROBABILITY_FACTOR                       = 0.3
 	GOAROUND_TO_HOLD_PROBABILITY_FACTOR           = 0.3
 
@@ -236,8 +236,8 @@ func (e *D9TrafficEngine) sortSchedules() {
 
 		// Sort Departures
 		sort.Slice(timeline.Departures, func(i, j int) bool {
-			timeI := (timeline.Departures[i].DepatureHour * 60) + timeline.Departures[i].DepartureMin
-			timeJ := (timeline.Departures[j].DepatureHour * 60) + timeline.Departures[j].DepartureMin
+			timeI := (timeline.Departures[i].DepartureHour * 60) + timeline.Departures[i].DepartureMin
+			timeJ := (timeline.Departures[j].DepartureHour * 60) + timeline.Departures[j].DepartureMin
 			return timeI < timeJ
 		})
 
@@ -295,7 +295,7 @@ func (e *D9TrafficEngine) checkForDepartureSpawns(icao string, day, h, m int) {
 				continue
 			}
 
-			fMins := (f.DepatureHour * 60) + f.DepartureMin
+			fMins := (f.DepartureHour * 60) + f.DepartureMin
 
 			// Adjust time for comparison if we are looking at 'nextDay'
 			compareMins := fMins
@@ -342,19 +342,19 @@ func (e *D9TrafficEngine) isCurrentlyActive(registration string, flightNumber in
 	return exists
 }
 
-func (e *D9TrafficEngine) timeDiffToDeparture(f *flightplan.ScheduledFlight) int {
+func (e *D9TrafficEngine) timeDiffToScheduledDeparture(f *flightplan.ScheduledFlight) int {
 	// Calculate diff at spawn time
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 	h, m, _ := currSimZTime.Clock()
 	nowMins := h*60 + m
-	depMins := (f.DepatureHour * 60) + f.DepartureMin
+	depMins := (f.DepartureHour * 60) + f.DepartureMin
 	diff := depMins - nowMins
 	return diff
 }
 
 func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
-	ttd := e.timeDiffToDeparture(f)
+	ttd := e.timeDiffToScheduledDeparture(f)
 	initialPhase, remainingDurSecs, fullDurationSecs, delay := e.determineInitialDeparturePhase(ttd, f)
 	if initialPhase == flightphase.Unknown {
 		return
@@ -401,7 +401,7 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 				Long: airport.Lon,
 			},
 			CruiseAlt: f.CruiseAlt * 100,
-			Schedule: f,
+			Schedule:  f,
 			// Squawk random number between 1200 and 6999
 			Squawk:       fmt.Sprintf("%04d", 1200+rand.IntN(5800)),
 			PlanAssigned: true,
@@ -484,7 +484,7 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
 func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 
-	tta := e.timeDiffToArrival(f)
+	tta := e.timeDiffToScheduledArrival(f)
 	initialPhase, remainingDurSecs, fullDurationSecs := e.determineInitialArrivalPhase(tta, f)
 	initialPhaseIdx := initialPhase.Index()
 
@@ -500,10 +500,6 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 		sizeClassStr = "Heavy"
 	}
 
-	//fullDurationSecs := e.calculateFullPhaseDuration(initialPhaseIdx, f)
-	elapsedOffset := math.Max(0, float64(fullDurationSecs)-float64(remainingDurSecs))
-	transitionTime := currSimZTime.Add(-time.Duration(elapsedOffset) * time.Second)
-
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,
 		SizeClass:    sizeClass,
@@ -517,7 +513,7 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 				Callsign:    fmt.Sprintf("%s %d %s", airline.Callsign, f.Number, sizeClassStr),
 			},
 			CruiseAlt: f.CruiseAlt * 100,
-			Schedule: f,
+			Schedule:  f,
 			// Squawk random number between 1200 and 6999
 			Squawk:       fmt.Sprintf("%04d", 1200+rand.IntN(5800)),
 			PlanAssigned: true,
@@ -544,8 +540,9 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 		e.assignProcedures(newAc, airport, ARRIVAL_CONTEXT)
 	}
 
-	newAc.Flight.Phase.TotalDuration = time.Duration(remainingDurSecs) * time.Second
-	newAc.Flight.Phase.Transition = transitionTime
+	newAc.Flight.Phase.TotalDuration = time.Duration(fullDurationSecs) * time.Second
+	elapsedOffset := math.Max(0, float64(fullDurationSecs)-float64(remainingDurSecs))
+	newAc.Flight.Phase.Transition = currSimZTime.Add(-time.Duration(elapsedOffset) * time.Second)
 	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
 	e.assignPhaseInitialAltitude(newAc, initialPhaseIdx)
 
@@ -639,13 +636,18 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 		}
 
 	case flightphase.Cruise:
+		startAlt = float64(ac.Flight.CruiseAlt)
 		if sid := ac.Flight.AssignedSID; sid != nil && sid.Exit.ConstraintAlt > 0 {
 			startAlt = float64(sid.Exit.ConstraintAlt)
 			if float64(ac.Flight.CruiseAlt) < startAlt {
+				util.LogDebugWithLabel(ac.Registration, "bumping scheduled cruise altitude from %d to %sd as assigned SID is higher",
+					ac.Flight.CruiseAlt, int(startAlt))
 				ac.Flight.CruiseAlt = int(startAlt)
 			}
 		} else {
-			startAlt = 10000.0
+			if startAlt == 0.0 {
+				startAlt = 10000.0
+			}
 		}
 
 	case flightphase.Arrival:
@@ -675,14 +677,15 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 	}
 
 	ac.Flight.Phase.InitialAltitude = startAlt
-	util.LogDebugWithLabel(ac.Registration, "initial altitude for phase %s set to %f", phase, ac.Flight.Phase.InitialAltitude)
+	util.LogDebugWithLabel(ac.Registration, "initial altitude for phase %s set to %f", flightphase.FlightPhase(phase).String(),
+		ac.Flight.Phase.InitialAltitude)
 }
 
 func getActiveAircraftKey(ac *atc.Aircraft) string {
 	return fmt.Sprintf("%s_%d", ac.Registration, ac.Flight.Number)
 }
 
-func (e *D9TrafficEngine) timeDiffToArrival(f *flightplan.ScheduledFlight) int {
+func (e *D9TrafficEngine) timeDiffToScheduledArrival(f *flightplan.ScheduledFlight) int {
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 	h, m, _ := currSimZTime.Clock()
 
@@ -815,14 +818,14 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Departure:
 			e.updateLinearPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
+				tta := e.timeDiffToScheduledArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Cruise, dur, CRUISE_JITTER_SECONDS)
 			}
 
 		case flightphase.Cruise:
 			e.updateCruisePosition(ac)
-			tta := e.timeDiffToArrival(f) // Minutes until scheduled arrival
+			tta := e.timeDiffToScheduledArrival(f) // Minutes until scheduled arrival
 			if tta <= AMINUS_ARRIVAL_MINS {
 				// we are transitioning to arrival so assign or replace any earlier assigned runway
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
@@ -1296,6 +1299,9 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
+	if ac.Registration == "G-TTNL" {
+		fmt.Println("breakpoint")
+	}
 	if totalDuration <= 0 {
 		return
 	}
@@ -1311,9 +1317,44 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	startAlt := 10000.0 // Default departure exit alt
 	if sid := ac.Flight.AssignedSID; sid != nil && sid.Exit.Fix.Lat != 0 {
 		startPos = atc.Position{Lat: sid.Exit.Fix.Lat, Long: sid.Exit.Fix.Lon}
-		startAlt = float64(sid.Exit.ConstraintAlt)
+		// Check if constraint is explicitly defined
+		if sid.Exit.ConstraintAlt > 0 {
+			// Scaled constraint fix (handling the under-1000 ARINC rule)
+			if sid.Exit.ConstraintAlt < 1000 {
+				startAlt = float64(sid.Exit.ConstraintAlt * 10)
+			} else {
+				startAlt = float64(sid.Exit.ConstraintAlt)
+			}
+		} else if sid.Entry.Fix != nil && sid.Entry.Fix.Lat != 0 {
+			// BACKFILL RULE: Extract baseline from opposite end (Entry)
+			var entryAlt float64
+			if sid.Entry.ConstraintAlt < 1000 && sid.Entry.ConstraintAlt > 0 {
+				entryAlt = float64(sid.Entry.ConstraintAlt * 10)
+			} else if sid.Entry.ConstraintAlt >= 1000 {
+				entryAlt = float64(sid.Entry.ConstraintAlt)
+			} else {
+				entryAlt = origin.Elevation + 3000.0 // True runway structural backup
+			}
+
+			// Calculate distance between Entry and Exit gates
+			distNM := geometry.DistNM(sid.Entry.Fix.Lat, sid.Entry.Fix.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+
+			// Climb slope: 1000ft per 3NM added to the entry baseline
+			startAlt = entryAlt + ((distNM / 3.0) * 1000.0)
+		} else {
+			startAlt = 10000.0
+		}
 	} else {
-		startPos = atc.Position{Lat: origin.Lat, Long: origin.Lon}
+		// Calculate the initial track from origin to destination
+		bearing := geometry.CalculateBearing(origin.Lat, origin.Lon, dest.Lat, dest.Lon)
+
+		// Project 30.0 NM forward along that track from the origin airport
+		startLat, startLon := geometry.Project(origin.Lat, origin.Lon, bearing, 30.0)
+
+		startPos = atc.Position{
+			Lat:  startLat,
+			Long: startLon,
+		}
 	}
 
 	// 3. Identify Horizontal Target (STAR Entry or Destination Center)
@@ -1321,9 +1362,50 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	targetAlt := 10000.0 // Default arrival entry alt
 	if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 		targetPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
-		targetAlt = float64(star.Entry.ConstraintAlt)
+
+		// Check if constraint is explicitly defined
+		if star.Entry.ConstraintAlt > 0 {
+			// Scaled constraint fix (handling the under-1000 ARINC rule)
+			if star.Entry.ConstraintAlt < 1000 {
+				targetAlt = float64(star.Entry.ConstraintAlt * 10)
+			} else {
+				targetAlt = float64(star.Entry.ConstraintAlt)
+			}
+		} else if star.Exit.Fix != nil && star.Exit.Fix.Lat != 0 {
+			// BACKFILL RULE: Extract baseline from opposite end (Exit)
+			var exitAlt float64
+			if star.Exit.ConstraintAlt < 1000 && star.Exit.ConstraintAlt > 0 {
+				exitAlt = float64(star.Exit.ConstraintAlt * 10)
+			} else if star.Exit.ConstraintAlt >= 1000 {
+				exitAlt = float64(star.Exit.ConstraintAlt)
+			} else {
+				exitAlt = 3000.0 // Standard terminal approach platform floor
+			}
+
+			// Calculate distance between Entry and Exit gates
+			distNM := geometry.DistNM(star.Entry.Fix.Lat, star.Entry.Fix.Lon, star.Exit.Fix.Lat, star.Exit.Fix.Lon)
+
+			// Descent slope back-projection: 1000ft per 3NM added to the exit platform floor
+			targetAlt = exitAlt + ((distNM / 3.0) * 1000.0)
+		} else {
+			targetAlt = 10000.0
+		}
 	} else {
-		targetPos = atc.Position{Lat: dest.Lat, Long: dest.Lon}
+		// project 30NM out from destination
+		// 1. Get the track from origin to destination
+		bearing := geometry.CalculateBearing(origin.Lat, origin.Lon, dest.Lat, dest.Lon)
+
+		// 2. Invert the bearing to get the reverse track looking backward from the airport
+		// (e.g., if inbound track is 090°, looking backward is 270°)
+		reverseBearing := geometry.NormalizeHeading(bearing + 180.0)
+
+		// 3. Safely project 30.0 NM backward away from the destination airport center
+		startLat, startLon := geometry.Project(dest.Lat, dest.Lon, reverseBearing, 30.0)
+
+		targetPos = atc.Position{
+			Lat:  startLat,
+			Long: startLon,
+		}
 	}
 
 	// 4. Update Lat/Lon via Linear Interpolation
@@ -1352,10 +1434,11 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 			descentProgress = 1.0 - (distToTarget / requiredDescentDist)
 		}
 		calculatedAlt = cruiseAlt - (math.Max(0, descentProgress) * altitudeToLose)
-
-		// Late-stage Procedure Assignment: Ensure STAR is assigned before Arrival phase starts
+		util.LogDebugWithLabel(ac.Registration, "elapsed cruise is %0.2f seconds - in descent phase, distance to target is %0.2f NM, required descent distance is %0.2f NM, descent progress is %0.2f%%, calculated altitude is %0.2f",
+			elapsed, distToTarget, requiredDescentDist, descentProgress*100, calculatedAlt)
+		// if we are in descent and don't have arrival procedures defined, set to vectoring
 		if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false && distToTarget < (requiredDescentDist+10.0) {
-			e.assignProcedures(ac, dest, ARRIVAL_CONTEXT)
+			ac.Flight.Vectoring = true
 		}
 	} else {
 		// --- PHASE: CLIMB or LEVEL ---
@@ -1365,8 +1448,10 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 		if elapsed < climbDurationSecs {
 			climbProgress := elapsed / climbDurationSecs
 			calculatedAlt = startAlt + (climbProgress * (cruiseAlt - startAlt))
+			util.LogDebugWithLabel(ac.Registration, "elapsed cruise is %0.2f seconds - in initial climb phase, calculated altitude is %f", elapsed, calculatedAlt)
 		} else {
 			calculatedAlt = cruiseAlt
+			util.LogDebugWithLabel(ac.Registration, "elapsed cruise is %0.2f seconds - in cruise phase, maintaining cruise altitude of %f", elapsed, calculatedAlt)
 		}
 	}
 
@@ -1441,125 +1526,155 @@ func AbsInt(v int) int {
 	return int(math.Abs(float64(v)))
 }
 
-// DetermineInitialDeparturePhase returns the initial phase of a new spawned aircraft and the estimated remaining duration
-// of the phase in seconds. We add some random seconds to avoid all aircraft transitioning at the same time.
-func (e *D9TrafficEngine) determineInitialDeparturePhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
-	delay := 0
-	switch {
-	// long term parked
-	case diff > DMINUS_PARKED_MINS:
-		//  if the departure runway is busy we add a delay based on queue length at this time - update ac.Flight.Delayed with this value
-		flow, found := e.AirportConfig[f.IcaoOrigin]
-		if found {
-			qKey := normalizeRunwayKey(f.IcaoOrigin, flow.Departure)
-			if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
-				delay = len(e.RunwayQueues[qKey]) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS
-				util.LogWithLabel(f.AircraftRegistration, "initial departure delay of %d seconds applied based on current traffic queue of %d for runway %s at %s",
-					delay, len(e.RunwayQueues[qKey]), e.AirportConfig[f.IcaoOrigin].Departure.Name, f.IcaoOrigin)
-			}
-		} else {
-			util.LogWarnWithLabel(f.AircraftRegistration, "unable to determine initial departure phase due to missing airport flow for %s", f.IcaoOrigin)
-		}
-		jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, DMINUS_STARTUP_MINS) * 60) + jitter
-		return flightphase.Parked, estimatedDuration, AbsInt((diff-DMINUS_STARTUP_MINS)*60) + jitter, delay
+func (e *D9TrafficEngine) determineInitialDeparturePhase(minsToSchedDep int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
+    delay := 0
+    switch {
+    // 1. LONG TERM PARKED (Way out before the tracking window)
+    case minsToSchedDep > DMINUS_PARKED_MINS:
+        flow, found := e.AirportConfig[f.IcaoOrigin]
+        if found {
+            qKey := normalizeRunwayKey(f.IcaoOrigin, flow.Departure)
+            if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+                delay = len(e.RunwayQueues[qKey]) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS
+                util.LogWithLabel(f.AircraftRegistration, "initial departure delay of %d seconds applied based on current traffic queue of %d for runway %s at %s",
+                    delay, len(e.RunwayQueues[qKey]), e.AirportConfig[f.IcaoOrigin].Departure.Name, f.IcaoOrigin)
+            }
+        } else {
+            util.LogWarnWithLabel(f.AircraftRegistration, "unable to determine initial departure phase due to missing airport flow for %s", f.IcaoOrigin)
+        }
+        jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_STARTUP_MINS) * 60) + jitter
+        // Keep total clamped to a realistic standard baseline if it's way out
+        totalDur := AbsInt((DMINUS_PARKED_MINS-DMINUS_STARTUP_MINS)*60) + jitter
+        if remainingDur > totalDur {
+            totalDur = remainingDur
+        }
+        return flightphase.Parked, remainingDur, totalDur, delay
 
-	// still parked but tracking towards startup
-	case diff > DMINUS_STARTUP_MINS && diff <= DMINUS_PARKED_MINS:
-		jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, DMINUS_STARTUP_MINS) * 60) + jitter
-		return flightphase.Parked, estimatedDuration, AbsInt(((DMINUS_PARKED_MINS - DMINUS_STARTUP_MINS) * 60) + jitter), delay
+    // 2. ACTIVE PRE-STARTUP PARKING
+    case minsToSchedDep > DMINUS_STARTUP_MINS && minsToSchedDep <= DMINUS_PARKED_MINS:
+        jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_STARTUP_MINS) * 60) + jitter
+        return flightphase.Parked, remainingDur, AbsInt(((DMINUS_PARKED_MINS - DMINUS_STARTUP_MINS) * 60) + jitter), delay
 
-	// startup
-	case diff > DMINUS_TAXIOUT_MINS && diff <= DMINUS_STARTUP_MINS:
-		jitter := rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, DMINUS_TAXIOUT_MINS) * 60) + jitter
-		return flightphase.Startup, estimatedDuration, AbsInt(((DMINUS_STARTUP_MINS - DMINUS_TAXIOUT_MINS) * 60) + jitter), delay
+    // 3. STARTUP
+    case minsToSchedDep > DMINUS_TAXIOUT_MINS && minsToSchedDep <= DMINUS_STARTUP_MINS:
+        jitter := rand.IntN((STARTUP_JITTER_SECONDS*2)+1) - STARTUP_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_TAXIOUT_MINS) * 60) + jitter
+        return flightphase.Startup, remainingDur, AbsInt(((DMINUS_STARTUP_MINS - DMINUS_TAXIOUT_MINS) * 60) + jitter), delay
 
-	// taxi out
-	case diff > DMINUS_TAKEOFF_MINS && diff <= DMINUS_TAXIOUT_MINS:
-		// note: no jitter for taxi phase as this will be recalculated based on distance
-		estimatedDuration := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
-		return flightphase.TaxiOut, estimatedDuration, estimatedDuration, delay
+    // 4. TAXI OUT
+    case minsToSchedDep > DMINUS_TAKEOFF_MINS && minsToSchedDep <= DMINUS_TAXIOUT_MINS:
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_TAKEOFF_MINS) * 60)
+        totalDur := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
+        return flightphase.TaxiOut, remainingDur, totalDur, delay
 
-	// takeoff - we do not permit initial spawn in takeoff phase due to runway lock charge so will be initialised in taxi out phase
-	case diff >= DMINUS_CLIMBOUT_MINS && diff <= DMINUS_TAKEOFF_MINS:
-		estimatedDuration := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
-		return flightphase.TaxiOut, estimatedDuration, AbsInt(DMINUS_TAXIOUT_MINS-DMINUS_TAKEOFF_MINS) * 60, delay
+    // 5. TAKEOFF REDIRECT: Push to TaxiOut, but scale remaining time tightly
+    case minsToSchedDep >= DMINUS_CLIMBOUT_MINS && minsToSchedDep <= DMINUS_TAKEOFF_MINS:
+        totalTaxiWindow := AbsInt(DMINUS_TAXIOUT_MINS-DMINUS_TAKEOFF_MINS) * 60
+        remainingDur := 45 // Hard fallback: Spawning close-in means they have 45 seconds left to line up
+        return flightphase.TaxiOut, remainingDur, totalTaxiWindow, delay
 
-	// climbout
-	case diff >= DMINUS_DEPARTURE_MINS && diff < DMINUS_CLIMBOUT_MINS:
-		jitter := rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, DMINUS_DEPARTURE_MINS) * 60) + jitter
-		return flightphase.Climbout, estimatedDuration, AbsInt(((DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60) + jitter), delay
+    // 6. CLIMBOUT
+    case minsToSchedDep >= DMINUS_DEPARTURE_MINS && minsToSchedDep < DMINUS_CLIMBOUT_MINS:
+        jitter := rand.IntN((CLIMBOUT_JITTER_SECONDS*2)+1) - CLIMBOUT_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_DEPARTURE_MINS) * 60) + jitter
+        return flightphase.Climbout, remainingDur, AbsInt(((DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60) + jitter), delay
 
-	// departure
-	case diff >= DMINUS_CRUISE_MINS && diff <= DMINUS_DEPARTURE_MINS:
-		jitter := rand.IntN((DEPARTURE_JITTER_SECONDS*2)+1) - DEPARTURE_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, DMINUS_CRUISE_MINS) * 60) + jitter
-		return flightphase.Departure, estimatedDuration, AbsInt(((DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60) + jitter), delay
+    // 7. DEPARTURE (En-route transition segment)
+    case minsToSchedDep >= DMINUS_CRUISE_MINS && minsToSchedDep <= DMINUS_DEPARTURE_MINS:
+        jitter := rand.IntN((DEPARTURE_JITTER_SECONDS*2)+1) - DEPARTURE_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedDep, DMINUS_CRUISE_MINS) * 60) + jitter
+        return flightphase.Departure, remainingDur, AbsInt(((DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60) + jitter), delay
 
-	default:
-		// cruise
-		tta := e.timeDiffToArrival(f)
-		jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
-		remainingCruise := (AbsDiff(tta, AMINUS_APPROACH_MINS) * 60) + jitter
-		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))),
-			AbsInt(AbsInt(diff)+tta-AMINUS_ARRIVAL_MINS) * 60, delay
-	}
+    // 8. CRUISE EXPLICIT BOUNDARY
+    case minsToSchedDep < DMINUS_CRUISE_MINS:
+        jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
+        
+        // Remaining time in cruise uses your timeDiffToScheduledArrival helper
+        tta := e.timeDiffToScheduledArrival(f)
+        remainingCruiseSecs := (AbsDiff(tta, AMINUS_ARRIVAL_MINS) * 60) + jitter
+
+        // Total Cruise Duration extraction
+        totalCruiseMins := AbsDiff(f.ArrivalHour*60+f.ArrivalMin, f.DepartureHour*60+f.DepartureMin) - AbsInt(DMINUS_DEPARTURE_MINS) - AMINUS_ARRIVAL_MINS
+        if totalCruiseMins * 60 <= remainingCruiseSecs {
+            totalCruiseMins = (remainingCruiseSecs / 60) + 15
+        }
+        totalCruiseSecs := totalCruiseMins * 60
+
+        return flightphase.Cruise, AbsInt(remainingCruiseSecs), AbsInt(totalCruiseSecs), delay
+
+    default:
+        // STALE/HISTORICAL FALLBACK:
+        // Catches any orphan tracking frames safely
+        return flightphase.Parked, 0, 0, delay
+    }
 }
 
-func (e *D9TrafficEngine) determineInitialArrivalPhase(diff int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int) {
+func (e *D9TrafficEngine) determineInitialArrivalPhase(minsToSchedArr int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int) {
 
-	switch {
-	// ARRIVAL:
-	case diff > AMINUS_APPROACH_MINS && diff <= AMINUS_ARRIVAL_MINS:
-		jitter := rand.IntN((ARRIVAL_JITTER_SECONDS*2)+1) - ARRIVAL_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, AMINUS_APPROACH_MINS) * 60) + jitter
-		return flightphase.Approach, AbsInt(((AMINUS_ARRIVAL_MINS - AMINUS_APPROACH_MINS) * 60) + jitter), estimatedDuration
+    switch {
+    // ARRIVAL
+    case minsToSchedArr > AMINUS_APPROACH_MINS && minsToSchedArr <= AMINUS_ARRIVAL_MINS:
+        jitter := rand.IntN((ARRIVAL_JITTER_SECONDS*2)+1) - ARRIVAL_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedArr, AMINUS_APPROACH_MINS) * 60) + jitter
+        return flightphase.Arrival, remainingDur, AbsInt(((AMINUS_ARRIVAL_MINS - AMINUS_APPROACH_MINS) * 60) + jitter)
 
-	// APPROACH:
-	case diff > AMINUS_FINAL_MINS && diff <= AMINUS_APPROACH_MINS:
-		jitter := rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, AMINUS_FINAL_MINS) * 60) + jitter
-		return flightphase.Approach, AbsInt(((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + jitter), estimatedDuration
+    // APPROACH:
+    case minsToSchedArr > AMINUS_FINAL_MINS && minsToSchedArr <= AMINUS_APPROACH_MINS:
+        jitter := rand.IntN((APPROACH_JITTER_SECONDS*2)+1) - APPROACH_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedArr, AMINUS_FINAL_MINS) * 60) + jitter
+        return flightphase.Approach, remainingDur, AbsInt(((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + jitter)
 
-	// FINAL: we do not permit initial spawn in final phase due to runway lock charge so will be initialised in approach phase
-	case diff > AMINUS_LAND_MINS && diff <= AMINUS_FINAL_MINS:
-		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
-		return flightphase.Approach, estimatedDuration, estimatedDuration
+    // FINAL: Redirect to Approach, but scale remaining time based on proximity to landing
+    case minsToSchedArr > AMINUS_LAND_MINS && minsToSchedArr <= AMINUS_FINAL_MINS:
+        totalApproachWindow := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
+        remainingDur := AbsInt(minsToSchedArr-AMINUS_LAND_MINS) * 60 
+        return flightphase.Approach, remainingDur, totalApproachWindow
 
-	// BRAKING: we do not permit initial spawn in braking phase due to runway lock charge so will be initialised in approach out phase
-	case diff > AMINUS_BRAKING && diff <= AMINUS_LAND_MINS:
-		estimatedDuration := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
-		return flightphase.Approach, estimatedDuration, estimatedDuration
+    // BRAKING: Redirect to Approach with tight remaining timeline
+    case minsToSchedArr > AMINUS_BRAKING && minsToSchedArr <= AMINUS_LAND_MINS:
+        totalApproachWindow := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
+        remainingDur := 30 // Hard fallback: Give it 30 seconds left to flush out safely
+        return flightphase.Approach, remainingDur, totalApproachWindow
 
-	// TAXI IN:
-	case diff > AMINUS_TAXIIN_MINS && diff <= AMINUS_BRAKING:
-		// note: no jitter for taxi phase as this will be recalculated based on distance
-		estimatedDuration := AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60
-		return flightphase.TaxiIn, estimatedDuration, estimatedDuration
+    // TAXI IN:
+    case minsToSchedArr > AMINUS_TAXIIN_MINS && minsToSchedArr <= AMINUS_BRAKING:
+        remainingDur := AbsInt(minsToSchedArr-AMINUS_TAXIIN_MINS) * 60
+        return flightphase.TaxiIn, remainingDur, AbsInt(AMINUS_BRAKING-AMINUS_TAXIIN_MINS) * 60
 
-	// SHUTDOWN:
-	case diff > AMINUS_SHUTDOWN_MINS && diff <= AMINUS_TAXIIN_MINS:
-		jitter := rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, AMINUS_SHUTDOWN_MINS) * 60) + jitter
-		return flightphase.Shutdown, AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60, estimatedDuration
+    // SHUTDOWN:
+    case minsToSchedArr > AMINUS_SHUTDOWN_MINS && minsToSchedArr <= AMINUS_TAXIIN_MINS:
+        jitter := rand.IntN((SHUTDOWN_JITTER_SECONDS*2)+1) - SHUTDOWN_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedArr, AMINUS_SHUTDOWN_MINS) * 60) + jitter
+        return flightphase.Shutdown, remainingDur, AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60
 
-	// PARKED:
-	case diff >= AMINUS_PARKED_MINS && diff <= AMINUS_SHUTDOWN_MINS:
-		jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
-		estimatedDuration := (AbsDiff(diff, AMINUS_PARKED_MINS) * 60) + jitter
-		return flightphase.Parked, AbsInt(AMINUS_SHUTDOWN_MINS-AMINUS_PARKED_MINS) * 60, estimatedDuration
+    // PARKED:
+    case minsToSchedArr >= AMINUS_PARKED_MINS && minsToSchedArr <= AMINUS_SHUTDOWN_MINS:
+        jitter := rand.IntN((PARKED_JITTER_SECONDS*2)+1) - PARKED_JITTER_SECONDS
+        remainingDur := (AbsDiff(minsToSchedArr, AMINUS_PARKED_MINS) * 60) + jitter
+        return flightphase.Parked, remainingDur, AbsInt(AMINUS_SHUTDOWN_MINS-AMINUS_PARKED_MINS) * 60
 
-	default:
-		// CRUISE:
-		tta := e.timeDiffToArrival(f)
-		jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
-		remainingCruise := (AbsDiff(tta, DMINUS_DEPARTURE_MINS) * 60) + jitter
-		return flightphase.Cruise, int(math.Max(0, float64(remainingCruise))),
-			AbsInt(AbsInt(diff)+tta-AMINUS_ARRIVAL_MINS) * 60
-	}
+    // CRUISE EXPLICIT CASE:
+    case minsToSchedArr > AMINUS_ARRIVAL_MINS:
+        jitter := rand.IntN((CRUISE_JITTER_SECONDS*2)+1) - CRUISE_JITTER_SECONDS
+
+        remainingCruiseMins := minsToSchedArr - AMINUS_ARRIVAL_MINS
+        remainingCruiseSecs := (remainingCruiseMins * 60) + jitter
+
+        totalCruiseMins := AbsDiff(f.ArrivalHour*60+f.ArrivalMin, f.DepartureHour*60+f.DepartureMin) - DMINUS_DEPARTURE_MINS - AMINUS_ARRIVAL_MINS
+        if totalCruiseMins <= remainingCruiseMins {
+            totalCruiseMins = remainingCruiseMins + 15
+        }
+        totalCruiseSecs := totalCruiseMins * 60
+
+        return flightphase.Cruise, AbsInt(remainingCruiseSecs), AbsInt(totalCruiseSecs)
+
+    default:
+        // STALE/HISTORICAL FALLBACK:
+        // SAfety net catches flights that are way past their schedule window so they don't spawn in Cruise
+        return flightphase.Parked, 0, 0
+    }
 }
 
 func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
@@ -2121,7 +2236,7 @@ func normalizeRunwayKey(icao string, rwy *atc.Runway) string {
 	return fmt.Sprintf("%s-%s-%s", icao, recip, rwy.Name)
 }
 
-func 	getReciprocalName(name string) string {
+func getReciprocalName(name string) string {
 	// 1. Separate numbers from letters
 	var numPart int
 	var letterPart string

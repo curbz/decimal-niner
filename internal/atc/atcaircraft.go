@@ -40,8 +40,8 @@ type Flight struct {
 	AssignedRunway      string
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
-	Vectoring			bool
-	AssignedHold		*Hold
+	Vectoring           bool
+	AssignedHold        *Hold
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo
@@ -257,7 +257,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 		scheds, found = s.FlightSchedules[key]
 		if found {
 			for _, f := range scheds {
-				schedDepMinsSinceMidnight := f.DepatureHour*60 + f.DepartureMin + adjDep
+				schedDepMinsSinceMidnight := f.DepartureHour*60 + f.DepartureMin + adjDep
 				schedArrMinsSinceMidnight := f.ArrivalHour*60 + f.ArrivalMin + adjArr
 				if simMinsSinceMidnight >= schedDepMinsSinceMidnight && simMinsSinceMidnight <= schedArrMinsSinceMidnight {
 					candidateScheds = append(candidateScheds, f)

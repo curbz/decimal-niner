@@ -101,7 +101,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KJFK",
 						IcaoDest:           "KLAX",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0, // Monday
 						ArrivalHour:        13,
@@ -125,7 +125,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KJFK",
 						IcaoDest:           "KLAX",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0,
 						ArrivalHour:        13, // actual scheduled arrival is 13:15
@@ -149,7 +149,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KJFK",
 						IcaoDest:           "KLAX",
-						DepatureHour:       10, // actual scheduled departure is 10:00 am
+						DepartureHour:      10, // actual scheduled departure is 10:00 am
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0,
 						ArrivalHour:        13,
@@ -173,7 +173,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "EGLL",
 						IcaoDest:           "LFPG",
-						DepatureHour:       22,
+						DepartureHour:      22,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 0, // Monday
 						ArrivalHour:        7,
@@ -206,7 +206,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KATL",
 						IcaoDest:           "KMIA",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
 						ArrivalHour:        12,
@@ -228,7 +228,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KDFW",
 						IcaoDest:           "KORD",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
 						ArrivalHour:        13,
@@ -250,7 +250,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KDFW",
 						IcaoDest:           "KORD",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
 						ArrivalHour:        13,
@@ -274,7 +274,7 @@ func TestAddFlightPlan(t *testing.T) {
 					{
 						IcaoOrigin:         "KATL",
 						IcaoDest:           "KMIA",
-						DepatureHour:       10,
+						DepartureHour:      10,
 						DepartureMin:       0,
 						DepartureDayOfWeek: 1,
 						ArrivalHour:        12,

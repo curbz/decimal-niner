@@ -32,6 +32,8 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 	schedule := &flightplan.ScheduledFlight{
 		AircraftRegistration: "TEST123",
 		IcaoOrigin:           "EGLL",
+		DepartureHour:		  baseTime.Hour(),
+		DepartureMin:         baseTime.Minute(),	
 		ArrivalHour:          scheduleTime.Hour(),
 		ArrivalMin:           scheduleTime.Minute(),
 	}
@@ -46,22 +48,22 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 		runwayQueues  map[string]map[string]time.Time
 		wantPhase     flightphase.FlightPhase
 		wantDelay     int
-		wantEstExact  bool
-		wantEstMin    int
-		wantEstMax    int
 		wantRemExact  bool
 		wantRemMin    int
 		wantRemMax    int
+		wantDurExact  bool
+		wantDurMin    int
+		wantDurMax    int
 	}{
 		{
 			name:       "parked_long_term_no_config",
 			diff:       30,
 			wantPhase:  flightphase.Parked,
 			wantDelay:  0,
-			wantEstMin: 780,
-			wantEstMax: 1020,
 			wantRemMin: 780,
 			wantRemMax: 1020,
+			wantDurMin: 780,
+			wantDurMax: 1020,
 		},
 		{
 			name: "parked_long_term_with_queue_delay",
@@ -80,73 +82,74 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 			},
 			wantPhase:  flightphase.Parked,
 			wantDelay:  (TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD + 1) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS,
-			wantEstMin: 780,
-			wantEstMax: 1020,
 			wantRemMin: 780,
 			wantRemMax: 1020,
+			wantDurMin: 780,
+			wantDurMax: 1020,
 		},
 		{
 			name:       "parked_tracking_to_startup",
 			diff:       20,
 			wantPhase:  flightphase.Parked,
-			wantEstMin: 180,
-			wantEstMax: 420,
-			wantRemMin: 480,
-			wantRemMax: 720,
+			wantRemMin: 180,
+			wantRemMax: 420,
+			wantDurMin: 480,
+			wantDurMax: 720,
 		},
 		{
 			name:       "startup",
 			diff:       12,
 			wantPhase:  flightphase.Startup,
-			wantEstMin: 0,
-			wantEstMax: 240,
-			wantRemMin: 180,
-			wantRemMax: 420,
+			wantRemMin: 0,
+			wantRemMax: 240,
+			wantDurMin: 180,
+			wantDurMax: 420,
 		},
 		{
 			name:         "taxi_out",
 			diff:         5,
 			wantPhase:    flightphase.TaxiOut,
-			wantEstExact: true,
-			wantEstMin:   600,
 			wantRemExact: true,
-			wantRemMin:   600,
+			wantRemMin:   300,
+			wantDurExact: true,
+			wantDurMin:   600,
 		},
 		{
 			name:         "takeoff_is_taxi_out",
 			diff:         0,
 			wantPhase:    flightphase.TaxiOut,
-			wantEstExact: true,
-			wantEstMin:   600,
 			wantRemExact: true,
-			wantRemMin:   600,
+			wantRemMin:   45,
+			wantDurExact: true,
+			wantDurMin:   600,
 		},
 		{
 			name:       "climbout",
 			diff:       -3,
 			wantPhase:  flightphase.Climbout,
-			wantEstMin: 80,
-			wantEstMax: 160,
-			wantRemMin: 200,
-			wantRemMax: 280,
+			wantRemMin: 80,
+			wantRemMax: 160,
+			wantDurMin: 200,
+			wantDurMax: 280,
 		},
 		{
 			name:       "departure",
 			diff:       -10,
 			wantPhase:  flightphase.Departure,
-			wantEstMin: 180,
-			wantEstMax: 420,
-			wantRemMin: 480,
-			wantRemMax: 720,
+			wantRemMin: 180,
+			wantRemMax: 420,
+			wantDurMin: 480,
+			wantDurMax: 720,
 		},
 		{
 			name:         "cruise_default",
 			diff:         -20,
 			wantPhase:    flightphase.Cruise,
-			wantEstMin:   1260,
-			wantEstMax:   1500,
-			wantRemExact: true,
-			wantRemMin:   2100,
+			wantRemExact: false,
+			wantRemMin:   780,
+			wantRemMax:   1020,
+			wantDurExact: true,
+			wantDurMin:   1860,
 		},
 	}
 
@@ -156,26 +159,26 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 			e.AirportConfig = tc.airportConfig
 			e.RunwayQueues = tc.runwayQueues
 
-			phase, estimated, remaining, delay := e.determineInitialDeparturePhase(tc.diff, schedule)
+			phase, remaining, totalDur, delay := e.determineInitialDeparturePhase(tc.diff, schedule)
 			if phase != tc.wantPhase {
 				t.Fatalf("phase: got %v want %v", phase, tc.wantPhase)
 			}
 			if delay != tc.wantDelay {
 				t.Fatalf("delay: got %d want %d", delay, tc.wantDelay)
 			}
-			if tc.wantEstExact {
-				if estimated != tc.wantEstMin {
-					t.Fatalf("estimated duration: got %d want %d", estimated, tc.wantEstMin)
-				}
-			} else {
-				assertRange(t, "estimated duration", estimated, tc.wantEstMin, tc.wantEstMax)
-			}
 			if tc.wantRemExact {
 				if remaining != tc.wantRemMin {
-					t.Fatalf("remaining duration: got %d want %d", remaining, tc.wantRemMin)
+					t.Fatalf("estimated duration: got %d want %d", remaining, tc.wantRemMin)
 				}
 			} else {
-				assertRange(t, "remaining duration", remaining, tc.wantRemMin, tc.wantRemMax)
+				assertRange(t, "estimated duration", remaining, tc.wantRemMin, tc.wantRemMax)
+			}
+			if tc.wantDurExact {
+				if totalDur != tc.wantDurMin {
+					t.Fatalf("remaining duration: got %d want %d", totalDur, tc.wantDurMin)
+				}
+			} else {
+				assertRange(t, "remaining duration", totalDur, tc.wantDurMin, tc.wantDurMax)
 			}
 		})
 	}
@@ -204,7 +207,7 @@ func TestDetermineInitialArrivalPhase(t *testing.T) {
 		{
 			name:       "arrival_phase",
 			diff:       10,
-			wantPhase:  flightphase.Approach,
+			wantPhase:  flightphase.Arrival,
 			wantEstMin: 60,
 			wantEstMax: 300,
 			wantRemMin: 360,

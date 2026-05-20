@@ -20,7 +20,7 @@ type ScheduledFlight struct {
 	IcaoOrigin           string
 	IcaoDest             string
 	DepartureDayOfWeek   int
-	DepatureHour         int
+	DepartureHour        int
 	DepartureMin         int
 	ArrivalDayOfWeek     int
 	ArrivalHour          int
@@ -37,7 +37,7 @@ const (
 	ALIGN_SEARCH_MAX      = 128
 	INVALID_LEG_TOLERANCE = 2
 )
- 
+
 var (
 	icaoRe = regexp.MustCompile(`^[A-Z]{4}$`)
 	// Regex breakdown:
@@ -134,7 +134,7 @@ func cleanAirlineName(fileName string) string {
 			break
 		}
 	}
-	
+
 	// 4. Final trim for safety
 	return strings.TrimSpace(result)
 }
@@ -366,7 +366,7 @@ func collectLegs(data []byte) ([]ScheduledFlight, map[string]bool) {
 				IcaoOrigin:           "",
 				IcaoDest:             icaoDest,
 				DepartureDayOfWeek:   dd,
-				DepatureHour:         depHour,
+				DepartureHour:        depHour,
 				DepartureMin:         depMin,
 				ArrivalDayOfWeek:     ad,
 				ArrivalHour:          arrHour,
