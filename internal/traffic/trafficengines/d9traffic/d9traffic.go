@@ -1380,9 +1380,6 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
-	if ac.Registration == "G-TTNL" {
-		fmt.Println("breakpoint")
-	}
 	if totalDuration <= 0 {
 		return
 	}
@@ -1537,14 +1534,17 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	}
 
 	// 6. Apply State
-	ac.Flight.Position.Altitude = calculatedAlt
-	hd := geometry.CalculateBearing(
-		ac.Flight.Position.Lat,
-		ac.Flight.Position.Long,
-		targetPos.Lat,
-		targetPos.Long,
-	)
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(hd)
+    ac.Flight.Position.Altitude = calculatedAlt
+    
+    // Calculate heading based on the underlying path track vectors 
+    hd := geometry.CalculateBearing(
+        startPos.Lat,
+        startPos.Long,
+        targetPos.Lat,
+        targetPos.Long,
+    )
+
+    ac.Flight.Position.Heading = geometry.NormalizeHeading(hd)
 }
 
 func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {
