@@ -527,10 +527,10 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	// set pre-requisite states
 	e.atcService.SetFlightPhaseClass(newAc)
 	// arrival runway must be assigned BEFORE assigning runway access point
-	if initialPhaseIdx < flightphase.TaxiIn.Index() {
+	if initialPhaseIdx <= flightphase.TaxiIn.Index() {
 		newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival.Name
 	}
-	if initialPhaseIdx >= flightphase.Braking.Index() && initialPhaseIdx < flightphase.Parked.Index() {
+	if initialPhaseIdx >= flightphase.Braking.Index() && initialPhaseIdx <= flightphase.Shutdown.Index()+1 {
 		// assign parking BEFORE runway exit point as this may influence the selected exit
 		e.assignParking(newAc, airport)
 		e.assignRunwayAccessPoint(newAc, airport, ARRIVAL_CONTEXT)
