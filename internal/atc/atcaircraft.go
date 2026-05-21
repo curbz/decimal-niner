@@ -49,9 +49,6 @@ type Flight struct {
 	DepartureDelay      int
 	ArrivalAccess       *AccessPoint
 	DepartureAccess     *AccessPoint
-	InterceptPointLat 	float64
-    InterceptPointLon 	float64
-    InterceptCaptured 	bool    
 }
 
 type Position struct {

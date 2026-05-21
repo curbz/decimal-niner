@@ -70,8 +70,8 @@ const (
 
 	// time difference (minutes) in relation to scheduled arrival time - this is NOT a duration but relative time to arrival
 	AMINUS_ARRIVAL_MINS  = 15
-	AMINUS_APPROACH_MINS = 5
-	AMINUS_FINAL_MINS    = 1
+	AMINUS_APPROACH_MINS = 6
+	AMINUS_FINAL_MINS    = 2
 	AMINUS_LAND_MINS     = 0
 	AMINUS_BRAKING       = -1
 	AMINUS_TAXIIN_MINS   = -2
@@ -1125,32 +1125,53 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Arrival:
-		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 40.0)
-		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 15.0)
-		targetAlt = 4000.0
-		if star := ac.Flight.AssignedSTAR; star != nil {
-			if star.Entry.Fix.Lat != 0 {
-				startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
-				targetAlt = float64(star.Entry.ConstraintAlt)
-			}
-			if star.Exit.Fix.Lat != 0 {
-				targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
-				targetAlt = float64(star.Exit.ConstraintAlt)
-			}
-		}
-		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+        // 1. Establish initial entry point (Default 40NM out on extended centerline)
+        if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
+            startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
+            targetAlt = float64(star.Entry.ConstraintAlt)
+        } else {
+            startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 40.0)
+            targetAlt = 5000.0 // Sane baseline altitude for terminal entry
+        }
 
-	case flightphase.Approach:
-        // 1. Establish the Entry point (Phase Start)
+        // 2. Establish target exit point (15NM gate)
+        if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
+            targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
+            targetAlt = float64(star.Exit.ConstraintAlt)
+        } else {
+            // No STAR: Target the 15NM extended centerline point
+            centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+
+            // Offset 5NM to the left or right side based on registration parity
+            offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
+            if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
+                offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
+            }
+
+            // The Arrival target becomes the exact offset gate where Approach will begin!
+            targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 5.0)
+            targetAlt = 4000.0
+        }
+        heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+
+    case flightphase.Approach:
+        // 1. Establish the Entry point (Must perfectly match Arrival's exit target!)
         if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
             startPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
         } else {
-            startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 15.0)
+            // No STAR: Re-calculate the exact same 15NM offset gate used above
+            centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+            
+            offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
+            if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
+                offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
+            }
+            startPos.Lat, startPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 5.0)
         }
 
-        // 2. Establish the Final Exit point (Phase Target: FAF at 4.0NM out)
+        // 2. Establish Final Exit point (FAF at 4.0NM out)
         finalTargetPos := atc.Position{}
-        finalTargetPos.Lat, finalTargetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 4.0)
+        finalTargetPos.Lat, finalTargetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 4.0)
         
         targetAlt = float64(rwy.FAFalt)
         if targetAlt == 0 {
@@ -1159,43 +1180,31 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 
         // 3. Calculate the Intermediate Intercept Gate (Localizer Capture at 10.0NM out)
         gatePos := atc.Position{}
-        gatePos.Lat, gatePos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 10.0)
-        
-        // Mid-point target altitude profile calculation (3-to-1 ratio standard)
+        gatePos.Lat, gatePos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 10.0)
         gateAlt := targetAlt + (6.0 * 318.0) 
 
-        // 4. Time-Split Vector Segment Logic
-        // We split the phase time: 60% flying to the gate, 40% riding the centerline
+        // 4. Time-Split Vector Segment Logic (60% to gate, 40% on centerline)
         splitPoint := 0.60 
 
         if progress < splitPoint {
-            // SEGMENT A: Intercept Track (Flying to the 10NM Extended Centerline Gate)
-            // Normalize progress from 0.0 -> 1.0 within the first 60% window
+            // SEGMENT A: Tracking from the 15NM offset gate to the 10NM localizer gate
             segProgress := progress / splitPoint
 
-            targetPos = gatePos
-            targetAlt = gateAlt
-            
-            // Re-calculate progress vector mapping for segment A
-            ac.Flight.Position.Lat = startPos.Lat + (segProgress * (targetPos.Lat - startPos.Lat))
-            ac.Flight.Position.Long = startPos.Long + (segProgress * (targetPos.Long - startPos.Long))
-            heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+            ac.Flight.Position.Lat = startPos.Lat + (segProgress * (gatePos.Lat - startPos.Lat))
+            ac.Flight.Position.Long = startPos.Long + (segProgress * (gatePos.Long - startPos.Long))
+            ac.Flight.Position.Altitude = startAlt + (segProgress * (gateAlt - startAlt))
+            heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, gatePos.Lat, gatePos.Long)
         } else {
-            // SEGMENT B: Localizer Track (Locked on Runway Heading from 10NM down to 4NM)
-            // Normalize progress from 0.0 -> 1.0 within the remaining 40% window
+            // SEGMENT B: Locked on Runway Centerline (10NM down to FAF)
             segProgress := (progress - splitPoint) / (1.0 - splitPoint)
 
-            // Shift the tracking boundaries to ride from the Gate to the FAF
-            startPos = gatePos
-            startAlt = gateAlt // Modifying local method state baseline
-            targetPos = finalTargetPos
-            
-            // Re-calculate progress vector mapping for segment B
-            ac.Flight.Position.Lat = startPos.Lat + (segProgress * (targetPos.Lat - startPos.Lat))
-            ac.Flight.Position.Long = startPos.Long + (segProgress * (targetPos.Long - startPos.Long))
+            ac.Flight.Position.Lat = gatePos.Lat + (segProgress * (finalTargetPos.Lat - gatePos.Lat))
+            ac.Flight.Position.Long = gatePos.Long + (segProgress * (finalTargetPos.Long - gatePos.Long))
+            ac.Flight.Position.Altitude = gateAlt + (segProgress * (targetAlt - gateAlt))
             heading = rwy.Heading
         }
-
+        
+        ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
 	case flightphase.Final:
 		// Start: FAF (4.0NM out)
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 4.0)
@@ -1217,22 +1226,18 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 	}
 
 	// --- Final Move ---
-	if phase != flightphase.Approach {
-		ac.Flight.Position.Lat = startPos.Lat + (progress * (targetPos.Lat - startPos.Lat))
-		ac.Flight.Position.Long = startPos.Long + (progress * (targetPos.Long - startPos.Long))
-		ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-
-		// Override vertical interpolation for ground phases
-		if phase == flightphase.Takeoff || phase == flightphase.Braking || phase == flightphase.TaxiOut || phase == flightphase.TaxiIn {
-			ac.Flight.Position.Altitude = targetAlt
-		} else {
-			ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
-		}
-	} else {
-        // For approach phase, just apply the calculated heading and altitude context smoothly
+    if phase != flightphase.Approach {
+        ac.Flight.Position.Lat = startPos.Lat + (progress * (targetPos.Lat - startPos.Lat))
+        ac.Flight.Position.Long = startPos.Long + (progress * (targetPos.Long - startPos.Long))
         ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-        ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
+
+        if phase == flightphase.Takeoff || phase == flightphase.Braking || phase == flightphase.TaxiOut || phase == flightphase.TaxiIn {
+            ac.Flight.Position.Altitude = targetAlt
+        } else {
+            ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
+        }
     }
+    // Note: flightphase.Approach is completely self-contained, preventing cross-contamination from global progress ratios.
 
 	// Safety Check: ensure calculated values are correct
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
@@ -2383,23 +2388,4 @@ func (e *D9TrafficEngine) assignRunwayAccessPoint(ac *atc.Aircraft, ap *atc.Airp
 		ac.Flight.DepartureAccess = selected
 	}
 
-}
-
-func (e *D9TrafficEngine) initializeApproachVectors(ac *atc.Aircraft, ap *atc.Airport) {
-    rwy, exists := ap.Runways[ac.Flight.AssignedRunway]
-    if !exists {
-        return
-    }
-
-    // 1. Get the reciprocal heading of the runway (looking outbound into the approach sector)
-    recipHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
-
-    // 2. Project an intercept gate 10 Nautical Miles out along the extended centerline
-    // Adjust 10.0 based on how far out you want the clean turn to start
-    gateLat, gateLon := geometry.Project(rwy.Lat, rwy.Lon, recipHeading, 10.0)
-
-    // 3. Save these to the aircraft's volatile memory
-    ac.Flight.InterceptPointLat = gateLat
-    ac.Flight.InterceptPointLon = gateLon
-    ac.Flight.InterceptCaptured = false
 }
