@@ -755,6 +755,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		// --- DEPARTURE FLOW ---
 		case flightphase.Parked:
+			// Check for Startup transition
 			if ac.Flight.Phase.Class == flightclass.PostflightParked {
 				e.endFlight(ac) // Cleanup logic
 				continue
@@ -765,6 +766,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.Startup:
+			// Check for TaxiOut transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure.Name
 				e.assignProcedures(ac, airport, DEPARTURE_CONTEXT)
@@ -777,7 +779,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiOut:
-			e.updateTaxiPosition(ac, airport, true)
+			// Check for Takeoff transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac) {
 					util.LogWithLabel(ac.Registration, "active departure runway %s is occupied at %s - remaining in TaxiOut phase",
@@ -798,33 +800,41 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 						"unable to position aircraft at runway threshold - runway %s not found at airport %s",
 						ac.Flight.AssignedRunway, airport.ICAO)
 				}
+				e.updateLinearPosition(ac)
+			} else {
+				e.updateTaxiPosition(ac, airport, true)
 			}
 
 		case flightphase.Takeoff:
-			e.updateLinearPosition(ac)
+			// Check for Climbout transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac)
 				dur := (DMINUS_CLIMBOUT_MINS - DMINUS_DEPARTURE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Climbout, dur, CLIMBOUT_JITTER_SECONDS)
 			}
+			e.updateLinearPosition(ac)
 
 		case flightphase.Climbout:
-			e.updateLinearPosition(ac)
+			// Check for Departure transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				dur := (DMINUS_DEPARTURE_MINS - DMINUS_CRUISE_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Departure, dur, DEPARTURE_JITTER_SECONDS)
 			}
+			e.updateLinearPosition(ac)
 
 		case flightphase.Departure:
-			e.updateLinearPosition(ac)
+			// Check for Cruise transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				tta := e.timeDiffToScheduledArrival(f) // Minutes until scheduled arrival
 				dur := (tta - AMINUS_ARRIVAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Cruise, dur, CRUISE_JITTER_SECONDS)
+				e.updateCruisePosition(ac)
+			} else {
+				e.updateLinearPosition(ac)
 			}
 
 		case flightphase.Cruise:
-			e.updateCruisePosition(ac)
+			// Check for Arrival transition
 			tta := e.timeDiffToScheduledArrival(f) // Minutes until scheduled arrival
 			if tta <= AMINUS_ARRIVAL_MINS {
 				// we are transitioning to arrival so assign or replace any earlier assigned runway
@@ -834,15 +844,17 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				}
 				durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Arrival, durSecs, ARRIVAL_JITTER_SECONDS)
+				e.updateLinearPosition(ac)
 				util.LogWithLabel(ac.Registration, "commencing arrival into %s (TTA: %d mins)",
 					f.IcaoDest, tta)
 			} else {
+				e.updateCruisePosition(ac)
 				util.LogWithLabel(ac.Registration, "cruising... %d minutes until arrival window",
 					tta-AMINUS_APPROACH_MINS)
 			}
 
 		case flightphase.Arrival:
-			e.updateLinearPosition(ac)
+			// Check for Approach transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				qKey := normalizeRunwayKey(airport.ICAO, e.AirportConfig[airport.ICAO].Arrival)
 				if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
@@ -850,47 +862,56 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					e.atcService.AssignHold(ac, airport.ICAO)
 					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
 					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 				} else {
 					// start approach
 					dur := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 					e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
+					e.updateLinearPosition(ac)
 				}
+			} else {
+				e.updateLinearPosition(ac)
 			}
 
-		case flightphase.Holding:
-			e.updateHoldingPosition(ac, airport)
+		case flightphase.Holding:	
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.tryExitHold(ac, airport)
+			} else {
+				e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 			}
 
 		case flightphase.Approach:
-			e.updateLinearPosition(ac)
+			// Check for Final transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
 					util.LogWithLabel(ac.Registration, "on approach: active arrival runway %s is occupied at %s - remaining in approach phase",
 						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
-					continue
+				} else {
+					dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
+					e.transitionToPhase(ac, flightphase.Final, dur, 0)
 				}
-				dur := (AMINUS_FINAL_MINS - AMINUS_LAND_MINS) * 60
-				e.transitionToPhase(ac, flightphase.Final, dur, 0)
 			}
+			e.updateLinearPosition(ac)
 
 		case flightphase.Final:
-			e.updateLinearPosition(ac)
+			// Check for Braking transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
 					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
 						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
 					e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
-					continue
+					e.updateGoAroundPosition(ac, airport)
+				} else {
+					dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
+					e.transitionToPhase(ac, flightphase.Braking, dur, 0)
+					ac.Flight.Position.Altitude = airport.Elevation
+					e.updateLinearPosition(ac)
 				}
-				dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
-				e.transitionToPhase(ac, flightphase.Braking, dur, 0)
-				ac.Flight.Position.Altitude = airport.Elevation
+			} else {
+				e.updateLinearPosition(ac)
 			}
 
 		case flightphase.GoAround:
-			e.updateGoAroundPosition(ac, airport)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
 				// Randomized hold or back into approach flow
@@ -899,20 +920,24 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 					e.atcService.AssignHold(ac, airport.ICAO)
 					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
 					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 				} else {
 					// send back around to approach
 					e.tryExitHold(ac, airport)
 				}
+			} else {
+				e.updateGoAroundPosition(ac, airport)
 			}
 
 		case flightphase.Braking:
-			e.updateLinearPosition(ac)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
 				e.assignParking(ac, airport)
 				e.assignRunwayAccessPoint(ac, airport, ARRIVAL_CONTEXT)
 				dur := e.calculateTaxiDuration(ac, airport, ARRIVAL_CONTEXT)
 				e.transitionToPhase(ac, flightphase.TaxiIn, dur, 0)
+			} else {
+				e.updateLinearPosition(ac)
 			}
 
 		case flightphase.TaxiIn:
@@ -1012,6 +1037,7 @@ func (e *D9TrafficEngine) assignParking(ac *atc.Aircraft, airport *atc.Airport) 
 	}
 }
 
+// updateLinearPosition handles the position updates for Takeoff, Climbout, Departure, Arrival, Approach, Final, and Braking phases.
 func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
@@ -1115,19 +1141,60 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Approach:
-		// FIX: Start at STAR Exit if available, otherwise 15NM gate
-		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
-			startPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
-		} else {
-			startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 15.0)
-		}
-		// Target: FAF (4.0NM out)
-		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 4.0)
-		targetAlt = float64(rwy.FAFalt)
-		if targetAlt == 0 {
-			targetAlt = dest.Elevation + 1500
-		}
-		heading = rwy.Heading
+        // 1. Establish the Entry point (Phase Start)
+        if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
+            startPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
+        } else {
+            startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 15.0)
+        }
+
+        // 2. Establish the Final Exit point (Phase Target: FAF at 4.0NM out)
+        finalTargetPos := atc.Position{}
+        finalTargetPos.Lat, finalTargetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 4.0)
+        
+        targetAlt = float64(rwy.FAFalt)
+        if targetAlt == 0 {
+            targetAlt = dest.Elevation + 1500
+        }
+
+        // 3. Calculate the Intermediate Intercept Gate (Localizer Capture at 10.0NM out)
+        gatePos := atc.Position{}
+        gatePos.Lat, gatePos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 10.0)
+        
+        // Mid-point target altitude profile calculation (3-to-1 ratio standard)
+        gateAlt := targetAlt + (6.0 * 318.0) 
+
+        // 4. Time-Split Vector Segment Logic
+        // We split the phase time: 60% flying to the gate, 40% riding the centerline
+        splitPoint := 0.60 
+
+        if progress < splitPoint {
+            // SEGMENT A: Intercept Track (Flying to the 10NM Extended Centerline Gate)
+            // Normalize progress from 0.0 -> 1.0 within the first 60% window
+            segProgress := progress / splitPoint
+
+            targetPos = gatePos
+            targetAlt = gateAlt
+            
+            // Re-calculate progress vector mapping for segment A
+            ac.Flight.Position.Lat = startPos.Lat + (segProgress * (targetPos.Lat - startPos.Lat))
+            ac.Flight.Position.Long = startPos.Long + (segProgress * (targetPos.Long - startPos.Long))
+            heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+        } else {
+            // SEGMENT B: Localizer Track (Locked on Runway Heading from 10NM down to 4NM)
+            // Normalize progress from 0.0 -> 1.0 within the remaining 40% window
+            segProgress := (progress - splitPoint) / (1.0 - splitPoint)
+
+            // Shift the tracking boundaries to ride from the Gate to the FAF
+            startPos = gatePos
+            startAlt = gateAlt // Modifying local method state baseline
+            targetPos = finalTargetPos
+            
+            // Re-calculate progress vector mapping for segment B
+            ac.Flight.Position.Lat = startPos.Lat + (segProgress * (targetPos.Lat - startPos.Lat))
+            ac.Flight.Position.Long = startPos.Long + (segProgress * (targetPos.Long - startPos.Long))
+            heading = rwy.Heading
+        }
 
 	case flightphase.Final:
 		// Start: FAF (4.0NM out)
@@ -1150,16 +1217,22 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 	}
 
 	// --- Final Move ---
-	ac.Flight.Position.Lat = startPos.Lat + (progress * (targetPos.Lat - startPos.Lat))
-	ac.Flight.Position.Long = startPos.Long + (progress * (targetPos.Long - startPos.Long))
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+	if phase != flightphase.Approach {
+		ac.Flight.Position.Lat = startPos.Lat + (progress * (targetPos.Lat - startPos.Lat))
+		ac.Flight.Position.Long = startPos.Long + (progress * (targetPos.Long - startPos.Long))
+		ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
 
-	// Override vertical interpolation for ground phases
-	if phase == flightphase.Takeoff || phase == flightphase.Braking || phase == flightphase.TaxiOut || phase == flightphase.TaxiIn {
-		ac.Flight.Position.Altitude = targetAlt
+		// Override vertical interpolation for ground phases
+		if phase == flightphase.Takeoff || phase == flightphase.Braking || phase == flightphase.TaxiOut || phase == flightphase.TaxiIn {
+			ac.Flight.Position.Altitude = targetAlt
+		} else {
+			ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
+		}
 	} else {
-		ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
-	}
+        // For approach phase, just apply the calculated heading and altitude context smoothly
+        ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+        ac.Flight.Position.Altitude = startAlt + (progress * (targetAlt - startAlt))
+    }
 
 	// Safety Check: ensure calculated values are correct
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
@@ -1254,23 +1327,26 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 	ac.Flight.Position.Altitude = airport.Elevation
 }
 
-func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, airport *atc.Airport) {
+func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
 	elapsed := e.atcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
 
 	// 4-minute pattern: 2x 1min straights, 2x 1min 180° turns
-	const cycleTime = 240.0
+	const cycleTime = HOLDING_MIN_DURATION_MINS * 60
 	t := math.Mod(elapsed, cycleTime) / cycleTime
 
-	rwy := e.atcService.GetAirportRunway(airport.ICAO, ac.Flight.AssignedRunway)
-	// Anchor the hold 10NM out from the threshold
-	holdCenterLat, holdCenterLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 10.0)
-
 	// Parametric oval calculation
+	hold := ac.Flight.AssignedHold
 	angle := t * 2 * math.Pi
-	ac.Flight.Position.Lat = holdCenterLat + (0.02 * math.Cos(angle))
-	ac.Flight.Position.Long = holdCenterLon + (0.04 * math.Sin(angle))
+	ac.Flight.Position.Lat = hold.Lat + (0.02 * math.Cos(angle))
+	ac.Flight.Position.Long = hold.Lon + (0.04 * math.Sin(angle))
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(math.Mod(rwy.Heading+(t*360), 360))
-	ac.Flight.Position.Altitude = airport.Elevation + 4000.0 // Standard terminal hold altitude
+	
+	if hold.MinAlt > 0 {
+		ac.Flight.Position.Altitude = float64(hold.MinAlt)
+	} else {
+		// round to nearest 1000ft
+		ac.Flight.Position.Altitude = math.Round(ac.Flight.Position.Altitude / 1000.0) * 1000.0
+	}
 }
 
 func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.Airport) {
@@ -1526,7 +1602,7 @@ func AbsInt(v int) int {
 	return int(math.Abs(float64(v)))
 }
 
-func (e *D9TrafficEngine) determineInitialDeparturePhase(minsToSchedDep int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
+func (e *D9TrafficEngine) 	determineInitialDeparturePhase(minsToSchedDep int, f *flightplan.ScheduledFlight) (flightphase.FlightPhase, int, int, int) {
     delay := 0
     switch {
     // 1. LONG TERM PARKED (Way out before the tracking window)
@@ -1569,11 +1645,14 @@ func (e *D9TrafficEngine) determineInitialDeparturePhase(minsToSchedDep int, f *
         totalDur := (DMINUS_TAXIOUT_MINS - DMINUS_TAKEOFF_MINS) * 60
         return flightphase.TaxiOut, remainingDur, totalDur, delay
 
-    // 5. TAKEOFF REDIRECT: Push to TaxiOut, but scale remaining time tightly
+	// 5. TAKEOFF OVERRIDE: Align to full taxi parameters
     case minsToSchedDep >= DMINUS_CLIMBOUT_MINS && minsToSchedDep <= DMINUS_TAKEOFF_MINS:
-        totalTaxiWindow := AbsInt(DMINUS_TAXIOUT_MINS-DMINUS_TAKEOFF_MINS) * 60
-        remainingDur := 45 // Hard fallback: Spawning close-in means they have 45 seconds left to line up
-        return flightphase.TaxiOut, remainingDur, totalTaxiWindow, delay
+        // Calculate the maximum standard duration a full taxi takes at this airport
+        fullTaxiDurationSecs := AbsInt(DMINUS_TAXIOUT_MINS-DMINUS_TAKEOFF_MINS) * 60
+        // Because we are resetting the aircraft to the gate to start a fresh taxi,
+        // the remaining time in this phase is the FULL taxi time.
+        remainingDur := fullTaxiDurationSecs
+        return flightphase.TaxiOut, remainingDur, fullTaxiDurationSecs, delay
 
     // 6. CLIMBOUT
     case minsToSchedDep >= DMINUS_DEPARTURE_MINS && minsToSchedDep < DMINUS_CLIMBOUT_MINS:
@@ -1632,11 +1711,15 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(minsToSchedArr int, f *fl
         remainingDur := AbsInt(minsToSchedArr-AMINUS_LAND_MINS) * 60 
         return flightphase.Approach, remainingDur, totalApproachWindow
 
-    // BRAKING: Redirect to Approach with tight remaining timeline
+	// BRAKING OVERRIDE: Redirect to TaxiIn instead of Approach.
+    // This clears the runway immediately and feeds the ground network a realistic timeline.
     case minsToSchedArr > AMINUS_BRAKING && minsToSchedArr <= AMINUS_LAND_MINS:
-        totalApproachWindow := AbsInt(AMINUS_APPROACH_MINS-AMINUS_FINAL_MINS) * 60
-        remainingDur := 30 // Hard fallback: Give it 30 seconds left to flush out safely
-        return flightphase.Approach, remainingDur, totalApproachWindow
+        // Calculate the complete standard duration it takes to taxi to the gate
+        fullTaxiInWindow := AbsInt(AMINUS_TAXIIN_MINS-AMINUS_SHUTDOWN_MINS) * 60
+        // Because the aircraft is resetting to the runway exit to start a fresh taxi,
+        // we grant it the full duration to execute the path realistically.
+        remainingDur := fullTaxiInWindow
+        return flightphase.TaxiIn, remainingDur, fullTaxiInWindow
 
     // TAXI IN:
     case minsToSchedArr > AMINUS_TAXIIN_MINS && minsToSchedArr <= AMINUS_BRAKING:
@@ -1684,10 +1767,12 @@ func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
 		ac.Flight.AssignedHold = nil
 		dur := ((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + 60
 		e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
+		e.updateLinearPosition(ac)
 	} else {
-		// continue in hold
+		// continue in hold for another cycle
 		dur := HOLDING_MIN_DURATION_MINS * 60 * time.Second
 		ac.Flight.Phase.EstimatedNextTransition = e.atcService.GetCurrentZuluTime().Add(dur)
+		e.updateHoldingPosition(ac, e.AirportConfig[ap.ICAO].Arrival)
 		util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high - estimated hold exit %v",
 			qKey, ap.ICAO, ac.Flight.Phase.EstimatedNextTransition)
 	}
@@ -2298,4 +2383,23 @@ func (e *D9TrafficEngine) assignRunwayAccessPoint(ac *atc.Aircraft, ap *atc.Airp
 		ac.Flight.DepartureAccess = selected
 	}
 
+}
+
+func (e *D9TrafficEngine) initializeApproachVectors(ac *atc.Aircraft, ap *atc.Airport) {
+    rwy, exists := ap.Runways[ac.Flight.AssignedRunway]
+    if !exists {
+        return
+    }
+
+    // 1. Get the reciprocal heading of the runway (looking outbound into the approach sector)
+    recipHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
+
+    // 2. Project an intercept gate 10 Nautical Miles out along the extended centerline
+    // Adjust 10.0 based on how far out you want the clean turn to start
+    gateLat, gateLon := geometry.Project(rwy.Lat, rwy.Lon, recipHeading, 10.0)
+
+    // 3. Save these to the aircraft's volatile memory
+    ac.Flight.InterceptPointLat = gateLat
+    ac.Flight.InterceptPointLon = gateLon
+    ac.Flight.InterceptCaptured = false
 }

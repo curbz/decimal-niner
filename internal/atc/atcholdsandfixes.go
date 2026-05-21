@@ -200,7 +200,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 		}
 	}
 
-	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds
+	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds - will always find a result as long as s.Holds is not empty
 	var bestGlobalHold *Hold
 	bestDotGlobal := -2.0
 	for _, h := range s.Holds {
