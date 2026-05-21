@@ -282,6 +282,13 @@ func DegToRad(deg float64) float64 {
 
 // NormalizeHeading prevents headings ever exceeding 360 or going below 0
 func NormalizeHeading(heading float64) float64 {
+
+    // If the incoming heading is broken math (NaN), safety fallback to North
+    if math.IsNaN(heading) {
+        util.LogErrWithLabel("D9TRAFFIC", "NormalizeHeading received NaN input, defaulting to 360 - possible bug")
+        return 360.0
+    }
+
     h := math.Mod(heading, 360)
     if h <= 0 {
         h += 360
