@@ -941,15 +941,17 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			}
 
 		case flightphase.TaxiIn:
-			e.updateTaxiPosition(ac, airport, false)
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.positionAtDestParking(ac)
 				dur := (AMINUS_TAXIIN_MINS - AMINUS_SHUTDOWN_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Shutdown, dur, SHUTDOWN_JITTER_SECONDS)
+			} else {
+				e.updateTaxiPosition(ac, airport, false)
 			}
 
 		case flightphase.Shutdown:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
+				e.positionAtDestParking(ac)
 				dur := (AMINUS_SHUTDOWN_MINS - AMINUS_PARKED_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Parked, dur, PARKED_JITTER_SECONDS)
 			}
@@ -1592,7 +1594,7 @@ func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) {
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.AssignedParkingSpot.Heading)
 	ac.Flight.Position.Altitude = airport.Elevation
 
-	util.LogWithLabel(ac.Registration, "arrived at gate %s", ac.Flight.AssignedParkingSpot.Name)
+	util.LogWithLabel(ac.Registration, "positioned at gate %s", ac.Flight.AssignedParkingSpot.Name)
 }
 
 func AbsDiff(a, b int) int {
