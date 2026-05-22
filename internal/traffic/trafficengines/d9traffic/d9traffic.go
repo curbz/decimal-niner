@@ -1141,17 +1141,17 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
             targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
             targetAlt = float64(star.Exit.ConstraintAlt)
         } else {
-            // No STAR: Target the 15NM extended centerline point
-            centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+			// No STAR: Target/Start at the 15NM extended centerline point
+			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
 
-            // Offset 5NM to the left or right side based on registration parity
-            offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
-            if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
-                offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
-            }
+			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
+			if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
+				offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
+			}
 
-            // The Arrival target becomes the exact offset gate where Approach will begin!
-            targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 5.0)
+			// Push the aircraft 2.88 NM out to the side instead of 5.0 NM
+			// This mathematically forces a standard 30-degree intercept track to the 10NM gate!
+			targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 2.88)
             targetAlt = 4000.0
         }
         heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
@@ -1161,14 +1161,17 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
         if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
             startPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
         } else {
-            // No STAR: Re-calculate the exact same 15NM offset gate used above
-            centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
-            
-            offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
-            if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
-                offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
-            }
-            startPos.Lat, startPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 5.0)
+			// No STAR: Target/Start at the 15NM extended centerline point
+			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+
+			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
+			if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
+				offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
+			}
+
+			// Push the aircraft 2.88 NM out to the side instead of 5.0 NM
+			// This mathematically forces a standard 30-degree intercept track to the 10NM gate!
+			targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 2.88)
         }
 
         // 2. Establish Final Exit point (FAF at 4.0NM out)
