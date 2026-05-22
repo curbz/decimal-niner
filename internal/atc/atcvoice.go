@@ -25,6 +25,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/pcl"
 
+	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -324,7 +325,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		},
 		"$SQUAWK": func(args ...string) interface{} { return ac.Flight.Squawk },
 		"$HEADING": func(args ...string) interface{} {
-			return fmt.Sprintf("%03d", int(math.Round(ac.Flight.Position.Heading)))
+			return fmt.Sprintf("%03d", int(math.Round(geometry.NormalizeHeading(ac.Flight.Position.Heading))))
 		},
 		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
 		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
@@ -343,7 +344,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_NAME": func(args ...string) interface{} {
-			holdfix := s.FindNearestHold(ac, phaseICAO)
+			holdfix := ac.Flight.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -352,7 +353,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_IDENT": func(args ...string) interface{} {
-			holdfix := s.FindNearestHold(ac, phaseICAO)
+			holdfix := ac.Flight.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -500,7 +501,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if ac.Flight.Comms.Controller == nil {
 				r = "published hold"
 			} else {
-				holdfix := s.FindNearestHold(ac, ac.Flight.Comms.Controller.ICAO)
+				holdfix := ac.Flight.AssignedHold
 				if holdfix != nil && holdfix.FullName != "" {
 					r = holdfix.FullName
 					util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)

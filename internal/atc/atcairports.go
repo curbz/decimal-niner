@@ -78,6 +78,7 @@ type ParkingSpot struct {
 
 // AccessPoint is used to define pathways for runways and parking spots
 type AccessPoint struct {
+	Name 		 string
     Coord        Coordinate
     TaxiwayName  string 	// e.g., "Alpha" (The main taxiway this holding point feeds into)
 	Dist 		 float64
@@ -87,10 +88,10 @@ type AccessPoint struct {
 }
 
 type pendingProc struct {
-	Name   string
-	Type   int    // 0 = SID, 1 = STAR
-	Runway string // e.g., "09L" or "ALL"
-	Legs   []ProcedureFix
+	Name   		string
+	Type   		int    // 0 = SID, 1 = STAR
+	RunwayName  string // e.g., "09L" or "ALL"
+	Legs   	    []ProcedureFix
 }
 
 // RunwayID -> TaxiwayName -> UsageType
@@ -131,7 +132,7 @@ func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	return closestICAO
 }
 
-// returns nil if not found
+// GetAirportRunway returns the Runway instance for the given runway name and nil if not found
 func (s *Service) GetAirportRunway(icao, rwy string) *Runway {
 	var r *Runway
 	if icao != "" && rwy != "" {
@@ -156,20 +157,6 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 
 	for icao := range requiredAirports {
 
-		// Parse airport CIFP data for runway, approach and fixes data
-		path := filepath.Join(dir, icao+".dat")
-		rwyMap, err := parseCIFP(path, allFixes)
-		var pathErr *fs.PathError
-		if err != nil {
-			if errors.As(err, &pathErr) {
-				// if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
-				logger.Log.Warn("CIFP file not found for airport ", icao, ": ", err)
-			} else {
-				logger.Log.Error("error parsing CIFP file for airport ", icao, ": ", err)
-			}
-			continue
-		}
-
 		ap, exists := airports[icao]
 		if !exists {
 			ap = &Airport{
@@ -181,18 +168,22 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		if ap.Runways == nil {
 			ap.Runways = make(map[string]*Runway)
 		}
+
+		// Parse airport CIFP data for runway, approach and fixes data
+		path := filepath.Join(dir, icao+".dat")
+		err := parseCIFP(path, allFixes, ap)
+		var pathErr *fs.PathError
+		if err != nil {
+			if errors.As(err, &pathErr) {
+				// if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
+				logger.Log.Warn("CIFP file not found for airport ", icao, ": ", err)
+			} else {
+				logger.Log.Error("error parsing CIFP file for airport ", icao, ": ", err)
+			}
+			continue
+		}
 		
 		ap.Holds = []*Hold{}
-
-		// Add runways
-		for rwyName, rwy := range rwyMap {
-			_, exists := ap.Runways[rwyName]
-			if !exists {
-				getOrCreateRunway(ap, rwyName)
-			}
-			ap.Runways[rwyName] = &rwy
-		}
-
 		// Add airport holds
 		if hSlice, ok := airportHolds[icao]; ok {
 			ap.Holds = append(ap.Holds, hSlice...)
@@ -623,19 +614,18 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls [
 	}
 }
 
-func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, error) {
+func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 	f, err := os.Open(cifpPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
 
-	runways := make(map[string]Runway)
 	scan := bufio.NewScanner(f)
 
 	var currentRunway string
-	var rw Runway
+	var rw Runway // keep as value - not pointer
 	var inApproach bool
 	var currentAppType string
 
@@ -644,15 +634,19 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 			return
 		}
 
-		existing := runways[currentRunway]
+		existing := ap.Runways[currentRunway]
+		if existing == nil {
+			existing = &Runway{}
+			ap.Runways[currentRunway] = existing
+		}
 
 		// Only merge if this was a real approach (FAF or approach type)
 		if rw.FAFalt > 0 || rw.HighestPrecisionApproach != "" {
-			runways[currentRunway] = mergeRunway(existing, rw, currentAppType)
+			mergeRunway(existing, rw, currentAppType)
 		} else {
 			// Ensure runway entry exists, but keep it zeroed
-			if _, ok := runways[currentRunway]; !ok {
-				runways[currentRunway] = Runway{}
+			if _, ok := ap.Runways[currentRunway]; !ok {
+				ap.Runways[currentRunway] = &Runway{}
 			}
 		}
 	}
@@ -696,7 +690,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 				}
 				currentProc = &pendingProc{
 					Name:   procName,
-					Runway: targetRwy,
+					RunwayName: targetRwy,
 					Type:   0, // Default SID
 				}
 				if strings.HasPrefix(line, "STAR:") {
@@ -767,7 +761,11 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 			rwyName := normaliseRunwayName(strings.TrimPrefix(metaFields[0], "RWY:"))
 
 			// Create or get the existing runway
-			rwEntry := runways[rwyName]
+			rwEntry := ap.Runways[rwyName]
+			if rwEntry == nil {
+				rwEntry = &Runway{}
+				ap.Runways[rwyName] = rwEntry
+			}
 			rwEntry.Name = rwyName
 
 			if len(metaFields) >= 3 {
@@ -798,8 +796,6 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 					rwEntry.ThresholdElevation = float64(e) / 10.0
 				}
 			}
-
-			runways[rwyName] = rwEntry
 			continue
 		}
 
@@ -856,12 +852,12 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 
 		// Detect runway from RWxx fix
 		if strings.HasPrefix(fix, "RW") {
-			rwy := normaliseRunwayName(fix)
-			if rwy != "" {
-				currentRunway = rwy
+			rwyName := normaliseRunwayName(fix)
+			if rwyName != "" {
+				currentRunway = rwyName
 				// Ensure runway entry exists even before merging
-				if _, ok := runways[currentRunway]; !ok {
-					runways[currentRunway] = Runway{}
+				if _, ok := ap.Runways[currentRunway]; !ok {
+					ap.Runways[currentRunway] = &Runway{}
 				}
 			}
 		}
@@ -919,9 +915,9 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 	saveApproach()
 
 	// --- STEP 2: POST-PROCESSING (Pairing & Geometry) ---
-	for name, rw := range runways {
+	for name, rw := range ap.Runways {
 		recipName := getReciprocalName(name)
-		recip, exists := runways[recipName]
+		recip, exists := ap.Runways[recipName]
 
 		if exists {
 			// 1. Calculate Physical Heading (True Heading)
@@ -948,17 +944,15 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix) (map[string]Runway, er
 					rw.Width = 100.0
 				}
 			}
-
-			runways[name] = rw
 		}
 	}
 
-	finaliseProcedures(runways, pendingProcs)
+	finaliseProcedures(ap.Runways, pendingProcs)
 
-	return runways, scan.Err()
+	return scan.Err()
 }
 
-func finaliseProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
+func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) {
 
 	for _, p := range pendingProcs {
 
@@ -978,21 +972,20 @@ func finaliseProcedures(runways map[string]Runway, pendingProcs []pendingProc) {
 		// Attach to the appropriate Runway(s)
 		for name, rw := range runways {
 			// If the procedure is for "ALL" runways or matches the name (e.g., "09L")
-			if p.Runway == "ALL" || p.Runway == name {
+			if p.RunwayName == "ALL" || p.RunwayName == name {
 				if p.Type == 0 { // SID
 					rw.SIDs = append(rw.SIDs, newProc)
 				} else { // STAR
 					rw.STARs = append(rw.STARs, newProc)
 				}
-				// IMPORTANT: Write the modified Runway struct back to the map
-				runways[name] = rw
 			}
 		}
 	}
 }
 
 func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge, namedNodes []NamedNode) {
-    for _, rwy := range ap.Runways {
+    
+	for _, rwy := range ap.Runways {
         rwy.DepartureAccess = make(map[string]*AccessPoint)
         rwy.ArrivalAccess = make(map[string]*AccessPoint)
 
@@ -1110,7 +1103,7 @@ func finaliseParking(ap *Airport, namedNodes []NamedNode) {
     }
 }
 
-func mergeRunway(existing, incoming Runway, appType string) Runway {
+func mergeRunway(existing *Runway, incoming Runway, appType string) {
 
 	// BestApproach: keep the better-ranked one
 	if appType != "" {
@@ -1155,7 +1148,6 @@ func mergeRunway(existing, incoming Runway, appType string) Runway {
 		existing.MAFix = incoming.MAFix
 	}
 
-	return existing
 }
 
 func lowestAltitudeOf(at, above, below string) int {
@@ -1198,7 +1190,7 @@ func normaliseRunwayName(rw string) string {
 		num = "0" + num
 	}
 
-	return num + suffix
+	return strings.TrimSpace(num + suffix)
 }
 
 func normaliseCIFPAlt(altStr string) int {
@@ -1221,6 +1213,11 @@ func normaliseCIFPAlt(altStr string) int {
 	if err != nil {
 		return 0
 	}
+
+	// Handle ARINC 424 Metric Shift: Hundreds vs. Tens of Feet when < 1000
+	 if val < 1000 && val > 0 {
+        return val * 10.0 // Scale up to true feet
+    }
 	return val
 }
 
@@ -1285,27 +1282,50 @@ func cleanAirportName(n string) string {
 
 func parseCIFPCoord(coord string) float64 {
 	coord = strings.TrimSpace(coord)
-	if len(coord) < 9 {
+	// CIFP coords are typically N51283900 (9 chars) or W000290597 (10 chars)
+	if len(coord) < 7 {
 		return 0
 	}
 
 	dir := coord[0]
-	// For Lat (N/S), deg is 2 digits. For Lon (E/W), deg is 3 digits.
+	
+	// Latitude (N/S) uses 2 digits for degrees: [1:3]
+	// Longitude (E/W) uses 3 digits for degrees: [1:4]
 	degLen := 2
 	if dir == 'E' || dir == 'W' {
 		degLen = 3
 	}
 
+	// 1. Extract Degrees
 	deg, _ := strconv.ParseFloat(coord[1:1+degLen], 64)
+	
+	// 2. Extract Minutes (always 2 digits following degrees)
 	min, _ := strconv.ParseFloat(coord[1+degLen:3+degLen], 64)
-	sec, _ := strconv.ParseFloat(coord[3+degLen:], 64)
 
-	// DD + MM/60 + SS.ss/3600
-	decimal := deg + (min / 60.0) + (sec / 360000.0)
+	// 3. Extract Seconds (everything remaining)
+	secStr := coord[3+degLen:]
+	rawSec, _ := strconv.ParseFloat(secStr, 64)
 
+	// Determine the power of 10 for the seconds denominator.
+	// If input is "SSss" (len 4), we need to divide rawSec by 100 to get SS.ss.
+	// If input is "SS" (len 2), we divide by 1 (10^0).
+	// Then we divide by 3600 to get degrees.
+	precisionPower := len(secStr) - 2
+	if precisionPower < 0 {
+		precisionPower = 0
+	}
+	
+	actualSec := rawSec / math.Pow(10, float64(precisionPower))
+	secDecimal := actualSec / 3600.0
+
+	// 4. Combine into Decimal Degrees
+	decimal := deg + (min / 60.0) + secDecimal
+
+	// 5. Apply Hemisphere Sign
 	if dir == 'S' || dir == 'W' {
 		decimal = -decimal
 	}
+
 	return decimal
 }
 
@@ -1385,6 +1405,7 @@ func updateAccessPointIfCloser(accessMap map[string]*AccessPoint, name string, c
     // to the reference point (Start for Departure, End for Arrival)
     if !exists || dist < existing.Dist { 
         acp := &AccessPoint{
+			Name:		 name,
             Coord:       coord,
             TaxiwayName: touching,
 			Bearing: 	 bearing,

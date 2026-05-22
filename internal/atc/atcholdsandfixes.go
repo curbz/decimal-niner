@@ -10,6 +10,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/pkg/geometry"
 )
 
 type Hold struct {
@@ -19,8 +20,8 @@ type Hold struct {
 	ICAO     string // airport ICAO or 'ENRT'
 	MinAlt   int
 	MaxAlt   int
-	LatRad   float64
-	LonRad   float64
+	Lat      float64
+	Lon      float64
 	X, Y, Z  float64
 }
 
@@ -28,8 +29,8 @@ type Fix struct {
 	Ident    string
 	Region   string
 	FullName string
-	LatRad   float64
-	LonRad   float64
+	Lat      float64
+	Lon      float64
 	Hold     *Hold // if this fix is also a hold, this field will be populated otherwise nil
 }
 
@@ -82,7 +83,11 @@ func toUnit(latRad, lonRad float64) (x, y, z float64) {
 }
 
 func (h *Hold) InitUnitVector() {
-	h.X, h.Y, h.Z = toUnit(h.LatRad, h.LonRad)
+	// Input is Degrees, convert to Radian for the math
+	radLat := geometry.DegToRad(h.Lat)
+	radLon := geometry.DegToRad(h.Lon)
+
+	h.X, h.Y, h.Z = toUnit(radLat, radLon)
 }
 
 func parseFloat(s string) float64 {
@@ -108,8 +113,8 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 		namedFix, found := allFixes[key]
 		if found {
 			h.FullName = namedFix.FullName
-			h.LatRad = namedFix.LatRad
-			h.LonRad = namedFix.LonRad
+			h.Lat = namedFix.Lat
+			h.Lon = namedFix.Lon
 			namedFix.Hold = h
 			if h.FullName != "" {
 				namedCnt++
@@ -126,15 +131,20 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 	logger.Log.Infof("%d holds were enriched with coordinates", enrichedCnt)
 }
 
-func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
+// AssignHold will return the most appropriate hold based on flight phase.
+// For go around phase, the first attempt is to assign the assigned runway's missed approach fix.
+// For the arrival phase, a check is performed to see if a STAR is assigned and if the STAR exit
+// is a defined hold, this will be the assigned hold.
+// For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
+func (s *Service) AssignHold(ac *Aircraft, icao string) {
 
 	lat := ac.Flight.Position.Lat
 	lng := ac.Flight.Position.Long
 	runway := ac.Flight.AssignedRunway
 	phase := ac.Flight.Phase.Current
 
-	latRad := lat * math.Pi / 180
-	lonRad := lng * math.Pi / 180
+	latRad := geometry.DegToRad(lat)
+	lonRad := geometry.DegToRad(lng)
 	ux, uy, uz := toUnit(latRad, lonRad)
 
 	// 1. Get the Airport from the Service
@@ -156,14 +166,25 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 				// Search the airport's local holds for this name
 				for _, h := range airport.Holds {
 					if h.Ident == targetFix {
-						return h
+						ac.Flight.AssignedHold = h
+						return
 					}
 				}
 			}
 			// If no MAFix match found, fall back to nearest airport hold
 		}
 
-		// B. OTHER PHASES (or Go-Around fallback): Find nearest hold in Airport.Holds
+		// B. Arrival phase - if STAR is assigned return exit fix if this is a defined holding point
+		if phase == flightphase.Arrival.Index() {
+			if ac.Flight.AssignedSTAR != nil {
+				if ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
+					ac.Flight.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
+					return
+				}
+			}
+		}
+
+		// C. OTHER PHASES (or fallback): Find nearest hold in Airport.Holds
 		var bestAirportHold *Hold
 		bestDot := -2.0
 		for _, h := range airport.Holds {
@@ -174,11 +195,12 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 			}
 		}
 		if bestAirportHold != nil {
-			return bestAirportHold
+			ac.Flight.AssignedHold = bestAirportHold
+			return
 		}
 	}
 
-	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds
+	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds - will always find a result as long as s.Holds is not empty
 	var bestGlobalHold *Hold
 	bestDotGlobal := -2.0
 	for _, h := range s.Holds {
@@ -189,7 +211,7 @@ func (s *Service) FindNearestHold(ac *Aircraft, icao string) *Hold {
 		}
 	}
 
-	return bestGlobalHold
+	ac.Flight.AssignedHold = bestGlobalHold
 }
 
 // extract all holds from hold data file. returns two maps or an error
@@ -277,8 +299,8 @@ func parseNavData(path string) (map[string]*Fix, error) {
 			Ident:    ident,
 			Region:   region,
 			FullName: cleanFixName(fullName),
-			LatRad:   lat * math.Pi / 180,
-			LonRad:   lon * math.Pi / 180,
+			Lat:      lat,
+			Lon:      lon,
 		}
 	}
 
@@ -333,6 +355,11 @@ func parseFixData(path string) (map[string]*Fix, error) {
 
 		lat, _ := strconv.ParseFloat(parts[0], 64)
 		lon, _ := strconv.ParseFloat(parts[1], 64)
+
+		if lat < -90 || lat > 90 {
+			continue
+		}
+
 		ident := parts[2]
 		region := parts[4]
 
@@ -340,8 +367,8 @@ func parseFixData(path string) (map[string]*Fix, error) {
 		fixes[key] = &Fix{
 			Ident:  ident,
 			Region: region,
-			LatRad: lat,
-			LonRad: lon,
+			Lat:    lat,
+			Lon:    lon,
 		}
 	}
 	return fixes, nil

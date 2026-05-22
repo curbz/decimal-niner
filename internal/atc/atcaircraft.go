@@ -30,7 +30,6 @@ type Flight struct {
 	Position            Position
 	LastCheckedPosition Position
 	Number              int
-	TaxiRoute           string
 	Origin              string
 	Destination         string
 	Phase               flightphase.Phase
@@ -41,11 +40,15 @@ type Flight struct {
 	AssignedRunway      string
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
+	Vectoring           bool
+	AssignedHold        *Hold
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo
 	Schedule            *flightplan.ScheduledFlight
 	DepartureDelay      int
+	ArrivalAccess       *AccessPoint
+	DepartureAccess     *AccessPoint
 }
 
 type Position struct {
@@ -79,8 +82,8 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		flightphase.FlightPhase(ac.Flight.Phase.Current),
 		ac.Flight.Phase.Class.String())
 
-	// for a new aircraft in a post-flight context, there is nothing to do
-	if ac.Flight.Phase.Class == flightclass.PostflightParked {
+	// for a new aircraft in a post-flight class context that is not in shutdown phase, there is nothing to do
+	if ac.Flight.Phase.Class == flightclass.PostflightParked && ac.Flight.Phase.Current != flightphase.Shutdown.Index() {
 		return
 	}
 
@@ -254,7 +257,7 @@ func (s *Service) AddFlightPlan(ac *Aircraft, simTime time.Time) bool {
 		scheds, found = s.FlightSchedules[key]
 		if found {
 			for _, f := range scheds {
-				schedDepMinsSinceMidnight := f.DepatureHour*60 + f.DepartureMin + adjDep
+				schedDepMinsSinceMidnight := f.DepartureHour*60 + f.DepartureMin + adjDep
 				schedArrMinsSinceMidnight := f.ArrivalHour*60 + f.ArrivalMin + adjArr
 				if simMinsSinceMidnight >= schedDepMinsSinceMidnight && simMinsSinceMidnight <= schedArrMinsSinceMidnight {
 					candidateScheds = append(candidateScheds, f)
@@ -365,7 +368,7 @@ func (s *Service) SetFlightPhaseClass(ac *Aircraft) {
 
 	switch ph.Current {
 	case flightphase.Parked.Index(), flightphase.Shutdown.Index():
-		// in this case we include Shutdown as there has been scenarios observed in the traffic global plugi
+		// in this case we include Shutdown as there has been scenarios observed in the traffic global plugin
 		// whereby the aircraft has been assigned a new flight plan whilst still in the shutdown state
 		if ph.Previous == flightphase.Unknown.Index() {
 			// new aircraft flight - determine if preflight or postflight
