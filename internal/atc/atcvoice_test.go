@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/simdata"
 )
@@ -232,10 +233,78 @@ func TestFormatParkingAndPhoneticise(t *testing.T) {
 		t.Fatalf("formatParking(K) = %q; want prefix stand 201", p)
 	}
 
-	// phoneticise single alphas
+	// phoneticise single alphas no digits
 	got := phoneticiseSingleAlphas("Ramp A")
 	if got != "ramp alpha" {
 		t.Fatalf("phoneticiseSingleAlphas = %q; want ramp alpha", got)
+	}
+
+	// phoneticise Alpha first followed by digits
+	got2 := phoneticiseAlphaFirst("B12", true)
+	if got2 != "Bravo 12" {
+		t.Fatalf("phoneticiseAlphaFirst = %q; want bravo 12", got2)
+	}
+}
+
+func TestCollateTaxipath(t *testing.T) {
+	tests := []struct {
+		name          string
+		phaseClass    flightclass.PhaseClass
+		phaseCurrent  int
+		arrivalTaxi   string
+		parkingTaxi   string
+		departureTaxi string
+		want          string
+	}{
+		{
+			name:         "arrival with access and parking",
+			phaseClass:   flightclass.Arriving,
+			phaseCurrent: flightphase.Arrival.Index(),
+			arrivalTaxi:  "A",
+			parkingTaxi:  "B12",
+			want:         "Alpha,Bravo 12",
+		},
+		{
+			name:          "departure with parking and departure access",
+			phaseClass:    flightclass.Departing,
+			phaseCurrent:  flightphase.Departure.Index(),
+			parkingTaxi:   "A",
+			departureTaxi: "C3",
+			want:          "Alpha,Charlie 3",
+		},
+		{
+			name:         "arrival single alpha only",
+			phaseClass:   flightclass.Arriving,
+			phaseCurrent: flightphase.Arrival.Index(),
+			arrivalTaxi:  "Z",
+			want:         "Zulu",
+		},
+		{
+			name:         "empty taxi path",
+			phaseClass:   flightclass.Departing,
+			phaseCurrent: flightphase.Departure.Index(),
+			want:         "taxiway",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac := &Aircraft{Flight: Flight{Phase: flightphase.Phase{Class: tt.phaseClass, Current: tt.phaseCurrent}}}
+			if tt.arrivalTaxi != "" {
+				ac.Flight.ArrivalAccess = &AccessPoint{TaxiwayName: tt.arrivalTaxi}
+			}
+			if tt.parkingTaxi != "" {
+				ac.Flight.AssignedParkingSpot = &ParkingSpot{TaxiwayName: tt.parkingTaxi}
+			}
+			if tt.departureTaxi != "" {
+				ac.Flight.DepartureAccess = &AccessPoint{TaxiwayName: tt.departureTaxi}
+			}
+
+			got := collateTaxipath(ac)
+			if got != tt.want {
+				t.Fatalf("collateTaxipath(%s) = %q; want %q", tt.name, got, tt.want)
+			}
+		})
 	}
 }
 

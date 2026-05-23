@@ -661,7 +661,7 @@ var (
 		"$BARO_AIRCRAFT": true, "$WIND_SPEED": true, "$WIND_SHEAR": true, "$TURBULENCE": true,
 		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
 		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
-		"@RUNWAY": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
+		"@RUNWAY": true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
 		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
 		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
 		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,

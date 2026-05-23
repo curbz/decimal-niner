@@ -159,6 +159,15 @@ It is focused on the values and formatted outputs produced by the engine, with r
   - Template: `{$CALLSIGN}, taxi to {@PARKING}.`
   - Interpolated: `speedbird123, taxi to gate bravo 12.`
 
+### `@TAXIPATH`
+- Function: `collateTaxipath`
+- Output: composes arrival or departure taxi routing using available taxiway access and parking segments.
+  - Taxiway names are phoneticized when they start with a letter, e.g. `A` → `Alpha` and `B12` → `Bravo 12`.
+  - If no taxi path data exists, returns `taxiway`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, taxi to {@TAXIPATH}.`
+  - Interpolated: `speedbird123, taxi to Alpha,Bravo 12.`
+
 ### `@DESTINATION`
 - Function: `formatAirportName`
 - Output: airport name with common suffixes removed (`Intl`, `Arpt`, `Airport`, `Regional`, `Municipal`).

@@ -399,6 +399,9 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@RUNWAY": func(args ...string) interface{} {
 			return translateRunway(ac.Flight.AssignedRunway)
 		},
+		"@TAXIPATH": func(args ...string) interface{} {
+			return collateTaxipath(ac)
+		},
 		"@PARKING": func(args ...string) interface{} {
 			var icao string
 			if ac.Flight.Comms.Controller == nil {
@@ -778,6 +781,36 @@ func translateRunway(runway string) string {
 	return runway
 }
 
+func collateTaxipath(ac *Aircraft) string {
+	path := ""
+	if ac.Flight.Phase.Class == flightclass.Arriving {
+		if ac.Flight.ArrivalAccess != nil {
+			path = phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.TaxiwayName, false)
+		}
+		if ac.Flight.AssignedParkingSpot != nil {
+			if path != "" {
+				path = path + ","
+			}
+			path = path + phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
+		}
+	} else {
+		if ac.Flight.AssignedParkingSpot != nil {
+			path = phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
+		}		
+		if ac.Flight.DepartureAccess != nil {
+			if path != "" {
+				path = path + ","
+			}
+			path = path + phoneticiseAlphaFirst(ac.Flight.DepartureAccess.TaxiwayName, false)
+		}
+
+	}
+	if path == "" {
+		return "taxiway"
+	}	
+	return strings.TrimSpace(path)
+}
+
 func formatBaro(pascals float64, isNorthAmerica bool) string {
 
 	digits := ""
@@ -944,19 +977,28 @@ func formatParking(parking string, isNorthAmerica bool) string {
 	// 3. Handle Alpha-First followed by digits(e.g., "B12" -> "Gate Bravo 12")
 	// Most common in US/Europe terminals
 	// Use regex to verify the pattern is indeed an alpha followed by digits
-	match, _ := regexp.MatchString(`^[A-Z]\d+`, parking)
-	if match {
-		firstChar := string(parking[0])
-		if phonetic, exists := phoneticMap[firstChar]; exists {
-			remaining := parking[1:]
-			return fmt.Sprintf("%s %s %s", prefix, phonetic, remaining)
-		} else {
-			return fmt.Sprintf("%s %s", prefix, parking)
-
-		}
-	}
+	parking = phoneticiseAlphaFirst(parking, true)
 
 	return parking
+}
+
+// phoneticiseAlphaFirst will phoneticise the first character if the string starts with a single alpha.
+// Set followedByDigits to true if the string must be followed by digits (e.g., "B12" -> "Bravo 12")
+func phoneticiseAlphaFirst(input string, followedByDigits bool) string {
+	var match bool
+	if followedByDigits {
+		match, _ = regexp.MatchString(`^[A-Za-z]\d+`, input)
+	} else {
+		match, _ = regexp.MatchString(`^[A-Za-z]`, input)
+	}
+	if match {
+		firstChar := string(input[0])
+		if phonetic, exists := phoneticMap[firstChar]; exists {
+			remaining := input[1:]
+			return strings.TrimSpace(fmt.Sprintf("%s %s", phonetic, remaining))
+		}
+	}
+	return input
 }
 
 // phoneticiseSingleAlphas will replace single alphas in a phrase to their phonetic equivalents
