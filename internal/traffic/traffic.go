@@ -18,7 +18,7 @@ type Engine interface {
 	GetFlightPlanPath() string
 	LoadFlightPlans(string) (map[string][]flightplan.ScheduledFlight, map[string]bool)
 	SetATCService(*atc.Service)
-	RequiresAircraftData() bool		// Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
+	RequiresAircraftData() bool // Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
 	Start()
 }
 
@@ -30,11 +30,16 @@ func AssignRunwayAccessPoint(ac *atc.Aircraft, ap *atc.Airport, arrOrDep int) {
 	var selected *atc.AccessPoint
 	spot := ac.Flight.AssignedParkingSpot
 
-	rwy, exists := ap.Runways[ac.Flight.AssignedRunway]
-	if !exists {
-		util.LogWarnWithLabel(ac.Registration, "unable to assign runway access - runway name %s not found at %s",
-			ac.Flight.AssignedRunway, ap.ICAO)
-		return
+	rwy := ac.Flight.AssignedRunway
+	if rwy == nil {
+		var exists bool
+		rwy, exists = ap.Runways[ac.Flight.AssignedRunwayName]
+		if !exists {
+			util.LogWarnWithLabel(ac.Registration, "unable to assign runway access - runway name %s not found at %s",
+				ac.Flight.AssignedRunwayName, ap.ICAO)
+			return
+		}
+		ac.Flight.AssignedRunway = rwy
 	}
 
 	var accessMap map[string]*atc.AccessPoint

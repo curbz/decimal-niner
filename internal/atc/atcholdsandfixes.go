@@ -140,7 +140,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 
 	lat := ac.Flight.Position.Lat
 	lng := ac.Flight.Position.Long
-	runway := ac.Flight.AssignedRunway
+	runway := ac.Flight.AssignedRunwayName
 	phase := ac.Flight.Phase.Current
 
 	latRad := geometry.DegToRad(lat)

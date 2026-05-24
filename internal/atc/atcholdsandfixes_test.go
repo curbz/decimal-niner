@@ -85,7 +85,7 @@ func TestAssignHoldPriority(t *testing.T) {
 	// Create holds: MA1 (target) and OTHER (closer)
 	ap2 := &Airport{ICAO: "EGLL", Name: "GA", Runways: map[string]*Runway{"27R": {MAFix: "MA1"}}, Holds: []*Hold{makeHold("MA1", 51.64, 0.15), makeHold("OTHER", 51.65, 0.16)}}
 	s.Airports["EGLL"] = ap2
-	ac2 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.64, Long: 0.16}, AssignedRunway: "27R", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
+	ac2 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.64, Long: 0.16}, AssignedRunwayName: "27R", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
 	s.AssignHold(ac2, "EGLL")
 	if ac2.Flight.AssignedHold == nil || ac2.Flight.AssignedHold.Ident != "MA1" {
 		t.Fatalf("go-around MAFix not returned, got %v", ac.Flight.AssignedHold)
@@ -94,7 +94,7 @@ func TestAssignHoldPriority(t *testing.T) {
 	// 3) Go-around with MAFix not in airport holds should fallback to nearest airport hold
 	ap3 := &Airport{ICAO: "EGKK", Name: "NoMA", Runways: map[string]*Runway{"09": {MAFix: "MISSING"}}, Holds: []*Hold{makeHold("A1", 51.20, -0.50), makeHold("A2", 51.25, -0.55)}}
 	s.Airports["EGKK"] = ap3
-	ac3 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.21, Long: -0.51}, AssignedRunway: "09", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
+	ac3 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.21, Long: -0.51}, AssignedRunwayName: "09", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
 	s.AssignHold(ac3, "EGKK")
 	if ac3.Flight.AssignedHold == nil || (ac3.Flight.AssignedHold.Ident != "A1" && ac.Flight.AssignedHold.Ident != "A2") {
 		t.Fatalf("expected nearest airport hold fallback, got %v", ac.Flight.AssignedHold)

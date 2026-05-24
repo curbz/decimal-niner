@@ -859,7 +859,7 @@ func (xpc *XPConnect) updateAircraftData() {
 			return
 		}
 		if r, ok := runway.(string); ok {
-			aircraft.Flight.AssignedRunway = r
+			aircraft.Flight.AssignedRunwayName = r
 		} else {
 			logger.Log.Errorf("unexpected runway type for aircraft %s at index %d: %T", tailNumber, index, runway)
 		}

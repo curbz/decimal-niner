@@ -308,8 +308,11 @@ func (s *Service) preparePhrase(phrase, role string, ac *Aircraft) {
 
 func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 
-	phaseICAO := getAirportICAObyPhaseClass(ac)
-	rwy := s.GetAirportRunway(phaseICAO, ac.Flight.AssignedRunway)
+	var rwy *Runway
+	if ac.Flight.AssignedRunway == nil {
+		phaseICAO := getAirportICAObyPhaseClass(ac)
+		rwy = s.GetAirportRunway(phaseICAO, ac.Flight.AssignedRunwayName)
+	}
 
 	return pcl.PCLContext{
 		// --- RAW DATA ($) ---
@@ -327,7 +330,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"$HEADING": func(args ...string) interface{} {
 			return fmt.Sprintf("%03d", int(math.Round(geometry.NormalizeHeading(ac.Flight.Position.Heading))))
 		},
-		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunway },
+		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunwayName },
 		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
 		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
 		"$BARO_AIRCRAFT": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Flight)) },
@@ -397,7 +400,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		// --- FORMATTED MACROS (@) ---
 		// --- RUNWAY & TAXI ---
 		"@RUNWAY": func(args ...string) interface{} {
-			return translateRunway(ac.Flight.AssignedRunway)
+			return translateRunway(ac.Flight.AssignedRunwayName)
 		},
 		"@TAXIPATH": func(args ...string) interface{} {
 			return collateTaxipath(ac)
@@ -796,7 +799,7 @@ func collateTaxipath(ac *Aircraft) string {
 	} else {
 		if ac.Flight.AssignedParkingSpot != nil {
 			path = phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
-		}		
+		}
 		if ac.Flight.DepartureAccess != nil {
 			if path != "" {
 				path = path + ","
@@ -807,7 +810,7 @@ func collateTaxipath(ac *Aircraft) string {
 	}
 	if path == "" {
 		return "taxiway"
-	}	
+	}
 	return strings.TrimSpace(path)
 }
 

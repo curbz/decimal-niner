@@ -37,7 +37,8 @@ type Flight struct {
 	CruiseAlt           int
 	AssignedParkingName string
 	AssignedParkingSpot *ParkingSpot
-	AssignedRunway      string
+	AssignedRunwayName  string
+	AssignedRunway 		*Runway
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
 	Vectoring           bool
@@ -101,14 +102,20 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		}
 	}
 
-	// assign paking spot from name if not already assgined
-	if ac.Flight.AssignedParkingName != "" && ac.Flight.AssignedParkingSpot == nil {
-		var targetICAO string
-		if ac.Flight.Phase.Class == flightclass.Departing {
-			targetICAO = ac.Flight.Origin
+	// assign runway from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
+	if ac.Flight.AssignedRunwayName != "" && ac.Flight.AssignedRunway == nil {
+		targetICAO := getAirportICAObyPhaseClass(ac)
+		rwy := s.GetAirportRunway(targetICAO, ac.Flight.AssignedRunwayName)
+		if rwy != nil {
+			ac.Flight.AssignedRunway = rwy
 		} else {
-			targetICAO = ac.Flight.Destination
+			util.LogWarnWithLabel(ac.Registration, "no runway information found for name %s at ", ac.Flight.AssignedRunwayName, targetICAO)
 		}
+	}
+
+	// assign parking spot from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
+	if ac.Flight.AssignedParkingName != "" && ac.Flight.AssignedParkingSpot == nil {
+		targetICAO := getAirportICAObyPhaseClass(ac)
 		parkingSpot := s.GetParkingSpotByName(targetICAO, ac.Flight.AssignedParkingName)
 		if parkingSpot != nil {
 			ac.Flight.AssignedParkingSpot = parkingSpot
@@ -116,7 +123,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 			util.LogWarnWithLabel(ac.Registration, "no parking spot information found for name %s at ", ac.Flight.AssignedParkingName, targetICAO)
 		}
 	}
-
+	
 	// make a snaphot copy of aircraft current state and pass this snapshot into the phrase generation process.
 	// it is safer to do it here rather than in the go routine as there would be a small chance that
 	// the aircraft could get updated concurrently during the deep copy process if this statement was
