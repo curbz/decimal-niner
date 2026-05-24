@@ -22,20 +22,20 @@ import (
 )
 
 type Airport struct {
-	ICAO        string
-	Name        string
-	Lat         float64
-	Lon         float64
-	Elevation   float64 // feet
-	TransAlt    int
-	Region      string
-	Runways     map[string]*Runway // keyed by "09L", "27R"
-	RunwayUsageData    UsageMap	// temporary field used whilst loading data
-	Holds       []*Hold
-	Controllers []*Controller
-	Parking     []*ParkingSpot
-	HubWeights  map[string]float64 // Airline ICAO -> Strength (0.0 to 1.0)
-	ClassCounts map[string]int     // "E": 20, "C": 100 (Total gates by size)
+	ICAO            string
+	Name            string
+	Lat             float64
+	Lon             float64
+	Elevation       float64 // feet
+	TransAlt        int
+	Region          string
+	Runways         map[string]*Runway // keyed by "09L", "27R"
+	RunwayUsageData UsageMap           // temporary field used whilst loading data
+	Holds           []*Hold
+	Controllers     []*Controller
+	Parking         map[string]*ParkingSpot // keyed by ParkingSpot.Name
+	HubWeights      map[string]float64      // Airline ICAO -> Strength (0.0 to 1.0)
+	ClassCounts     map[string]int          // "E": 20, "C": 100 (Total gates by size)
 }
 
 type Runway struct {
@@ -53,8 +53,8 @@ type Runway struct {
 	HighestPrecisionApproach string // highest precision approach type
 	SIDs                     []*Procedure
 	STARs                    []*Procedure
-	DepartureAccess  		 map[string]*AccessPoint // Key: "A13", Value: AccessPoint{Coord, "Foxtrot"}
-    ArrivalAccess    		 map[string]*AccessPoint
+	DepartureAccess          map[string]*AccessPoint // Key: "A13", Value: AccessPoint{Coord, "Foxtrot"}
+	ArrivalAccess            map[string]*AccessPoint
 }
 
 type Procedure struct {
@@ -78,20 +78,20 @@ type ParkingSpot struct {
 
 // AccessPoint is used to define pathways for runways and parking spots
 type AccessPoint struct {
-	Name 		 string
-    Coord        Coordinate
-    TaxiwayName  string 	// e.g., "Alpha" (The main taxiway this holding point feeds into)
-	Dist 		 float64
-	Bearing 	 float64
-	IsHighSpeed  bool		// true when designated as a high speed (RTE) exit for an arrival runway
-	IsNearEnd	 bool		// true when access point is close to the end of an arrival runway
+	Name        string
+	Coord       Coordinate
+	TaxiwayName string // e.g., "Alpha" (The main taxiway this holding point feeds into)
+	Dist        float64
+	Bearing     float64
+	IsHighSpeed bool // true when designated as a high speed (RTE) exit for an arrival runway
+	IsNearEnd   bool // true when access point is close to the end of an arrival runway
 }
 
 type pendingProc struct {
-	Name   		string
-	Type   		int    // 0 = SID, 1 = STAR
-	RunwayName  string // e.g., "09L" or "ALL"
-	Legs   	    []ProcedureFix
+	Name       string
+	Type       int    // 0 = SID, 1 = STAR
+	RunwayName string // e.g., "09L" or "ALL"
+	Legs       []ProcedureFix
 }
 
 // RunwayID -> TaxiwayName -> UsageType
@@ -108,13 +108,13 @@ type aptPoint struct {
 }
 
 type NamedNode struct {
-    Lat, Lon   float64
-    TaxiName   string
-    Importance int
+	Lat, Lon   float64
+	TaxiName   string
+	Importance int
 }
 
-const minArrivalDistNM = 0.8   // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
-const lastExitBufferNM = 0.1  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
+const minArrivalDistNM = 0.8        // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
+const lastExitBufferNM = 0.1        // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
 const highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -144,12 +144,24 @@ func (s *Service) GetAirportRunway(icao, rwy string) *Runway {
 	return r
 }
 
-func (s *Service) GetAirport(icao string) *Airport {
+func (s *Service) GetAirportByICAO(icao string) *Airport {
 	ap, exists := s.Airports[icao]
 	if !exists {
 		return nil
 	}
 	return ap
+}
+
+func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
+	ap := s.GetAirportByICAO(icao)
+	if ap == nil {
+		return nil
+	}
+	spot, exists := ap.Parking[name]
+	if !exists {
+		return nil
+	}
+	return spot
 }
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
@@ -182,7 +194,7 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 			}
 			continue
 		}
-		
+
 		ap.Holds = []*Hold{}
 		// Add airport holds
 		if hSlice, ok := airportHolds[icao]; ok {
@@ -293,7 +305,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 						ICAO:        curICAO,
 						Name:        curName,
 						Controllers: []*Controller{},
-						Runways:	 make(map[string]*Runway),
+						Runways:     make(map[string]*Runway),
 					}
 					airports[curICAO] = curAirport
 				} else {
@@ -325,7 +337,11 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 		// 1301: PARKING METADATA (Follows a 1300)
 		// 1301 C airline baw afr klm dlh vir sas aza ibe sva ber ryr vlg ezy
-		if curAirport != nil &&code == "1301" && curParking != nil {
+		if curAirport != nil && code == "1301" && curParking != nil {
+			// Initialize Parking map if not yet done
+			if curAirport.Parking == nil {
+				curAirport.Parking = make(map[string]*ParkingSpot)
+			}
 			airlineCodes := ""
 			if len(p) >= 3 {
 				if p[2] != "airline" { // airline / general_aviation / military
@@ -340,13 +356,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 			}
 			curParking.AirlineCodes = airlineCodes
-			curAirport.Parking = append(curAirport.Parking, curParking)
+			curAirport.Parking[curParking.Name] = curParking
 			curParking = nil // Reset for next spot
 			continue
 		}
 
 		// 2. GEOGRAPHY & METADATA (Universal Parsing)
-		if curAirport != nil &&code == "1302" && len(p) == 3 {
+		if curAirport != nil && code == "1302" && len(p) == 3 {
 			switch p[1] {
 			case "datum_lat":
 				curLat, _ = strconv.ParseFloat(p[2], 64)
@@ -362,10 +378,10 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}
 
 		// Runway records (100 = Asphalt/Concrete, 101 = Water)
-		if curAirport != nil && code == "100"  {
+		if curAirport != nil && code == "100" {
 			// fields is often more reliable than manual slicing if columns shift
 			fields := strings.Fields(line)
-			
+
 			if len(fields) >= 20 {
 				// Parse Dimensions
 				width, _ := strconv.ParseFloat(fields[1], 64)
@@ -375,7 +391,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				// Threshold 1 Coordinates
 				lat1, _ := strconv.ParseFloat(fields[9], 64)
 				lon1, _ := strconv.ParseFloat(fields[10], 64)
-				
+
 				// Threshold 2 Coordinates
 				lat2, _ := strconv.ParseFloat(fields[18], 64)
 				lon2, _ := strconv.ParseFloat(fields[19], 64)
@@ -455,14 +471,14 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 		// 5. TAXIWAY EXTRACTION
 		if curAirport != nil {
-			if code == "1201" {  // Taxiway Node
+			if code == "1201" { // Taxiway Node
 				// Format: 1201 <lat> <lon> <node_id>
 				fields := strings.Fields(line)
 				if len(fields) >= 4 {
 					lat, _ := strconv.ParseFloat(fields[1], 64)
 					lon, _ := strconv.ParseFloat(fields[2], 64)
 					nodeID, _ := strconv.Atoi(fields[4])
-					
+
 					nodeBuffer[nodeID] = Coordinate{Lat: lat, Lon: lon}
 				}
 				continue
@@ -477,7 +493,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				if len(fields) >= 6 {
 					name := fields[5]
 
-					// 1. REJECT if it's a runway crossing (contains "/") 
+					// 1. REJECT if it's a runway crossing (contains "/")
 					// or if it's empty.
 					if name == "" || strings.Contains(name, "/") {
 						continue
@@ -499,18 +515,20 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 						curTaxiNames = append(curTaxiNames, name)
 					}
 				}
-				continue            
+				continue
 			}
 
 			if code == "1204" {
 				fields := strings.Fields(line)
 
-				if len(curTaxiNames) == 0 || len(fields) < 3 { continue }
-		
+				if len(curTaxiNames) == 0 || len(fields) < 3 {
+					continue
+				}
+
 				usage := fields[1]
 
 				if usage == "departure" || usage == "arrival" || usage == "both" {
-					
+
 					rwyList := strings.Split(fields[2], ",")
 
 					// Initialize UsageData map if it doesn't exist
@@ -520,8 +538,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 					for _, rwyID := range rwyList {
 						// This creates the runway if it was previously unknown
-						getOrCreateRunway(curAirport, rwyID)		
-						
+						getOrCreateRunway(curAirport, rwyID)
+
 						// Initialize the sub-map for this specific runway
 						if curAirport.RunwayUsageData[rwyID] == nil {
 							curAirport.RunwayUsageData[rwyID] = make(map[string]string)
@@ -531,7 +549,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 							// Get what's currently stored for this taxiway/runway combo
 							existing := curAirport.RunwayUsageData[rwyID][taxiName]
-							
+
 							// MERGE:
 							if existing == "" || existing == usage {
 								curAirport.RunwayUsageData[rwyID][taxiName] = usage
@@ -569,9 +587,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	return controllers, airports, nil
 }
 
-func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []*Controller, 
-						icao string, elevation float64, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge) {
-	
+func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []*Controller,
+	icao string, elevation float64, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge) {
+
 	var fLat, fLon float64
 
 	// Prioritize Datum, then Centroid
@@ -689,9 +707,9 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 					currentProc = nil
 				}
 				currentProc = &pendingProc{
-					Name:   procName,
+					Name:       procName,
 					RunwayName: targetRwy,
-					Type:   0, // Default SID
+					Type:       0, // Default SID
 				}
 				if strings.HasPrefix(line, "STAR:") {
 					currentProc.Type = 1
@@ -984,57 +1002,61 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 }
 
 func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge, namedNodes []NamedNode) {
-    
+
 	for _, rwy := range ap.Runways {
-        rwy.DepartureAccess = make(map[string]*AccessPoint)
-        rwy.ArrivalAccess = make(map[string]*AccessPoint)
+		rwy.DepartureAccess = make(map[string]*AccessPoint)
+		rwy.ArrivalAccess = make(map[string]*AccessPoint)
 
-        for _, edge := range edgeBuffer {
-            if edge.TaxiName == "" { continue }
+		for _, edge := range edgeBuffer {
+			if edge.TaxiName == "" {
+				continue
+			}
 
-            // Optimization: Get coordinates once
-            coordA := nodeBuffer[edge.NodeA]
-            coordB := nodeBuffer[edge.NodeB]
+			// Optimization: Get coordinates once
+			coordA := nodeBuffer[edge.NodeA]
+			coordB := nodeBuffer[edge.NodeB]
 
 			// DEPARTURE HANDLING
 			usage := getUsage(ap, edge.TaxiName, rwy.Name)
 			if usage == "departure" || usage == "both" {
-				
+
 				// Helper for Departure logic to avoid code duplication
 				processDeparture := func(nodeOnRwy, offRwyNode Coordinate, distToStart float64) {
 					// NEW: XTD check ensures the node is actually ON the runway pavement
 					xtd := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-					
+
 					if xtd < 0.03 { // 0.03 NM (~50m) is roughly half a runway width
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.05, true)
 						entryBrg := geometry.Bearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-						
+
 						updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, nodeOnRwy, distToStart, touching, entryBrg)
 					}
 				}
 
 				// Check Node A
 				distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-				if distAStart < 0.2 { 
-					processDeparture(coordA, coordB, distAStart) 
+				if distAStart < 0.2 {
+					processDeparture(coordA, coordB, distAStart)
 				}
 
 				// Check Node B
 				distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-				if distBStart < 0.2 { 
-					processDeparture(coordB, coordA, distBStart) 
+				if distBStart < 0.2 {
+					processDeparture(coordB, coordA, distBStart)
 				}
 			}
 
 			// ARRIVAL HANDLING
-            if usage == "arrival" || usage == "both" {
-                
-                // Helper to evaluate a specific node for arrival
+			if usage == "arrival" || usage == "both" {
+
+				// Helper to evaluate a specific node for arrival
 				processArrival := func(nodeOnRwy, nextNode Coordinate, distFromStart float64) {
 					// 1. Centerline Escape Check
 					xtdNext := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nextNode.Lat, nextNode.Lon)
 					xtdCurr := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-					if xtdNext <= xtdCurr { return } 
+					if xtdNext <= xtdCurr {
+						return
+					}
 
 					distFromEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
 					isLastChance := distFromEnd < lastExitBufferNM
@@ -1042,23 +1064,27 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 
 					if isSafeRollout || isLastChance {
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)
-						
+
 						if touching != "" || isLastChance {
 							rwyHeading := geometry.Bearing(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
 							exitBrg := geometry.Bearing(nodeOnRwy.Lat, nodeOnRwy.Lon, nextNode.Lat, nextNode.Lon)
-							
+
 							angleDiff := math.Abs(rwyHeading - exitBrg)
-							if angleDiff > 180 { angleDiff = 360 - angleDiff }
-							
+							if angleDiff > 180 {
+								angleDiff = 360 - angleDiff
+							}
+
 							// The Directional Filter
 							maxAngle := 90.0 // Mid-runway: Forward exits only
-							if isLastChance { maxAngle = 140.0 } // End: Tight turns allowed
-							
+							if isLastChance {
+								maxAngle = 140.0
+							} // End: Tight turns allowed
+
 							if angleDiff <= maxAngle {
 								acp := updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, nodeOnRwy, distFromEnd, touching, exitBrg)
 								if acp != nil {
-									// RETs (Rapid Exit Taxiways) 
-									acp.IsHighSpeed = (angleDiff <= highSpeedExitThreshold) 
+									// RETs (Rapid Exit Taxiways)
+									acp.IsHighSpeed = (angleDiff <= highSpeedExitThreshold)
 									acp.IsNearEnd = isLastChance
 								}
 							}
@@ -1066,41 +1092,41 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 					}
 				}
 
-                // Check Node A (if it's on the runway)
-                xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
-                if xtdA < 0.05 {
-                    distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-                    processArrival(coordA, coordB, distAStart)
-                }
+				// Check Node A (if it's on the runway)
+				xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
+				if xtdA < 0.05 {
+					distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
+					processArrival(coordA, coordB, distAStart)
+				}
 
-                // Check Node B (if it's on the runway)
-                xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
-                if xtdB < 0.05 {
-                    distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-                    processArrival(coordB, coordA, distBStart)
-                }
-            }
-        }
-    }
+				// Check Node B (if it's on the runway)
+				xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
+				if xtdB < 0.05 {
+					distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
+					processArrival(coordB, coordA, distBStart)
+				}
+			}
+		}
+	}
 }
 
 func getUsage(ap *Airport, taxiName string, rwyName string) string {
-    // Check if we have a specific rule for this runway-taxiway pair
-    if rwyRules, exists := ap.RunwayUsageData[rwyName]; exists {
-        if usage, found := rwyRules[taxiName]; found {
-            return usage
-        }
-    }
-    // Default fallback if no 1204 record exists for this taxiway
-    return "both" 
+	// Check if we have a specific rule for this runway-taxiway pair
+	if rwyRules, exists := ap.RunwayUsageData[rwyName]; exists {
+		if usage, found := rwyRules[taxiName]; found {
+			return usage
+		}
+	}
+	// Default fallback if no 1204 record exists for this taxiway
+	return "both"
 }
 
 func finaliseParking(ap *Airport, namedNodes []NamedNode) {
-    for _, park := range ap.Parking {
-        // We pass the Coordinate, not a NodeID
-        //park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
+	for _, park := range ap.Parking {
+		// We pass the Coordinate, not a NodeID
+		//park.TaxiwayName = findArterialNearParking(park.Lat, park.Lon, edgeBuffer, nodeBuffer, importance)
 		park.TaxiwayName = findArterialFast(park.Lat, park.Lon, "", namedNodes, 0.05, false)
-    }
+	}
 }
 
 func mergeRunway(existing *Runway, incoming Runway, appType string) {
@@ -1215,9 +1241,9 @@ func normaliseCIFPAlt(altStr string) int {
 	}
 
 	// Handle ARINC 424 Metric Shift: Hundreds vs. Tens of Feet when < 1000
-	 if val < 1000 && val > 0 {
-        return val * 10.0 // Scale up to true feet
-    }
+	if val < 1000 && val > 0 {
+		return val * 10.0 // Scale up to true feet
+	}
 	return val
 }
 
@@ -1288,7 +1314,7 @@ func parseCIFPCoord(coord string) float64 {
 	}
 
 	dir := coord[0]
-	
+
 	// Latitude (N/S) uses 2 digits for degrees: [1:3]
 	// Longitude (E/W) uses 3 digits for degrees: [1:4]
 	degLen := 2
@@ -1298,7 +1324,7 @@ func parseCIFPCoord(coord string) float64 {
 
 	// 1. Extract Degrees
 	deg, _ := strconv.ParseFloat(coord[1:1+degLen], 64)
-	
+
 	// 2. Extract Minutes (always 2 digits following degrees)
 	min, _ := strconv.ParseFloat(coord[1+degLen:3+degLen], 64)
 
@@ -1314,7 +1340,7 @@ func parseCIFPCoord(coord string) float64 {
 	if precisionPower < 0 {
 		precisionPower = 0
 	}
-	
+
 	actualSec := rawSec / math.Pow(10, float64(precisionPower))
 	secDecimal := actualSec / 3600.0
 
@@ -1382,84 +1408,90 @@ func finaliseHubWeights(ap *Airport) {
 }
 
 func getOrCreateRunway(ap *Airport, rwyID string) *Runway {
-    if rwy, exists := ap.Runways[rwyID]; exists {
-        return rwy
-    }
+	if rwy, exists := ap.Runways[rwyID]; exists {
+		return rwy
+	}
 
-    // Create a new runway shell to hold taxiway data
-    newRwy := &Runway{
-        Name:        		rwyID,
-    }
-    ap.Runways[rwyID] = newRwy
-    return newRwy
+	// Create a new runway shell to hold taxiway data
+	newRwy := &Runway{
+		Name: rwyID,
+	}
+	ap.Runways[rwyID] = newRwy
+	return newRwy
 }
 
 // updateAccessPointIfCloser updates the accessMap for the associated name with the provided data if
-// there is no current entry or if distance is less than the currently associated AccessPoint. 
+// there is no current entry or if distance is less than the currently associated AccessPoint.
 // Returns the updated AccessPoint or nil if the map was not modified.
-func updateAccessPointIfCloser(accessMap map[string]*AccessPoint, name string, coord Coordinate, 
-			dist float64, touching string, bearing float64) *AccessPoint {
-    existing, exists := accessMap[name]
-    
-    // We update if it's the first time we see this name, or if this node is closer 
-    // to the reference point (Start for Departure, End for Arrival)
-    if !exists || dist < existing.Dist { 
-        acp := &AccessPoint{
-			Name:		 name,
-            Coord:       coord,
-            TaxiwayName: touching,
-			Bearing: 	 bearing,
-            Dist:        dist, // Store temporarily to compare during finalization
-        }
+func updateAccessPointIfCloser(accessMap map[string]*AccessPoint, name string, coord Coordinate,
+	dist float64, touching string, bearing float64) *AccessPoint {
+	existing, exists := accessMap[name]
+
+	// We update if it's the first time we see this name, or if this node is closer
+	// to the reference point (Start for Departure, End for Arrival)
+	if !exists || dist < existing.Dist {
+		acp := &AccessPoint{
+			Name:        name,
+			Coord:       coord,
+			TaxiwayName: touching,
+			Bearing:     bearing,
+			Dist:        dist, // Store temporarily to compare during finalization
+		}
 		accessMap[name] = acp
 		return acp
-    }
+	}
 
 	return nil
 }
 
 // isIgnorable handles the generic "junk" names that appear in apt.dat
 func isIgnorable(name string) bool {
-    uName := strings.ToUpper(name)
-    return strings.HasPrefix(uName, "LINK") || 
-           strings.Contains(uName, "CONNECTOR") || 
-           strings.Contains(uName, "UNNAMED")
+	uName := strings.ToUpper(name)
+	return strings.HasPrefix(uName, "LINK") ||
+		strings.Contains(uName, "CONNECTOR") ||
+		strings.Contains(uName, "UNNAMED")
 }
 
 func buildImportanceMap(edgeBuffer []RawEdge) map[string]int {
-    importance := make(map[string]int)
-    for _, edge := range edgeBuffer {
-        if edge.TaxiName == "" { continue }
-        // Each time a taxiway name appears, it gains "weight"
-        importance[edge.TaxiName]++
-    }
-    return importance
+	importance := make(map[string]int)
+	for _, edge := range edgeBuffer {
+		if edge.TaxiName == "" {
+			continue
+		}
+		// Each time a taxiway name appears, it gains "weight"
+		importance[edge.TaxiName]++
+	}
+	return importance
 }
 
 func buildNamedNodes(edgeBuffer []RawEdge, nodeBuffer map[int]Coordinate, importance map[string]int) []NamedNode {
-    nodes := make([]NamedNode, 0)
-    seen := make(map[string]map[int]bool)
+	nodes := make([]NamedNode, 0)
+	seen := make(map[string]map[int]bool)
 
-    for _, edge := range edgeBuffer {
-        name := edge.TaxiName
-        if name == "" || isIgnorable(name) { continue }
+	for _, edge := range edgeBuffer {
+		name := edge.TaxiName
+		if name == "" || isIgnorable(name) {
+			continue
+		}
 
-        // Only include "Backbone" taxiways.
-        // If a taxiway only appears once or twice (like A13), it's a connector, not an arterial.
-        if importance[name] < 3 { 
-            continue 
-        }
+		// Only include "Backbone" taxiways.
+		// If a taxiway only appears once or twice (like A13), it's a connector, not an arterial.
+		if importance[name] < 3 {
+			continue
+		}
 
-        if seen[name] == nil { seen[name] = make(map[int]bool) }
-        for _, id := range []int{edge.NodeA, edge.NodeB} {
-            if !seen[name][id] {
-                c := nodeBuffer[id]
-                nodes = append(nodes, NamedNode{c.Lat, c.Lon, name, importance[name]})
-                seen[name][id] = true
-            }
-        }
-    }
-    return nodes
+		if seen[name] == nil {
+			seen[name] = make(map[int]bool)
+		}
+		for _, id := range []int{edge.NodeA, edge.NodeB} {
+			if !seen[name][id] {
+				c := nodeBuffer[id]
+				nodes = append(nodes, NamedNode{c.Lat, c.Lon, name, importance[name]})
+				seen[name][id] = true
+			}
+		}
+	}
+	return nodes
 }
 
 func findArterialFast(targetLat, targetLon float64, currentName string, namedNodes []NamedNode, initialRadiusNM float64, strictArterial bool) string {
@@ -1490,7 +1522,7 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 				if len(candidateName) > 2 {
 					continue
 				}
-				// If current is "A1", don't let it pick "A2". 
+				// If current is "A1", don't let it pick "A2".
 				// A parent should be simpler (shorter) than the child.
 				if len(cleanCurrent) >= 2 && len(candidateName) >= len(cleanCurrent) {
 					continue
@@ -1500,7 +1532,7 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 			// 3. Fast Pruning (Bounding Box)
 			dLat := targetLat - nn.Lat
 			dLon := targetLon - nn.Lon
-			if (dLat * dLat) + (dLon * dLon) > limitSq {
+			if (dLat*dLat)+(dLon*dLon) > limitSq {
 				continue
 			}
 
@@ -1508,7 +1540,7 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 			dist := geometry.DistNM(targetLat, targetLon, nn.Lat, nn.Lon)
 			if dist < currentRadius {
 				// WEIGHTING: Single letters (A, B, S) get massive priority over double (A1, S2).
-				// This ensures that even if A1 is closer to A2 than to Alpha, 
+				// This ensures that even if A1 is closer to A2 than to Alpha,
 				// the 'Gravity' of Alpha wins.
 				weight := 1.0
 				if len(candidateName) == 1 {
@@ -1541,4 +1573,3 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 
 	return ""
 }
-

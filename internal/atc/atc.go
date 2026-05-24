@@ -51,6 +51,7 @@ type ServiceInterface interface {
 	Transmit(userState UserState, ac *Aircraft)
 	SetRadioMute(mute bool)
 	GetCountryFromRegistration(reg string) string
+	GetParkingSpotByName(icao, name string) *ParkingSpot
 }
 
 // AirportProvider defines the behavior for finding the nearest airport

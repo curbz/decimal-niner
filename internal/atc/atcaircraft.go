@@ -101,6 +101,22 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		}
 	}
 
+	// assign paking spot from name if not already assgined
+	if ac.Flight.AssignedParkingName != "" && ac.Flight.AssignedParkingSpot == nil {
+		var targetICAO string
+		if ac.Flight.Phase.Class == flightclass.Departing {
+			targetICAO = ac.Flight.Origin
+		} else {
+			targetICAO = ac.Flight.Destination
+		}
+		parkingSpot := s.GetParkingSpotByName(targetICAO, ac.Flight.AssignedParkingName)
+		if parkingSpot != nil {
+			ac.Flight.AssignedParkingSpot = parkingSpot
+		} else {
+			util.LogWarnWithLabel(ac.Registration, "no parking spot information found for name %s at ", ac.Flight.AssignedParkingName, targetICAO)
+		}
+	}
+
 	// make a snaphot copy of aircraft current state and pass this snapshot into the phrase generation process.
 	// it is safer to do it here rather than in the go routine as there would be a small chance that
 	// the aircraft could get updated concurrently during the deep copy process if this statement was
