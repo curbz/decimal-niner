@@ -52,6 +52,10 @@ type ServiceInterface interface {
 	SetRadioMute(mute bool)
 	GetCountryFromRegistration(reg string) string
 	GetParkingSpotByName(icao, name string) *ParkingSpot
+	AssignSID(ac *Aircraft, airport *Airport, rwy *Runway)
+	AssignSTAR(ac *Aircraft, airport *Airport, rwy *Runway)
+	AssignRunwayAccessPoint(ac *Aircraft, airport *Airport, context int)
+	GetAirportRunway(airportICAO, rwyName string) *Runway
 }
 
 // AirportProvider defines the behavior for finding the nearest airport

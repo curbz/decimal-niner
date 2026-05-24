@@ -210,6 +210,9 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 			isRequired = false
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading ATC data file: %w", err)
+	}
 	return list, nil
 }
 

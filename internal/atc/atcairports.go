@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
+	"github.com/curbz/decimal-niner/pkg/util"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -113,9 +115,17 @@ type NamedNode struct {
 	Importance int
 }
 
-const minArrivalDistNM = 0.8        // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
-const lastExitBufferNM = 0.1        // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
-const highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
+
+const (
+	minArrivalDistNM = 0.8        // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
+	lastExitBufferNM = 0.1        // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
+	highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
+
+	DEPARTURE_CONTEXT = 0
+	ARRIVAL_CONTEXT   = 1
+
+	STAR_PROBABILITY_FACTOR = 0.3
+)
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	var closestICAO string
@@ -163,6 +173,132 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 	}
 	return spot
 }
+
+func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
+	//config := e.AirportConfig[airport.ICAO]
+
+	//SID assignment
+	destAirport := s.GetAirportByICAO(ac.Flight.Destination)
+	if destAirport == nil {
+		util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
+		return
+	}
+
+	// Calculate the bearing from the airport to the destination
+	bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+
+	var bestSID *Procedure
+	minDiff := 360.0
+
+	for i := range depRwy.SIDs {
+		sid := depRwy.SIDs[i]
+		// For a SID, we look at the EXIT fix (where the plane enters the enroute structure)
+		sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+
+		diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
+		if diff < minDiff {
+			minDiff = diff
+			bestSID = sid
+		}
+	}
+
+	if bestSID != nil {
+		ac.Flight.AssignedSID = bestSID
+		util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
+		return
+	}
+	
+}
+
+func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
+	//config := e.AirportConfig[airport.ICAO]
+
+	// 30% probability of STAR assignment to allow for vectoring as alternative
+	if rand.Float32() < STAR_PROBABILITY_FACTOR && len(arrRwy.STARs) > 0 {
+		var bestSTAR *Procedure
+		minDiff := 360.0
+
+		origAirport := s.GetAirportByICAO(ac.Flight.Origin)
+		if origAirport == nil {
+			util.LogWarnWithLabel(ac.Registration, "origin airport %s not found - unable to assign STAR", ac.Flight.Origin)
+			ac.Flight.Vectoring = true
+			util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
+			return
+		}
+
+		// Calculate the bearing from the origin to the destination
+		bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
+
+		for i := range arrRwy.STARs {
+			star := arrRwy.STARs[i]
+			// For a STAR, we look at the ENTRY fix (where the plane starts the arrival)
+			starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
+
+			diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
+			if diff < minDiff {
+				minDiff = diff
+				bestSTAR = star
+			}
+		}
+
+		if bestSTAR != nil {
+			ac.Flight.AssignedSTAR = bestSTAR
+			util.LogWithLabel(ac.Registration, "assigned %s STAR", bestSTAR.Name)
+			return
+		}
+	} else {
+		ac.Flight.Vectoring = true
+		util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
+		return
+	}
+	
+}
+
+// assignRunwayAccessPoint assigns the runway access or exit point depending on whether the arrOrDep flag
+// is set to arrival (0) or departure (1)
+func (s *Service)AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep int) {
+
+	minDistToGate := math.MaxFloat64
+	var selected *AccessPoint
+	spot := ac.Flight.AssignedParkingSpot
+
+	rwy := ac.Flight.AssignedRunway
+	if rwy == nil {
+		var exists bool
+		rwy, exists = ap.Runways[ac.Flight.AssignedRunwayName]
+		if !exists {
+			util.LogWarnWithLabel(ac.Registration, "unable to assign runway access - runway name %s not found at %s",
+				ac.Flight.AssignedRunwayName, ap.ICAO)
+			return
+		}
+		ac.Flight.AssignedRunway = rwy
+	}
+
+	var accessMap map[string]*AccessPoint
+	if arrOrDep == ARRIVAL_CONTEXT {
+		accessMap = rwy.ArrivalAccess
+		//TODO: decide on if we want logic to consider IsHighSpeed, aircraft size, IsNearEnd etc. for arrivals
+	} else {
+		accessMap = rwy.DepartureAccess
+	}
+
+	for _, access := range accessMap {
+		// Which of these qualified entries is closest to our PARKED position?
+		dist := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
+		if dist < minDistToGate {
+			minDistToGate = dist
+			selected = access
+		}
+	}
+
+	if arrOrDep == ARRIVAL_CONTEXT {
+		ac.Flight.ArrivalAccess = selected
+	} else {
+		ac.Flight.DepartureAccess = selected
+	}
+
+}
+
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
 	airportHolds map[string][]*Hold, allHolds map[string]*Hold, allFixes map[string]*Fix) error {
@@ -566,6 +702,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+        return nil, nil, fmt.Errorf("scanner error: %w", err)
+    }
 
 	// Finalize final block
 	if curAirport != nil {
