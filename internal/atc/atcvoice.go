@@ -402,6 +402,9 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@RUNWAY": func(args ...string) interface{} {
 			return translateRunway(ac.Flight.AssignedRunwayName)
 		},
+		"@RUNWAYHOLD": func(args ...string) interface{} {
+			return formatRunwayHold(ac)
+		},
 		"@TAXIPATH": func(args ...string) interface{} {
 			return collateTaxipath(ac)
 		},
@@ -783,6 +786,13 @@ func translateRunway(runway string) string {
 	runway = strings.Replace(runway, "R", "right", 1)
 	return runway
 }
+
+func formatRunwayHold(ac *Aircraft) string {
+	if ac.Flight.ArrivalAccess != nil {
+		return fmt.Sprintf("hold at %s", phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.Name, false))
+	} 		
+	return "hold short"
+ }
 
 func collateTaxipath(ac *Aircraft) string {
 	path := ""

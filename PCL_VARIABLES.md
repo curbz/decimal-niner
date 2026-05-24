@@ -159,14 +159,21 @@ It is focused on the values and formatted outputs produced by the engine, with r
   - Template: `{$CALLSIGN}, taxi to {@PARKING}.`
   - Interpolated: `speedbird123, taxi to gate bravo 12.`
 
+### `@RUNWAYHOLD`
+- Function: `formatRunwayHold`
+- Output: formats the runway access point and prefixes with `hold at`. If no access point has been assigned then the string `hold short` is output.
+- Example phrase:
+  - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAYHOLD}.`
+  - Interpolated: `speedbird123, taxi via Charlie and hold at Alpha 13.`
+
 ### `@TAXIPATH`
 - Function: `collateTaxipath`
 - Output: composes arrival or departure taxi routing using available taxiway access and parking segments.
   - Taxiway names are phoneticized when they start with a letter, e.g. `A` → `Alpha` and `B12` → `Bravo 12`.
   - If no taxi path data exists, returns `taxiway`.
 - Example phrase:
-  - Template: `{$CALLSIGN}, taxi to {@TAXIPATH}.`
-  - Interpolated: `speedbird123, taxi to Alpha,Bravo 12.`
+  - Template: `{$CALLSIGN}, taxi {@TAXIPATH}.`
+  - Interpolated: `speedbird123, taxi via Alpha,Bravo 12.`
 
 ### `@DESTINATION`
 - Function: `formatAirportName`
