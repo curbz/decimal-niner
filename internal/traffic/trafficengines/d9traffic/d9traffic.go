@@ -166,6 +166,10 @@ func (e *D9TrafficEngine) Start() {
 	}()
 }
 
+func (e *D9TrafficEngine) Enrich(ac *atc.Aircraft) {
+	
+}
+
 func (e *D9TrafficEngine) needsRunwayRefresh(ap *atc.Airport) bool {
 	config, exists := e.AirportConfig[ap.ICAO]
 	if !exists {

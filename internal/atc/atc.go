@@ -32,7 +32,7 @@ type Service struct {
 	SimInitTime           time.Time // the date/time within the sim
 	SessionInitTime       time.Time // the real-world date/time when the SimInitTime was synced, used to calculate current sim time and elapsed time in sim
 	VoiceManager          *VoiceManager
-	engine                TrafficEngine
+	TrafficEngine         TrafficEngine
 }
 
 type ServiceInterface interface {
@@ -70,6 +70,7 @@ type AirportProvider interface {
 type TrafficEngine interface {
 	GetFlightPlanPath() string
 	RequiresAircraftData() bool
+	Enrich(*Aircraft)
 }
 
 // --- configuration structures ---
@@ -243,12 +244,12 @@ func (s *Service) SyncSimTime(init time.Time, session time.Time) {
 // This is intended to be called during initialization by the traffic engine's
 // SetATCService implementation.
 func (s *Service) RegisterTrafficEngine(e TrafficEngine) {
-	s.engine = e
+	s.TrafficEngine = e
 }
 
 // GetTrafficEngine returns the registered traffic engine or nil if none registered.
 func (s *Service) GetTrafficEngine() TrafficEngine {
-	return s.engine
+	return s.TrafficEngine
 }
 
 // Transmit checks tuned frequencies to determine if pilot will hear transmissions. If so, then the aircraft data

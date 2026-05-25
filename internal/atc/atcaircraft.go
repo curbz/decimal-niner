@@ -38,7 +38,7 @@ type Flight struct {
 	AssignedParkingName string
 	AssignedParkingSpot *ParkingSpot
 	AssignedRunwayName  string
-	AssignedRunway 		*Runway
+	AssignedRunway      *Runway
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
 	Vectoring           bool
@@ -103,6 +103,9 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 	}
 
 	// ---- RESOLVE NAMES TO OBJECTS ----
+	// Not all traffic engines may need this, but it's a good fallback should we have missing data for any reason, and
+	// it also enables enrichment of non-d9 traffic engines with various data variables and macros
+
 	// assign runway from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
 	if ac.Flight.AssignedRunwayName != "" && ac.Flight.AssignedRunway == nil {
 		targetICAO := getAirportICAObyPhaseClass(ac)
@@ -124,12 +127,11 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 			util.LogWarnWithLabel(ac.Registration, "no parking spot information found for name %s at ", ac.Flight.AssignedParkingName, targetICAO)
 		}
 	}
-	
+
 	// ---- ENRICHMENT ----
+	// Traffic engines can be enriched here with additional data variables and macros
+	s.TrafficEngine.Enrich(ac)
 
-
-
-	
 	// make a snaphot copy of aircraft current state and pass this snapshot into the phrase generation process.
 	// it is safer to do it here rather than in the go routine as there would be a small chance that
 	// the aircraft could get updated concurrently during the deep copy process if this statement was

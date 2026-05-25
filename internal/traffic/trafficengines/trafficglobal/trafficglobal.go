@@ -159,6 +159,10 @@ func (tg *TrafficGlobal) SetATCService(atcService *atc.Service) {
 	}
 }
 
+func (e *TrafficGlobal) Enrich(ac *atc.Aircraft) {
+	//TODO: enrich based on phase
+}
+
 func (tg *TrafficGlobal) GetFlightPlanPath() string {
 	return tg.FlightPlanPath
 }
