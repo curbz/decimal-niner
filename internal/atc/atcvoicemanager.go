@@ -18,6 +18,22 @@ import (
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
+var (
+	// validPCLTags includes both Raw ($) and Formatted (@) tags found in newPCLContext
+	validPCLTags = map[string]bool{
+		"$ALTITUDE": true, "$CALLSIGN": true, "$FACILITY": true, "$SQUAWK": true,
+		"$HEADING": true, "$RUNWAY": true, "$DESTINATION": true, "$BARO_SEALEVEL": true,
+		"$BARO_AIRCRAFT": true, "$WIND_SPEED": true, "$WIND_SHEAR": true, "$TURBULENCE": true,
+		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
+		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
+		"@RUNWAY": true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
+		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
+		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
+		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
+		"@RUNWAY_HOLD": true, "@RUNWAY_EXIT": true,
+	}
+)
+
 // VoiceSession stores the metadata for an active assignment
 // VoiceSession now stores the specific speaker key
 type VoiceSession struct {
@@ -652,22 +668,6 @@ func inferCommsCountryCode(ac *Aircraft, defaultCode string) {
 		util.LogWarnWithLabel(ac.Registration, "no comms country code - last resort setting to default of  %s", ac.Flight.Comms.CountryCode)
 	}
 }
-
-var (
-	// validPCLTags includes both Raw ($) and Formatted (@) tags found in newPCLContext
-	validPCLTags = map[string]bool{
-		"$ALTITUDE": true, "$CALLSIGN": true, "$FACILITY": true, "$SQUAWK": true,
-		"$HEADING": true, "$RUNWAY": true, "$DESTINATION": true, "$BARO_SEALEVEL": true,
-		"$BARO_AIRCRAFT": true, "$WIND_SPEED": true, "$WIND_SHEAR": true, "$TURBULENCE": true,
-		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
-		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
-		"@RUNWAY": true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
-		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
-		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
-		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
-		"@RUNWAY_HOLD": true,
-	}
-)
 
 func validatePhrase(phrase string) error {
 	if phrase == "" {

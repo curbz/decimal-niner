@@ -166,6 +166,13 @@ It is focused on the values and formatted outputs produced by the engine, with r
   - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAY_HOLD}.`
   - Interpolated: `speedbird123, taxi via Charlie and hold at Alpha 13.`
 
+### `@RUNWAY_EXIT`
+- Function: `formatRunwayExit`
+- Output: formats the runway exit point and prefixes with either `exit at` or `vacate runway at` on an equal random basis. The prefix will be further extened to include `high speed` if the assigned exit is classed as high speed. If no exit point has been assigned then the string `exit when able` is output.
+- Example phrase:
+  - Template: `{$CALLSIGN}, {@RUNWAY_HOLD}.`
+  - Interpolated: `speedbird123, vacate runway at high speed exit November 6.`
+
 ### `@TAXIPATH`
 - Function: `collateTaxipath`
 - Output: composes arrival or departure taxi routing using available taxiway access and parking segments.

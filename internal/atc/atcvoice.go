@@ -405,6 +405,9 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@RUNWAY_HOLD": func(args ...string) interface{} {
 			return formatRunwayHold(ac)
 		},
+		"@RUNWAY_EXIT": func(args ...string) interface{} {
+			return formatRunwayExit(ac)
+		},
 		"@TAXIPATH": func(args ...string) interface{} {
 			return collateTaxipath(ac)
 		},
@@ -788,10 +791,26 @@ func translateRunway(runway string) string {
 }
 
 func formatRunwayHold(ac *Aircraft) string {
-	if ac.Flight.ArrivalAccess != nil {
-		return fmt.Sprintf("hold at %s", phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.Name, false))
+	if ac.Flight.DepartureAccess != nil {
+		return fmt.Sprintf("hold at %s", phoneticiseAlphaFirst(ac.Flight.DepartureAccess.Name, false))
 	} 		
 	return "hold short"
+ }
+
+ func formatRunwayExit(ac *Aircraft) string {
+	if ac.Flight.ArrivalAccess != nil {
+		highSpeed := ""
+		if ac.Flight.ArrivalAccess.IsHighSpeed {
+			highSpeed = "high speed exit"
+		}
+		// randonly choose one of prefix "exit at" or "vacate runway at"
+		prefix := "exit at"
+		if rand.Intn(2) == 0 {
+			prefix = "vacate runway at"
+		} 
+		return fmt.Sprintf("%s %s %s", prefix,highSpeed, phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.Name, false))
+	} 		
+	return "exit when able"
  }
 
 func collateTaxipath(ac *Aircraft) string {
