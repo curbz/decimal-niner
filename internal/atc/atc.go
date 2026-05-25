@@ -70,7 +70,7 @@ type AirportProvider interface {
 type TrafficEngine interface {
 	GetFlightPlanPath() string
 	RequiresAircraftData() bool
-	Enrich(*Aircraft)
+	Enrich(*Aircraft, *Airport)
 }
 
 // --- configuration structures ---

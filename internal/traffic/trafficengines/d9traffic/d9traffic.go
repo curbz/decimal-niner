@@ -166,8 +166,8 @@ func (e *D9TrafficEngine) Start() {
 	}()
 }
 
-func (e *D9TrafficEngine) Enrich(ac *atc.Aircraft) {
-	
+func (e *D9TrafficEngine) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
+	//NOOP for D9TrafficEngine
 }
 
 func (e *D9TrafficEngine) needsRunwayRefresh(ap *atc.Airport) bool {

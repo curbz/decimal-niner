@@ -102,13 +102,14 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 		}
 	}
 
+	targetICAO := getAirportICAObyPhaseClass(ac)
+
 	// ---- RESOLVE NAMES TO OBJECTS ----
 	// Not all traffic engines may need this, but it's a good fallback should we have missing data for any reason, and
 	// it also enables enrichment of non-d9 traffic engines with various data variables and macros
 
 	// assign runway from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
 	if ac.Flight.AssignedRunwayName != "" && ac.Flight.AssignedRunway == nil {
-		targetICAO := getAirportICAObyPhaseClass(ac)
 		rwy := s.GetAirportRunway(targetICAO, ac.Flight.AssignedRunwayName)
 		if rwy != nil {
 			ac.Flight.AssignedRunway = rwy
@@ -119,7 +120,6 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 	// assign parking spot from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
 	if ac.Flight.AssignedParkingName != "" && ac.Flight.AssignedParkingSpot == nil {
-		targetICAO := getAirportICAObyPhaseClass(ac)
 		parkingSpot := s.GetParkingSpotByName(targetICAO, ac.Flight.AssignedParkingName)
 		if parkingSpot != nil {
 			ac.Flight.AssignedParkingSpot = parkingSpot
@@ -130,7 +130,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 	// ---- ENRICHMENT ----
 	// Traffic engines can be enriched here with additional data variables and macros
-	s.TrafficEngine.Enrich(ac)
+	s.TrafficEngine.Enrich(ac, s.GetAirportByICAO(targetICAO))
 
 	// make a snaphot copy of aircraft current state and pass this snapshot into the phrase generation process.
 	// it is safer to do it here rather than in the go routine as there would be a small chance that

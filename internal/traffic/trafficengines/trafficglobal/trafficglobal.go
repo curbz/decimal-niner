@@ -159,8 +159,21 @@ func (tg *TrafficGlobal) SetATCService(atcService *atc.Service) {
 	}
 }
 
-func (e *TrafficGlobal) Enrich(ac *atc.Aircraft) {
-	//TODO: enrich based on phase
+// Enrich will apply additional data to the aircraft andshould be called by the ATC Service on aircraft phase change
+func (e *TrafficGlobal) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
+	
+	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
+	case flightphase.Braking, flightphase.TaxiIn:
+		if ac.Flight.AssignedRunway.ArrivalAccess == nil {
+			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.ARRIVAL_CONTEXT)
+		}
+	
+	case flightphase.Startup, flightphase.TaxiOut:
+		if ac.Flight.AssignedRunway.DepartureAccess == nil {
+			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.DEPARTURE_CONTEXT)
+		}
+	}
+
 }
 
 func (tg *TrafficGlobal) GetFlightPlanPath() string {
