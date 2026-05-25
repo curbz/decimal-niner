@@ -154,6 +154,9 @@ func (tg *TrafficGlobal) Start() {
 
 func (tg *TrafficGlobal) SetATCService(atcService *atc.Service) {
 	tg.atcService = atcService
+	if atcService != nil {
+		atcService.RegisterTrafficEngine(tg)
+	}
 }
 
 func (tg *TrafficGlobal) GetFlightPlanPath() string {

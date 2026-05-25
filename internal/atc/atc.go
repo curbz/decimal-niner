@@ -32,6 +32,7 @@ type Service struct {
 	SimInitTime           time.Time // the date/time within the sim
 	SessionInitTime       time.Time // the real-world date/time when the SimInitTime was synced, used to calculate current sim time and elapsed time in sim
 	VoiceManager          *VoiceManager
+	engine                TrafficEngine
 }
 
 type ServiceInterface interface {
@@ -63,6 +64,14 @@ type AirportProvider interface {
 	GetClosestAirport(lat, long, maxRangeNm float64) string
 }
 
+// TrafficEngine is a minimal interface that represents the methods on a
+// traffic engine that the ATC service needs to query. This is declared here to
+// avoid an import cycle with the internal/traffic package.
+type TrafficEngine interface {
+	GetFlightPlanPath() string
+	RequiresAircraftData() bool
+}
+
 // --- configuration structures ---
 type config struct {
 	ATC struct {
@@ -85,7 +94,7 @@ type config struct {
 type Coordinate struct {
 	Lat float64
 	Lon float64
-}	
+}
 
 func New(cfgPath string, fScheds map[string][]flightplan.ScheduledFlight, requiredAirports map[string]bool) (*Service, error) {
 
@@ -228,6 +237,18 @@ func (s *Service) GetCurrentZuluTime() time.Time {
 func (s *Service) SyncSimTime(init time.Time, session time.Time) {
 	s.SimInitTime = init
 	s.SessionInitTime = session
+}
+
+// RegisterTrafficEngine registers the active traffic engine with the Service.
+// This is intended to be called during initialization by the traffic engine's
+// SetATCService implementation.
+func (s *Service) RegisterTrafficEngine(e TrafficEngine) {
+	s.engine = e
+}
+
+// GetTrafficEngine returns the registered traffic engine or nil if none registered.
+func (s *Service) GetTrafficEngine() TrafficEngine {
+	return s.engine
 }
 
 // Transmit checks tuned frequencies to determine if pilot will hear transmissions. If so, then the aircraft data

@@ -14,7 +14,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, startup complete, requesting taxi.", "atc": "{$CALLSIGN}, [Roger,] report ready for taxi." }
   ],
   "taxi_out": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi via {@TAXIPATH}, {@RUNWAYHOLD} runway {@RUNWAY}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi via {@TAXIPATH}, {@RUNWAY_HOLD} runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, ready for taxi.", "atc": "{$CALLSIGN}, taxi to runway {@RUNWAY} [and] hold short." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to runway {@RUNWAY} for IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, taxi and hold short [of] runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, ready to taxi for departure to {@DESTINATION}.", "atc": "{$CALLSIGN} taxi to runway {@RUNWAY}." },

@@ -159,11 +159,11 @@ It is focused on the values and formatted outputs produced by the engine, with r
   - Template: `{$CALLSIGN}, taxi to {@PARKING}.`
   - Interpolated: `speedbird123, taxi to gate bravo 12.`
 
-### `@RUNWAYHOLD`
+### `@RUNWAY_HOLD`
 - Function: `formatRunwayHold`
 - Output: formats the runway access point and prefixes with `hold at`. If no access point has been assigned then the string `hold short` is output.
 - Example phrase:
-  - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAYHOLD}.`
+  - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAY_HOLD}.`
   - Interpolated: `speedbird123, taxi via Charlie and hold at Alpha 13.`
 
 ### `@TAXIPATH`

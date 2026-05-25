@@ -256,7 +256,7 @@ func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
 
 // assignRunwayAccessPoint assigns the runway access or exit point depending on whether the arrOrDep flag
 // is set to arrival (0) or departure (1)
-func (s *Service)AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep int) {
+func (s *Service) AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep int) {
 
 	minDistToGate := math.MaxFloat64
 	var selected *AccessPoint

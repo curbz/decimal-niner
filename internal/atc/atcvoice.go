@@ -402,7 +402,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@RUNWAY": func(args ...string) interface{} {
 			return translateRunway(ac.Flight.AssignedRunwayName)
 		},
-		"@RUNWAYHOLD": func(args ...string) interface{} {
+		"@RUNWAY_HOLD": func(args ...string) interface{} {
 			return formatRunwayHold(ac)
 		},
 		"@TAXIPATH": func(args ...string) interface{} {

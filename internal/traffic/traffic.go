@@ -1,10 +1,8 @@
 package traffic
 
 import (
-
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightplan"
-
 )
 
 type Engine interface {

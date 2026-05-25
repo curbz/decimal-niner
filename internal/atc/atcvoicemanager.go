@@ -665,7 +665,7 @@ var (
 		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
 		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
 		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
-		"@RUNWAYHOLD": true,
+		"@RUNWAY_HOLD": true,
 	}
 )
 

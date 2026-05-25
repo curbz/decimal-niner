@@ -26,20 +26,24 @@ func assertRange(t *testing.T, name string, got, min, max int) {
 	}
 }
 
-func TestDetermineInitialDeparturePhase(t *testing.T) {
-	baseTime := time.Now().Truncate(time.Minute)
-	scheduleTime := baseTime.Add(30 * time.Minute)
-	schedule := &flightplan.ScheduledFlight{
+func buildDepartureSchedule(baseTime time.Time, diff, durationMin int) *flightplan.ScheduledFlight {
+	departureTime := baseTime.Add(time.Duration(diff) * time.Minute)
+	arrivalTime := departureTime.Add(time.Duration(durationMin) * time.Minute)
+	return &flightplan.ScheduledFlight{
 		AircraftRegistration: "TEST123",
 		IcaoOrigin:           "EGLL",
-		DepartureHour:		  baseTime.Hour(),
-		DepartureMin:         baseTime.Minute(),	
-		ArrivalHour:          scheduleTime.Hour(),
-		ArrivalMin:           scheduleTime.Minute(),
+		DepartureHour:        departureTime.Hour(),
+		DepartureMin:         departureTime.Minute(),
+		ArrivalHour:          arrivalTime.Hour(),
+		ArrivalMin:           arrivalTime.Minute(),
 	}
+}
 
+func TestDetermineInitialDeparturePhase(t *testing.T) {
+	baseTime := time.Now().Truncate(time.Minute)
 	runway := &atc.Runway{Name: "09L"}
-	runwayKey := normalizeRunwayKey(schedule.IcaoOrigin, runway)
+	scheduleTemplate := buildDepartureSchedule(baseTime, 30, 30)
+	runwayKey := normalizeRunwayKey(scheduleTemplate.IcaoOrigin, runway)
 
 	cases := []struct {
 		name          string
@@ -119,7 +123,7 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 			diff:         0,
 			wantPhase:    flightphase.TaxiOut,
 			wantRemExact: true,
-			wantRemMin:   45,
+			wantRemMin:   600,
 			wantDurExact: true,
 			wantDurMin:   600,
 		},
@@ -146,10 +150,10 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 			diff:         -20,
 			wantPhase:    flightphase.Cruise,
 			wantRemExact: false,
-			wantRemMin:   780,
-			wantRemMax:   1020,
+			wantRemMin:   180,
+			wantRemMax:   420,
 			wantDurExact: true,
-			wantDurMin:   1860,
+			wantDurMin:   600,
 		},
 	}
 
@@ -158,6 +162,7 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 			e := newTestEngine(baseTime)
 			e.AirportConfig = tc.airportConfig
 			e.RunwayQueues = tc.runwayQueues
+			schedule := buildDepartureSchedule(baseTime, tc.diff, 30)
 
 			phase, remaining, totalDur, delay := e.determineInitialDeparturePhase(tc.diff, schedule)
 			if phase != tc.wantPhase {
@@ -184,14 +189,20 @@ func TestDetermineInitialDeparturePhase(t *testing.T) {
 	}
 }
 
+func buildArrivalSchedule(baseTime time.Time, diff, durationMin int) *flightplan.ScheduledFlight {
+	arrivalTime := baseTime.Add(time.Duration(diff) * time.Minute)
+	departureTime := arrivalTime.Add(-time.Duration(durationMin) * time.Minute)
+	return &flightplan.ScheduledFlight{
+		AircraftRegistration: "TEST123",
+		DepartureHour:        departureTime.Hour(),
+		DepartureMin:         departureTime.Minute(),
+		ArrivalHour:          arrivalTime.Hour(),
+		ArrivalMin:           arrivalTime.Minute(),
+	}
+}
+
 func TestDetermineInitialArrivalPhase(t *testing.T) {
 	baseTime := time.Now().Truncate(time.Minute)
-	scheduleTime := baseTime.Add(30 * time.Minute)
-	schedule := &flightplan.ScheduledFlight{
-		AircraftRegistration: "TEST123",
-		ArrivalHour:          scheduleTime.Hour(),
-		ArrivalMin:           scheduleTime.Minute(),
-	}
 
 	cases := []struct {
 		name         string
@@ -205,44 +216,39 @@ func TestDetermineInitialArrivalPhase(t *testing.T) {
 		wantRemMax   int
 	}{
 		{
-			name:       "arrival_phase",
-			diff:       10,
-			wantPhase:  flightphase.Arrival,
-			wantEstMin: 60,
-			wantEstMax: 300,
-			wantRemMin: 360,
-			wantRemMax: 600,
+			name:      "arrival_phase",
+			diff:      10,
+			wantPhase: flightphase.Arrival,
+			// estimated total approach window (AMINUS_ARRIVAL_MINS - AMINUS_APPROACH_MINS) * 60 => 540 +/- jitter
+			wantEstMin: 480,
+			wantEstMax: 600,
+			// remaining until approach (minsToSchedArr - AMINUS_APPROACH_MINS) * 60 => ~240 +/- jitter
+			wantRemMin: 180,
+			wantRemMax: 300,
 		},
 		{
-			name:       "approach_phase",
-			diff:       5,
-			wantPhase:  flightphase.Approach,
-			wantEstMin: 180,
-			wantEstMax: 300,
-			wantRemMin: 300,
-			wantRemMax: 420,
+			name:      "approach_phase",
+			diff:      5,
+			wantPhase: flightphase.Approach,
+			// estimated approach window (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60 => 240 +/- jitter
+			wantEstMin: 210,
+			wantEstMax: 270,
+			// remaining until final (minsToSchedArr - AMINUS_FINAL_MINS) * 60 => ~180 +/- jitter
+			wantRemMin: 150,
+			wantRemMax: 210,
 		},
 		{
 			name:         "final_phase_promoted_to_approach",
 			diff:         1,
 			wantPhase:    flightphase.Approach,
 			wantEstExact: true,
-			wantEstMin:   360,
+			wantEstMin:   240,
 			wantRemExact: true,
-			wantRemMin:   360,
+			wantRemMin:   60,
 		},
 		{
 			name:         "braking_promoted_to_approach",
 			diff:         0,
-			wantPhase:    flightphase.Approach,
-			wantEstExact: true,
-			wantEstMin:   360,
-			wantRemExact: true,
-			wantRemMin:   360,
-		},
-		{
-			name:         "taxi_in",
-			diff:         -1,
 			wantPhase:    flightphase.TaxiIn,
 			wantEstExact: true,
 			wantEstMin:   600,
@@ -250,37 +256,52 @@ func TestDetermineInitialArrivalPhase(t *testing.T) {
 			wantRemMin:   600,
 		},
 		{
-			name:         "shutdown",
-			diff:         -5,
-			wantPhase:    flightphase.Shutdown,
-			wantEstMin:   300,
-			wantEstMax:   540,
+			name:         "taxi_in",
+			diff:         -1,
+			wantPhase:    flightphase.TaxiIn,
+			wantEstExact: true,
+			wantEstMin:   60,
 			wantRemExact: true,
-			wantRemMin:   600,
+			wantRemMin:   60,
 		},
 		{
-			name:         "parked",
-			diff:         -13,
-			wantPhase:    flightphase.Parked,
-			wantEstMin:   0,
-			wantEstMax:   240,
-			wantRemExact: true,
-			wantRemMin:   180,
+			name:      "shutdown",
+			diff:      -5,
+			wantPhase: flightphase.Shutdown,
+			// estimated total taxi-in window is constant
+			wantEstExact: true,
+			wantEstMin:   600,
+			// remaining time until taxi-in start
+			wantRemMin: 360,
+			wantRemMax: 480,
+		},
+		{
+			name:      "parked",
+			diff:      -13,
+			wantPhase: flightphase.Parked,
+			// estimated parking window total
+			wantEstExact: true,
+			wantEstMin:   180,
+			// remaining until parked time
+			wantRemMin: 0,
+			wantRemMax: 240,
 		},
 		{
 			name:         "cruise_default",
 			diff:         20,
 			wantPhase:    flightphase.Cruise,
 			wantEstExact: true,
-			wantEstMin:   2100,
-			wantRemMin:   1980,
-			wantRemMax:   2220,
+			// estimated total cruise minutes based on schedule (20 mins -> 1200s)
+			wantEstMin: 1200,
+			wantRemMin: 180,
+			wantRemMax: 420,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newTestEngine(baseTime)
+			schedule := buildArrivalSchedule(baseTime, tc.diff, 30)
 
 			phase, remaining, estimated := e.determineInitialArrivalPhase(tc.diff, schedule)
 			if phase != tc.wantPhase {

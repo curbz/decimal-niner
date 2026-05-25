@@ -117,6 +117,9 @@ func New(cfgPath string) (traffic.Engine, error) {
 
 func (tg *D9TrafficEngine) SetATCService(atcService *atc.Service) {
 	tg.atcService = atcService
+	if atcService != nil {
+		atcService.RegisterTrafficEngine(tg)
+	}
 }
 
 func (e *D9TrafficEngine) Start() {
