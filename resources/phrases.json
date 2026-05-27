@@ -35,7 +35,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Departure, {$CALLSIGN}, passing {@ALTITUDE} for assigned altitude.", "atc": "{$CALLSIGN}, {$FACILITY} Departure,[ radar contact,] {@ALT_CLEARANCE}." },
     { "initiator": "atc", "pilot": "Heading {$HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, fly heading {$HEADING}" },
     { "initiator": "atc", "pilot": "{@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "pilot": "squawk {$SQUAWK}. Identing, {$CALLSIGN}.", "atc": "{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident." }
+    { "initiator": "atc", "pilot": "squawk {$SQUAWK}. Identing, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@SID(true)}." }
   ],
   "cruise": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {@TURBULENCE}", "atc": "{$CALLSIGN}, {$FACILITY} Center, Roger, {@BARO}.{NOREADBACK}" },
@@ -45,7 +45,7 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Center, {$CALLSIGN}, with you at {@ALTITUDE}. {@TURBULENCE}.", "atc": "{$CALLSIGN}, affirm, radar contact. {@TURBULENCE}" }
   ],
   "arrival": [
-      { "initiator": "atc", "atc": "{$CALLSIGN}, continue [your] descent [into {@DESTINATION}.]" }
+      { "initiator": "atc", "atc": "{$CALLSIGN}, continue [your] descent [into {@DESTINATION}] {@STAR(true)}" }
   ],
   "holding": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, entering the holding pattern at {@HOLD_FIX}.", "atc": "{$CALLSIGN}, affirm, at {@HOLD_FIX}. {NOREADBACK}" },

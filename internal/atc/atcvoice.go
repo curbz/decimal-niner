@@ -422,6 +422,26 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		},
 
 		// --- DEPARTURE & ARRIVAL ---
+		"@SID": func(args ...string) interface{} {
+			includeClimbAltitude := true //default
+			transLevel := 0
+			if len(args) > 0 {
+				includeClimbAltitude, _ = strconv.ParseBool(args[0])
+				transLevel = getTransitionLevel(s.getTransistionAltitude(ac), s.Weather.Baro.Sealevel)
+			}
+			// transition Level is not strictly required for SID formatting but is required if we are including altitude
+			return formatSID(ac, includeClimbAltitude, transLevel)
+		},
+		"@STAR": func(args ...string) interface{} {
+			includeDescentAltitude := true //default
+			transLevel := 0
+			if len(args) > 0 {
+				includeDescentAltitude, _ = strconv.ParseBool(args[0])
+				transLevel = getTransitionLevel(s.getTransistionAltitude(ac), s.Weather.Baro.Sealevel)
+			}
+			// transition Level is not strictly required for STAR formatting but is required if we are including altitude
+			return formatSTAR(ac, includeDescentAltitude, transLevel)
+		},
 		"@APPROACH_TYPE": func(args ...string) interface{} {
 			res := ""
 			if rwy != nil {
@@ -812,6 +832,30 @@ func formatRunwayHold(ac *Aircraft) string {
 	} 		
 	return "exit when able"
  }
+
+func  formatSID(ac *Aircraft, includeClimbAltitude bool, transLevel int) string {
+	if ac.Flight.AssignedSID != nil {
+		climbAlt := ""
+		if includeClimbAltitude && ac.Flight.AssignedSID.Entry.ConstraintAlt > 0 {
+			climbAlt = fmt.Sprintf(" and climb to %s", 
+			formatAltitude(float64(ac.Flight.AssignedSID.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
+		}
+		return fmt.Sprintf("via the %s departure %s", ac.Flight.AssignedSID.Name, climbAlt)
+	}
+	return "via the assigned departure"
+}
+
+func  formatSTAR(ac *Aircraft, includeDescentAltitude bool, transLevel int) string {
+	if ac.Flight.AssignedSTAR != nil {
+		descendAlt := ""
+		if includeDescentAltitude && ac.Flight.AssignedSTAR.Entry.ConstraintAlt > 0 {
+			descendAlt = fmt.Sprintf(" and descend to %s", 
+			formatAltitude(float64(ac.Flight.AssignedSTAR.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
+		}
+		return fmt.Sprintf("via the %s arrival %s", ac.Flight.AssignedSID.Name, descendAlt)
+	}
+	return "via the assigned arrival"
+}
 
 func collateTaxipath(ac *Aircraft) string {
 	path := ""

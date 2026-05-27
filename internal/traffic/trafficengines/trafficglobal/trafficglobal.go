@@ -167,13 +167,25 @@ func (e *TrafficGlobal) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
 		if ac.Flight.AssignedRunway.ArrivalAccess == nil {
 			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.ARRIVAL_CONTEXT)
 		}
-	
-	case flightphase.Startup, flightphase.TaxiOut:
+	}
+
+	if ac.Flight.Phase.Current >= flightphase.Startup.Index() && ac.Flight.Phase.Current <= flightphase.TaxiOut.Index() {
 		if ac.Flight.AssignedRunway.DepartureAccess == nil {
 			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.DEPARTURE_CONTEXT)
 		}
 	}
 
+	if ac.Flight.Phase.Current >= flightphase.Startup.Index() && ac.Flight.Phase.Current <= flightphase.Departure.Index() {
+		if ac.Flight.AssignedSID == nil {
+			e.atcService.AssignSID(ac, ap, ac.Flight.AssignedRunway)
+		}
+	}
+
+	if ac.Flight.Phase.Current >= flightphase.Cruise.Index() && ac.Flight.Phase.Current <= flightphase.Approach.Index() {
+		if ac.Flight.AssignedSTAR == nil {
+			e.atcService.AssignSTAR(ac, ap, ac.Flight.AssignedRunway)
+		}
+	}
 }
 
 func (tg *TrafficGlobal) GetFlightPlanPath() string {

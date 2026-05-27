@@ -189,10 +189,25 @@ It is focused on the values and formatted outputs produced by the engine, with r
   - Template: `{$FACILITY} Delivery, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.`
   - Interpolated: `Heathrow Delivery, speedbird123, at gate bravo 12, requesting IFR to John F Kennedy.`
 
-### `@APPROACH_TYPE`
-- Function: formatted from runway highest precision approach.
-- Output: appended with the word `approach`, e.g. `ILS approach`.
+
+### `@SID`
+- Function: `formatSID`
+- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted.
 - Example phrase:
+  - Template: `{$CALLSIGN}, cleared via {@SID}.`
+  - Interpolated: `speedbird123, cleared via BNN 5A, climb to 7 thousand.`
+
+### `@STAR`
+- Function: `formatSTAR`
+- Output: Standard Terminal Arrival Route (STAR) name, optionally including descent altitude. If an argument is provided and is `false`, the descent altitude is omitted.
+- Example phrase:
+  - Template: `{$CALLSIGN}, expect {@STAR}.`
+  - Interpolated: `speedbird123, expect BIG 2B, descend to 3 thousand.`
+
+### `@APPROACH_TYPE`
+Function: formatted from runway highest precision approach.
+Output: appended with the word `approach`, e.g. `ILS approach`.
+Example phrase:
   - Template: `{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}.`
   - Interpolated: `speedbird123, Heathrow Approach, fly heading 270 for ILS approach, climb to 12 thousand.`
 
