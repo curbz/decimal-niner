@@ -524,7 +524,8 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@VALEDICTION": func(args ...string) interface{} {
 			factor := 5 //default
 			if len(args) > 0 {
-				factor, _ = strconv.Atoi(args[0])
+				factor, err := strconv.Atoi(args[0])
+				if err != nil || factor < 1 { factor = 1 }
 			}
 			return s.generateValediction(factor)
 		},
