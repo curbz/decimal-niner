@@ -139,6 +139,12 @@ It is focused on the values and formatted outputs produced by the engine, with r
 - Example phrase:
   - Used indirectly in `@ALT_CLEARANCE` for arriving flights.
 
+### `$VECTORING`
+- Source: `ac.Flight.IsVectoring`
+- Output: true/false
+- Example phrase:
+  - Not intended to used directly in phrase output but can be used in pcl `WHEN` statements
+
 ## Formatted Macros (`@`)
 
 ### `@RUNWAY`
@@ -192,17 +198,17 @@ It is focused on the values and formatted outputs produced by the engine, with r
 
 ### `@SID`
 - Function: `formatSID`
-- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted.
+- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted. If no assigned SID, defaults to `assigned departure`.
 - Example phrase:
-  - Template: `{$CALLSIGN}, cleared via {@SID}.`
-  - Interpolated: `speedbird123, cleared via BNN 5A, climb to 7 thousand.`
+  - Template: `{$CALLSIGN}, cleared via the {@SID(true)}.`
+  - Interpolated: `speedbird123, cleared via the BNN 5A deaprture, climb to 7 thousand.`
 
 ### `@STAR`
 - Function: `formatSTAR`
-- Output: Standard Terminal Arrival Route (STAR) name, optionally including descent altitude. If an argument is provided and is `false`, the descent altitude is omitted.
+- Output: Standard Terminal Arrival Route (STAR) name, optionally including descent altitude. If an argument is provided and is `false`, the descent altitude is omitted. If no assigned STAR, defaults to `assigned arrival`.
 - Example phrase:
-  - Template: `{$CALLSIGN}, expect {@STAR}.`
-  - Interpolated: `speedbird123, expect BIG 2B, descend to 3 thousand.`
+  - Template: `{$CALLSIGN}, expect the {@STAR(true)}.`
+  - Interpolated: `speedbird123, expect the BIG 2B arrival, descend to 3 thousand.`
 
 ### `@APPROACH_TYPE`
 Function: formatted from runway highest precision approach.

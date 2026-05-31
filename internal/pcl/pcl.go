@@ -198,6 +198,7 @@ func evaluateComparison(left interface{}, op string, right interface{}) bool {
 
 	if errL == nil && errR == nil {
 		switch op {
+		case "NE": return lVal != rVal
 		case "EQ": return lVal == rVal
 		case "LT": return lVal < rVal
 		case "LE": return lVal <= rVal

@@ -254,7 +254,7 @@ func (s *Service) GetTrafficEngine() TrafficEngine {
 
 // Transmit checks tuned frequencies to determine if pilot will hear transmissions. If so, then the aircraft data
 // will be sent to the broadcast channel to be processed where the appropriate comms will be determined and broadcast.
-// Always ensure the Aircraft pointer is referecing a deep copy of the original aircraft to avoid state conflicts
+// Always ensure the Aircraft pointer is referencing a deep copy of the original aircraft to avoid state conflicts
 func (s *Service) Transmit(userState UserState, ac *Aircraft) {
 
 	aiFac := ac.Flight.Comms.Controller

@@ -16,6 +16,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
+	"github.com/mohae/deepcopy"
 )
 
 type D9TrafficEngine struct {
@@ -1374,12 +1375,13 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 }
 
 func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
+
 	currSimZTime := e.atcService.GetCurrentZuluTime()
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
 	if totalDuration <= 0 {
-		return
+		return 
 	}
 
 	// 1. Calculate Horizontal Progress (0.0 -> 1.0)
@@ -1502,8 +1504,10 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	var calculatedAlt float64
 
+	inDescent:= false
 	if distToTarget <= requiredDescentDist && altitudeToLose > 0 {
 		// --- PHASE: DESCENT (Post-TOD) ---
+		inDescent = true
 		// How far into the descent are we? (0.0 at TOD, 1.0 at Target)
 		descentProgress := 1.0
 		if requiredDescentDist > 0 {
@@ -1543,6 +1547,28 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	)
 
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(hd)
+
+	if inDescent && ac.Flight.ClearedTOD == false {
+		ac.Flight.ClearedTOD = true
+		util.LogWithLabel(ac.Registration, "Top of Descent reached at %0.2f NM from target - beginning descent from cruise altitude of %0.2f to target entry altitude of %0.2f over the next %0.2f NM",
+			distToTarget, cruiseAlt, targetAlt, requiredDescentDist)
+		v := deepcopy.Copy(ac)
+		acSnap, ok := v.(*atc.Aircraft)
+		if !ok {
+			util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot for cruise TOD; skipping phrase generation")
+		} else {
+			// send to phrase generation
+			util.GoSafe(func() {
+				// +-----------------------------------------------------------------+
+				// | Only use acSnap to reference the aircraft within the go routine |
+				// +-----------------------------------------------------------------+
+				acSnap.Flight.Comms.Controller = e.atcService.AssignController(acSnap)
+				if acSnap.Flight.Comms.Controller != nil {
+					e.atcService.Transmit(e.atcService.UserState, acSnap)
+				}
+			})
+		}
+	} 
 }
 
 func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {

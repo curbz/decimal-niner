@@ -50,6 +50,7 @@ type Flight struct {
 	DepartureDelay      int
 	ArrivalAccess       *AccessPoint
 	DepartureAccess     *AccessPoint
+	ClearedTOD 			bool
 }
 
 type Position struct {
@@ -173,6 +174,7 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 		if !ok {
 			util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot for cruise handoff; skipping phrase generation")
 		} else {
+			//TODO: should this not be done in a Gosafe call as per NotifyPhaseChange?
 			acSnap.Flight.Comms.CruiseHandoff = HandoffExitSector
 			// send to phrase generation
 			s.Transmit(s.UserState, acSnap)
@@ -391,7 +393,7 @@ func (s *Service) SetFlightPhaseClass(ac *Aircraft) {
 
 	ph := &ac.Flight.Phase
 
-	// If we've already assigned a specific class (like Preflight or Postflight),
+	// If we've already assigned a specific class
 	// and the Sim phase hasn't actually changed, we are done here and can return
 	if ph.Class != flightclass.Unknown && ph.Current == ph.Previous {
 		return
