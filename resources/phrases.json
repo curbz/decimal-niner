@@ -1,7 +1,7 @@
 {
   "pre_flight_parked": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Clearance, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, [{$FACILITY} Clearance,] cleared [to] {@DESTINATION} as filed, maintain initial altitude, squawk {$SQUAWK}. {@HANDOFF}" },
-    { "initiator": "pilot", "pilot": "{$FACILITY} Delivery, {$CALLSIGN}, IFR to {@DESTINATION}, ready to copy.", "atc": "{$CALLSIGN}, [{$FACILITY} Delivery,] cleared [to] {@DESTINATION} as filed, fly runway heading, maintain assigned altitude, squawk {$SQUAWK}. {@HANDOFF}" },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Delivery, {$CALLSIGN}, IFR to {@DESTINATION}, ready to copy.", "atc": "{$CALLSIGN}, [{$FACILITY} Delivery,] cleared [to] {@DESTINATION} {@SID(false)} [as filed], squawk {$SQUAWK}. {@HANDOFF}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Clearance, {$CALLSIGN}, requesting IFR clearance to {@DESTINATION} as filed.", "atc": "{$CALLSIGN}, [{$FACILITY} Clearance,] cleared [for IFR to] {@DESTINATION}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Delivery, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, cleared [to] {@DESTINATION}, {@HANDOFF}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Clearance, {$CALLSIGN}, IFR {@DESTINATION}, ready for clearance.", "atc": "{$CALLSIGN}, IFR [clearance] to {@DESTINATION}. {@HANDOFF}" }

@@ -818,7 +818,7 @@ func translateRunway(runway string) string {
 
 func formatRunwayHold(ac *Aircraft) string {
 	if ac.Flight.DepartureAccess != nil {
-		return fmt.Sprintf("hold at %s", phoneticiseAlphaFirst(ac.Flight.DepartureAccess.Name, false))
+		return fmt.Sprintf("hold at %s", phoneticiseAll(ac.Flight.DepartureAccess.Name))
 	} 		
 	return "hold short"
  }
@@ -834,7 +834,7 @@ func formatRunwayHold(ac *Aircraft) string {
 		if rand.Intn(2) == 0 {
 			prefix = "vacate runway at"
 		} 
-		return fmt.Sprintf("%s %s %s", prefix,highSpeed, phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.Name, false))
+		return fmt.Sprintf("%s %s %s", prefix,highSpeed, phoneticiseAll(ac.Flight.ArrivalAccess.Name))
 	} 		
 	return "exit when able"
  }
@@ -846,7 +846,7 @@ func  formatSID(ac *Aircraft, includeClimbAltitude bool, transLevel int) string 
 			climbAlt = fmt.Sprintf(" and climb to %s", 
 			formatAltitude(float64(ac.Flight.AssignedSID.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
-		return fmt.Sprintf("%s departure %s", ac.Flight.AssignedSID.Name, climbAlt)
+		return fmt.Sprintf("%s departure %s", phoneticiseSingleAlphas(ac.Flight.AssignedSID.Name), climbAlt)
 	}
 	return "assigned departure"
 }
@@ -858,7 +858,7 @@ func  formatSTAR(ac *Aircraft, includeDescentAltitude bool, transLevel int) stri
 			descendAlt = fmt.Sprintf(" and descend to %s", 
 			formatAltitude(float64(ac.Flight.AssignedSTAR.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
-		return fmt.Sprintf("%s arrival %s", ac.Flight.AssignedSTAR.Name, descendAlt)
+		return fmt.Sprintf("%s arrival %s", phoneticiseSingleAlphas(ac.Flight.AssignedSTAR.Name), descendAlt)
 	}
 	return "assigned arrival"
 }
@@ -1159,6 +1159,17 @@ func phoneticiseAlphaFirst(input string, followedByDigits bool) string {
 		}
 	}
 	return input
+}
+
+
+func phoneticiseAll(input string) string {
+	phontercisedPhrase := ""
+	for _, char := range input {
+		if phonetic, exists := phoneticMap[string(char)]; exists {
+			phontercisedPhrase += phonetic + " "
+		}
+	}
+	return strings.TrimSpace(phontercisedPhrase)
 }
 
 // phoneticiseSingleAlphas will replace single alphas in a phrase to their phonetic equivalents
