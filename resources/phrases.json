@@ -86,10 +86,11 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, {@RUNWAY_EXIT}, {@HANDOFF}." }
   ],
   "taxi_in": [
-    { "initiator": "atc", "atc": "{$CALLSIGN}, clear runway {@RUNWAY} [when able], {@HANDOFF}" },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, exit runway when able, {@HANDOFF}" },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, clear [of the active], {@HANDOFF}" },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, {@HANDOFF}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of the active", "atc": "{$CALLSIGN}, Ground, proceed via {@TAXIPATH} to {@PARKING}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of runway {@RUNWAY}", "atc": "{$CALLSIGN}, taxi to {@PARKING}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of the active", "atc": "{$CALLSIGN}, Ground, proceed via taxiway to {@PARKING}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, requesting taxi to parking.", "atc": "{$CALLSIGN}, taxi to {@PARKING}." },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, taxi to {@PARKING}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, clear of the active", "atc": "{$CALLSIGN}, Ground, proceed via {@TAXIPATH} to {@PARKING}." }
   ],
   "post_flight_parked": [
