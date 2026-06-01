@@ -423,17 +423,14 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		// assign departure gate - do this BEFORE assigning the departure runway access as this may influence the selected access point
 		e.assignParking(newAc, airport)
 	}
-	if ip > flightphase.Startup.Index() {
-		// assign departure runway
-		newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-		newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, newAc.Flight.AssignedRunwayName)
-		// assign SID for departure
-		e.atcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
-		if ip == flightphase.TaxiOut.Index() {
-			// assign departure runway access
-			e.atcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
-		}
-	}
+
+	// assign departure runway
+	newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
+	newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, newAc.Flight.AssignedRunwayName)
+	// assign SID for departure
+	e.atcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
+	// assign departure runway access
+	e.atcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
 
 	newAc.Flight.Phase.Transition = transitionTime // BACKDATED
 	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
@@ -906,11 +903,15 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			// Check for Braking transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
+					// go-around
 					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
 						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
 					e.transitionToPhase(ac, flightphase.GoAround, 80, 0)
 					e.updateGoAroundPosition(ac, airport)
 				} else {
+					// transition to braking phase
+					e.assignParking(ac, airport)
+					e.atcService.AssignRunwayAccessPoint(ac, airport, atc.ARRIVAL_CONTEXT)
 					dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
 					e.transitionToPhase(ac, flightphase.Braking, dur, 0)
 					ac.Flight.Position.Altitude = airport.Elevation
@@ -941,8 +942,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Braking:
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
-				e.assignParking(ac, airport)
-				e.atcService.AssignRunwayAccessPoint(ac, airport, atc.ARRIVAL_CONTEXT)
 				dur := e.calculateTaxiDuration(ac, atc.ARRIVAL_CONTEXT)
 				e.transitionToPhase(ac, flightphase.TaxiIn, dur, 0)
 			} else {

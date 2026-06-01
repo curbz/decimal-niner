@@ -175,7 +175,11 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 }
 
 func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
-	//config := e.AirportConfig[airport.ICAO]
+	
+	if depRwy == nil {
+		util.LogErrWithLabel(ac.Registration, "unable to assign SID as no runway provided (nil)")
+		return
+	}
 
 	//SID assignment
 	destAirport := s.GetAirportByICAO(ac.Flight.Destination)
@@ -211,7 +215,11 @@ func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
 }
 
 func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
-	//config := e.AirportConfig[airport.ICAO]
+	
+	if arrRwy == nil {
+		util.LogErrWithLabel(ac.Registration, "unable to assign STAR as no runway provided (nil)")
+		return
+	}
 
 	// 30% probability of STAR assignment to allow for vectoring as alternative
 	if rand.Float32() < STAR_PROBABILITY_FACTOR && len(arrRwy.STARs) > 0 {
@@ -267,7 +275,7 @@ func (s *Service) AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep in
 		var exists bool
 		rwy, exists = ap.Runways[ac.Flight.AssignedRunwayName]
 		if !exists {
-			util.LogWarnWithLabel(ac.Registration, "unable to assign runway access - runway name %s not found at %s",
+			util.LogErrWithLabel(ac.Registration, "unable to assign runway access - runway name '%s' not found at %s",
 				ac.Flight.AssignedRunwayName, ap.ICAO)
 			return
 		}
@@ -367,7 +375,8 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 
 // parseApt processes the X-Plane apt.dat file with deep fallback logic for missing coordinates.
 func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map[string]*Airport, error) {
-	var controllers []*Controller
+	
+	var allcontrollers, apcontrollers []*Controller
 	airports := make(map[string]*Airport)
 
 	var (
@@ -414,11 +423,17 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		// 1. HEADER RECORD (New Airport Start)
 		if code == "1" || code == "16" || code == "17" {
 			if curAirport != nil {
-				finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev, nodeBuffer, edgeBuffer)
+				finaliseAirport(curAirport, curLat, curLon, airportPoints, apcontrollers, curElev, nodeBuffer, edgeBuffer)
+				allcontrollers = append(allcontrollers, apcontrollers...)
+				// clear apcontrollers for next airport
+				apcontrollers = []*Controller{}
 			}
 
 			if len(p) >= 5 {
 				curICAO = p[4]
+				if curICAO == "EGKA" {
+					fmt.Println("breakpoint")
+				}
 				curName = cleanAirportName(strings.Join(p[5:], " "))
 				curLat, curLon, transAlt, region = 0, 0, 0, ""
 				curElev, err = strconv.ParseFloat(p[1], 0)
@@ -497,8 +512,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			continue
 		}
 
-		// 2. GEOGRAPHY & METADATA (Universal Parsing)
-		if curAirport != nil && code == "1302" && len(p) == 3 {
+		// 2. GEOGRAPHY & METADATA (Universal Parsing) - this is need for controller data regardless of whether airport is required or not, as controllers are parsed in same loop and may be present at non-required airports
+		if code == "1302" && len(p) == 3 {
 			switch p[1] {
 			case "datum_lat":
 				curLat, _ = strconv.ParseFloat(p[2], 64)
@@ -509,7 +524,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			case "region_code":
 				region = p[2]
 			}
+			if curAirport != nil {
 			curAirport.TransAlt, curAirport.Region = transAlt, region
+			}
 			continue
 		}
 
@@ -568,7 +585,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			if isRequiredAirport || isEnroute {
 				fRaw, _ := strconv.Atoi(p[1])
 				fNorm := normaliseFreq(fRaw)
-				batchStartIdx = len(controllers)
+				batchStartIdx = len(apcontrollers)
 
 				roles := []int{rID}
 				if code == "1051" || code == "1054" {
@@ -585,7 +602,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 						Lat:     curLat,
 						Lon:     curLon,
 					}
-					controllers = append(controllers, c)
+					apcontrollers = append(apcontrollers, c)
 					if curAirport != nil {
 						curAirport.Controllers = append(curAirport.Controllers, c)
 					}
@@ -595,12 +612,12 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}
 
 		// 4. TRANSMITTER OVERRIDE (1100)
-		if code == "1100" && len(controllers) > 0 {
+		if code == "1100" && len(apcontrollers) > 0 {
 			la, _ := strconv.ParseFloat(p[1], 64)
 			lo, _ := strconv.ParseFloat(p[2], 64)
 			if math.Abs(la) > 0.1 {
-				for i := batchStartIdx; i < len(controllers); i++ {
-					controllers[i].Lat, controllers[i].Lon = la, lo
+				for i := batchStartIdx; i < len(apcontrollers); i++ {
+					apcontrollers[i].Lat, apcontrollers[i].Lon = la, lo
 				}
 			}
 		}
@@ -702,18 +719,21 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			}
 		}
 	}
+
+	// file scanner complete - check for errors
 	if err := scanner.Err(); err != nil {
         return nil, nil, fmt.Errorf("scanner error: %w", err)
     }
 
-	// Finalize final block
+	// Finalize the final block
 	if curAirport != nil {
-		finaliseAirport(curAirport, curLat, curLon, airportPoints, controllers, curICAO, curElev, nodeBuffer, edgeBuffer)
+		finaliseAirport(curAirport, curLat, curLon, airportPoints, apcontrollers, curElev, nodeBuffer, edgeBuffer)
+		allcontrollers = append(allcontrollers, apcontrollers...)
 	}
 
 	// FINAL MBB INITIALIZATION
-	for i := range controllers {
-		c := controllers[i]
+	for i := range allcontrollers {
+		c := allcontrollers[i]
 		if c.Lat == 0 && c.Lon == 0 {
 			logger.Log.Warnf("no location found for ICAO:%s Name: %s Role: %d\n", c.ICAO, c.Name, c.RoleID)
 		}
@@ -723,11 +743,11 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		}}
 	}
 
-	return controllers, airports, nil
+	return allcontrollers, airports, nil
 }
 
-func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls []*Controller,
-	icao string, elevation float64, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge) {
+func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, apctrls []*Controller,
+	elevation float64, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge) {
 
 	var fLat, fLon float64
 
@@ -743,7 +763,6 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls [
 		fLat = sLa / float64(len(pts))
 		fLon = sLo / float64(len(pts))
 	}
-	//TODO if we still have no lat/lon for the airport we could use average of parking spots
 
 	ap.Lat, ap.Lon = fLat, fLon
 	ap.Elevation = elevation
@@ -758,17 +777,12 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, allCtrls [
 	finaliseParking(ap, nnm)
 
 	// Retroactive update for any controllers created with 0,0
-	for i := len(allCtrls) - 1; i >= 0; i-- {
-		if allCtrls[i].ICAO != icao {
-			if i < len(allCtrls)-100 {
-				break
-			} // Optimization
-			continue
-		}
-		if allCtrls[i].Lat == 0 {
-			allCtrls[i].Lat, allCtrls[i].Lon = fLat, fLon
-		}
-	}
+	for _, ctrl := range apctrls {
+        if ctrl.Lat == 0 {
+            ctrl.Lat = ap.Lat
+            ctrl.Lon = ap.Lon
+        }
+    }
 }
 
 func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
