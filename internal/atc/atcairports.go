@@ -142,14 +142,23 @@ func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
 	return closestICAO
 }
 
-// GetAirportRunway returns the Runway instance for the given runway name and nil if not found
-func (s *Service) GetAirportRunway(icao, rwy string) *Runway {
+// GetAirportRunwayByICAO returns the Runway instance for the given airport ICAO and runway name and nil if not found
+func (s *Service) GetAirportRunwayByICAO(icao, rwy string) *Runway {
 	var r *Runway
 	if icao != "" && rwy != "" {
 		ap, found := s.Airports[icao]
 		if found {
 			r, _ = ap.Runways[rwy]
 		}
+	}
+	return r
+}
+
+// GetAirportRunway returns the Runway instance for the given airport and runway name and nil if not found
+func (s *Service) GetAirportRunway(airport *Airport, rwy string) *Runway {
+	var r *Runway
+	if airport != nil && rwy != "" {
+		r, _ = airport.Runways[rwy]
 	}
 	return r
 }

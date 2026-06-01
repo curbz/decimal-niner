@@ -317,7 +317,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 	var rwy *Runway
 	if ac.Flight.AssignedRunway == nil {
 		phaseICAO := getAirportICAObyPhaseClass(ac)
-		rwy = s.GetAirportRunway(phaseICAO, ac.Flight.AssignedRunwayName)
+		rwy = s.GetAirportRunwayByICAO(phaseICAO, ac.Flight.AssignedRunwayName)
 	} else {
 		rwy = ac.Flight.AssignedRunway
 	}

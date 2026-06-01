@@ -56,7 +56,8 @@ type ServiceInterface interface {
 	AssignSID(ac *Aircraft, airport *Airport, rwy *Runway)
 	AssignSTAR(ac *Aircraft, airport *Airport, rwy *Runway)
 	AssignRunwayAccessPoint(ac *Aircraft, airport *Airport, context int)
-	GetAirportRunway(airportICAO, rwyName string) *Runway
+	GetAirportRunwayByICAO(airportICAO, rwyName string) *Runway
+	GetAirportRunway(airport *Airport, rwyName string) *Runway
 }
 
 // AirportProvider defines the behavior for finding the nearest airport

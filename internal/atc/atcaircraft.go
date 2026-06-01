@@ -111,7 +111,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 	// assign runway from name if not already assgined - this enables enrichment of non-d9 traffic engines with various data variables and macros
 	if ac.Flight.AssignedRunwayName != "" && ac.Flight.AssignedRunway == nil {
-		rwy := s.GetAirportRunway(targetICAO, ac.Flight.AssignedRunwayName)
+		rwy := s.GetAirportRunwayByICAO(targetICAO, ac.Flight.AssignedRunwayName)
 		if rwy != nil {
 			ac.Flight.AssignedRunway = rwy
 		} else {

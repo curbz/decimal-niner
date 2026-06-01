@@ -426,7 +426,7 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
 	// assign departure runway
 	newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-	newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, newAc.Flight.AssignedRunwayName)
+	newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
 	// assign SID for departure
 	e.atcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
 	// assign departure runway access
@@ -444,10 +444,10 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		if ip == flightphase.Cruise.Index() {
 			//TODO: consider what to do when a departure spawn results in a cruise phase -terminate tracking?
 			rwy := e.getFallbackRunway(f.IcaoDest, atc.ARRIVAL_CONTEXT)
-			newAc.Flight.AssignedRunwayName = rwy.Name
-			newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(f.IcaoDest, newAc.Flight.AssignedRunwayName)
-			// assign destination procedure
 			destApt := e.atcService.Airports[f.IcaoDest]
+			newAc.Flight.AssignedRunwayName = rwy.Name
+			newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(destApt, newAc.Flight.AssignedRunwayName)
+			// assign destination procedure
 			e.atcService.AssignSTAR(newAc, destApt, rwy)
 			e.updateCruisePosition(newAc)
 		} else {
@@ -532,7 +532,7 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	// arrival runway must be assigned BEFORE assigning runway access point
 	if initialPhaseIdx <= flightphase.TaxiIn.Index() {
 		newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Arrival.Name
-		newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, newAc.Flight.AssignedRunwayName)
+		newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
 	}
 	if initialPhaseIdx >= flightphase.Braking.Index() && initialPhaseIdx <= flightphase.Shutdown.Index()+1 {
 		// assign parking BEFORE runway exit point as this may influence the selected exit
@@ -612,7 +612,7 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 
 	apt, flightContext := e.getActiveAirport(ac)
 	icao := apt.ICAO
-	rwy := e.atcService.GetAirportRunway(icao, ac.Flight.AssignedRunwayName)
+	rwy := e.atcService.GetAirportRunway(apt, ac.Flight.AssignedRunwayName)
 	if rwy == nil {
 		rwy = e.getFallbackRunway(icao, flightContext)
 	}
@@ -774,7 +774,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			// Check for TaxiOut transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, ac.Flight.AssignedRunwayName)
+				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
 				e.atcService.AssignSID(ac, airport, ac.Flight.AssignedRunway)
 				e.atcService.AssignRunwayAccessPoint(ac, airport, atc.DEPARTURE_CONTEXT)
 				dur := e.calculateTaxiDuration(ac, atc.DEPARTURE_CONTEXT)
@@ -844,7 +844,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if tta <= AMINUS_ARRIVAL_MINS {
 				// we are transitioning to arrival so assign or replace any earlier assigned runway
 				ac.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Arrival.Name
-				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport.ICAO, ac.Flight.AssignedRunwayName)
+				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
 				if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false {
 					e.atcService.AssignSTAR(ac, airport, ac.Flight.AssignedRunway)
 				}

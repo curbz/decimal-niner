@@ -97,7 +97,7 @@ func TestGetAirportRunway(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := s.GetAirportRunway(tt.icao, tt.rwy)
+			got := s.GetAirportRunwayByICAO(tt.icao, tt.rwy)
 			if tt.wantPresent {
 				if got == nil {
 					t.Fatalf("expected runway present for %s/%s", tt.icao, tt.rwy)
