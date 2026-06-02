@@ -13,7 +13,6 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
-	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
@@ -99,7 +98,7 @@ const (
 	GOAROUND_TO_HOLD_PROBABILITY_FACTOR           = 0.3
 )
 
-func New(cfgPath string) (traffic.Engine, error) {
+func New(cfgPath string) (atc.TrafficEngine, error) {
 	cfg, err := util.LoadConfig[D9TrafficConfig](cfgPath)
 	if err != nil {
 		logger.Log.Errorf("Error reading configuration file: %v", err)
@@ -116,10 +115,10 @@ func New(cfgPath string) (traffic.Engine, error) {
 	}, nil
 }
 
-func (tg *D9TrafficEngine) SetATCService(atcService *atc.Service) {
-	tg.atcService = atcService
+func (e *D9TrafficEngine) SetATCService(atcService *atc.Service) {
+	e.atcService = atcService
 	if atcService != nil {
-		atcService.RegisterTrafficEngine(tg)
+		atcService.RegisterTrafficEngine(e)
 	}
 }
 
@@ -686,6 +685,57 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 		ac.Flight.Phase.InitialAltitude)
 }
 
+func (e *D9TrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft) {
+
+	// if last check position has not yet been set, set it now so that we have something to compare against and return
+	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+		return
+	}
+
+	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
+	case flightphase.Cruise:
+			// check for possible sector change
+			e.CheckForCruiseSectorChange(ac)
+			// check for TOD
+			e.CheckForTOD(ac)
+	}
+}
+
+// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
+// is in cruise and has travelled at least 5 NM since the last position check
+func (e *D9TrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft) {
+
+	// if we don't have a controller assigned, assign one now, update last checked position and return
+	if ac.Flight.Comms.Controller == nil {
+		ac.Flight.Comms.Controller = e.atcService.AssignController(ac)
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+		// no need to continue as another attempt to assign a controller now would result in the same controller
+		return
+	}
+
+	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
+	// since last check (allows for data value fluctuations) then return
+	if ac.Flight.Comms.CruiseHandoff != atc.NoHandoff ||
+		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
+			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
+		return
+	}
+
+	dist := atc.CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
+	// Only notify if moved more than 5.0 NM
+	if dist > 5.0 {
+		// Trigger the cruise handoff detection logic
+		e.atcService.NotifyCruisePositionChange(ac)
+		// Update the checkpoint
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+	}
+}
+
+func (e *D9TrafficEngine) CheckForTOD(ac *atc.Aircraft) {
+	//NOOP
+}
+
 func getActiveAircraftKey(ac *atc.Aircraft) string {
 	return fmt.Sprintf("%s_%d", ac.Registration, ac.Flight.Number)
 }
@@ -968,7 +1018,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		// --- LOGGING & STATE SYNC ---
 
 		if ac.Flight.Phase.Current != ac.Flight.Phase.Previous {
-
+			// phase has changed
 			logMsg := ""
 			if e.initialised {
 				e.atcService.NotifyFlightPhaseChange(ac)
@@ -1002,6 +1052,8 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				int(ac.Flight.Position.Heading),
 				ac.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339),
 			)
+			// check for subphases
+			e.CheckForSubPhaseChange(ac)
 		}
 	}
 
@@ -1504,19 +1556,20 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	var calculatedAlt float64
 
 	inDescent:= false
+	descentProgress := 0.0
 	if distToTarget <= requiredDescentDist && altitudeToLose > 0 {
 		// --- PHASE: DESCENT (Post-TOD) ---
 		inDescent = true
 		// How far into the descent are we? (0.0 at TOD, 1.0 at Target)
-		descentProgress := 1.0
+		descentProgress = 1.0
 		if requiredDescentDist > 0 {
 			descentProgress = 1.0 - (distToTarget / requiredDescentDist)
 		}
 		calculatedAlt = cruiseAlt - (math.Max(0, descentProgress) * altitudeToLose)
 		util.LogDebugWithLabel(ac.Registration, "elapsed cruise is %0.2f seconds - in descent phase, distance to target is %0.2f NM, required descent distance is %0.2f NM, descent progress is %0.2f%%, calculated altitude is %0.2f",
 			elapsed, distToTarget, requiredDescentDist, descentProgress*100, calculatedAlt)
-		// if we are in descent and don't have arrival procedures defined, set to vectoring
-		if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false && distToTarget < (requiredDescentDist+10.0) {
+		// if we don't have arrival procedures defined, set to vectoring
+		if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false  {
 			ac.Flight.Vectoring = true
 		}
 	} else {
@@ -1547,9 +1600,9 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(hd)
 
-	if inDescent && ac.Flight.ClearedTOD == false {
+	if inDescent && ac.Flight.ClearedTOD == false && descentProgress < 0.05 {
 		ac.Flight.ClearedTOD = true
-		util.LogWithLabel(ac.Registration, "Top of Descent reached at %0.2f NM from target - beginning descent from cruise altitude of %0.2f to target entry altitude of %0.2f over the next %0.2f NM",
+		util.LogWithLabel(ac.Registration, "TOD reached at %0.2f NM from target - beginning descent from cruise altitude of %0.2f to target entry altitude of %0.2f over the next %0.2f NM",
 			distToTarget, cruiseAlt, targetAlt, requiredDescentDist)
 		v := deepcopy.Copy(ac)
 		acSnap, ok := v.(*atc.Aircraft)
@@ -1947,7 +2000,6 @@ func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
 	viable := []*atc.Runway{}
 	for _, rwy := range ap.Runways {
 		// Only consider runways longer than 5000ft (approx 1500m)
-		// and avoid water/heliport surfaces if your data includes them
 		if rwy.Length >= 5000 {
 			viable = append(viable, rwy)
 		}

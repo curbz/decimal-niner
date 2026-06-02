@@ -1,14 +1,16 @@
 package trafficglobal
 
 import (
+	"math"
+
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
-	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/util"
+	"github.com/mohae/deepcopy"
 )
 
 const (
@@ -39,7 +41,7 @@ type TrafficGlobal struct {
 	atcService     *atc.Service
 }
 
-func New(cfgPath string) (traffic.Engine, error) {
+func New(cfgPath string) (atc.TrafficEngine, error) {
 
 	// trafficglobal uses different flight phase values to those d9 uses internally, so we
 	// need to translate them when writing to the simdata.DRTrafficEngineAIFlightPhase dataref.
@@ -68,7 +70,7 @@ func New(cfgPath string) (traffic.Engine, error) {
 			case FP_Cruise:
 				d9fp = flightphase.Cruise.Index()
 			case FP_Holding:
-				d9fp = flightphase.Cruise.Index()
+				d9fp = flightphase.Holding.Index()
 			case FP_Approach:
 				d9fp = flightphase.Approach.Index()
 			case FP_Final:
@@ -186,6 +188,85 @@ func (e *TrafficGlobal) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
 			e.atcService.AssignSTAR(ac, ap, ac.Flight.AssignedRunway)
 		}
 	}
+}
+
+func (e *TrafficGlobal) CheckForSubPhaseChange(ac *atc.Aircraft) {
+
+	// if last check position has not yet been set, set it now so that we have something to compare against and return
+	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+		return
+	}
+
+	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
+	case flightphase.Cruise:
+			// check for possible sector change
+			e.CheckForCruiseSectorChange(ac)
+			// check for TOD
+			e.CheckForTOD(ac)
+	}
+}
+
+// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
+// is in cruise and has travelled at least 5 NM since the last position check
+func (e *TrafficGlobal) CheckForCruiseSectorChange(ac *atc.Aircraft) {
+
+	// if we don't have a controller assigned, assign one now, update last checked position and return
+	if ac.Flight.Comms.Controller == nil {
+		ac.Flight.Comms.Controller = e.atcService.AssignController(ac)
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+		// no need to continue as another attempt to assign a controller now would result in the same controller
+		return
+	}
+
+	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
+	// since last check (allows for data value fluctuations) then return
+	if ac.Flight.Comms.CruiseHandoff != atc.NoHandoff ||
+		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
+			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
+		return
+	}
+
+	dist := atc.CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
+	// Only notify if moved more than 5.0 NM
+	if dist > 5.0 {
+		// Trigger the cruise handoff detection logic
+		e.atcService.NotifyCruisePositionChange(ac)
+		// Update the checkpoint
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+	}
+}
+
+func (e *TrafficGlobal) CheckForTOD(ac *atc.Aircraft) {
+
+	if ac.Flight.ClearedTOD {
+		return
+	}
+
+	descent := ac.Flight.LastCheckedPosition.Altitude - ac.Flight.Position.Altitude
+	// Only notify if descent is  more than 3000 ft
+	if descent >= 3000 {
+		// set new state to trigger subphase
+		ac.Flight.ClearedTOD = true
+		// deep copy and transmit
+		util.LogWithLabel(ac.Registration, "TOD detected, aircraft descending")
+		// creat snapshot of aircraft state for phrase generation
+		v := deepcopy.Copy(ac)
+		acSnap, ok := v.(*atc.Aircraft)
+		if !ok {
+			util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot for TOD subphase; skipping phrase generation")
+		} else {
+			util.GoSafe(func() {
+				// +-----------------------------------------------------------------+
+				// | Only use acSnap to reference the aircraft within the go routine |
+				// +-----------------------------------------------------------------+
+				e.atcService.Transmit(e.atcService.UserState, acSnap)
+			})
+		}
+		// update position
+		ac.Flight.LastCheckedPosition = ac.Flight.Position
+	}
+
 }
 
 func (tg *TrafficGlobal) GetFlightPlanPath() string {

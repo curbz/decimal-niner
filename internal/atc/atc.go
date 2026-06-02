@@ -48,7 +48,6 @@ type ServiceInterface interface {
 	SyncSimTime(init time.Time, session time.Time)
 	GetCurrentZuluTime() time.Time
 	SetDataProvider(simdata.SimDataProvider)
-	CheckForCruiseSectorChange(ac *Aircraft)
 	Transmit(userState UserState, ac *Aircraft)
 	SetRadioMute(mute bool)
 	GetCountryFromRegistration(reg string) string
@@ -58,6 +57,8 @@ type ServiceInterface interface {
 	AssignRunwayAccessPoint(ac *Aircraft, airport *Airport, context int)
 	GetAirportRunwayByICAO(airportICAO, rwyName string) *Runway
 	GetAirportRunway(airport *Airport, rwyName string) *Runway
+	RegisterTrafficEngine(TrafficEngine)
+	GetTrafficEngine() TrafficEngine
 }
 
 // AirportProvider defines the behavior for finding the nearest airport
@@ -70,8 +71,14 @@ type AirportProvider interface {
 // avoid an import cycle with the internal/traffic package.
 type TrafficEngine interface {
 	GetFlightPlanPath() string
-	RequiresAircraftData() bool
 	Enrich(*Aircraft, *Airport)
+	LoadFlightPlans(string) (map[string][]flightplan.ScheduledFlight, map[string]bool)
+	SetATCService(*Service)
+	RequiresAircraftData() bool // Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
+	Start()
+	CheckForCruiseSectorChange(ac *Aircraft)
+	CheckForSubPhaseChange(ac *Aircraft)
+	CheckForTOD(ac *Aircraft)
 }
 
 // --- configuration structures ---

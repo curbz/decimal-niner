@@ -124,7 +124,7 @@ const (
 	DEPARTURE_CONTEXT = 0
 	ARRIVAL_CONTEXT   = 1
 
-	STAR_PROBABILITY_FACTOR = 0.3
+	STAR_PROBABILITY_FACTOR = 0.5
 )
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -260,7 +260,7 @@ func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
 
 		if bestSTAR != nil {
 			ac.Flight.AssignedSTAR = bestSTAR
-			util.LogWithLabel(ac.Registration, "assigned %s STAR", bestSTAR.Name)
+			util.LogWithLabel(ac.Registration, "assigned STAR %s", bestSTAR.Name)
 			return
 		}
 	} else {
@@ -440,9 +440,6 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 			if len(p) >= 5 {
 				curICAO = p[4]
-				if curICAO == "EGKA" {
-					fmt.Println("breakpoint")
-				}
 				curName = cleanAirportName(strings.Join(p[5:], " "))
 				curLat, curLon, transAlt, region = 0, 0, 0, ""
 				curElev, err = strconv.ParseFloat(p[1], 0)

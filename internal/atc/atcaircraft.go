@@ -2,7 +2,6 @@ package atc
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -157,7 +156,7 @@ func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
 func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 
-	util.LogWithLabel(ac.Registration, "Position update, checking for sector change")
+	util.LogWithLabel(ac.Registration, "lateral position change, checking for sector transition")
 	// 1. Determine current sector based on Lat/Long/Alt
 	ac.Flight.Comms.NextController = s.locateController(ac.Registration+"_CRUISE_UPDATE", 0, 6,
 		ac.Flight.Position.Lat,
@@ -181,46 +180,6 @@ func (s *Service) NotifyCruisePositionChange(ac *Aircraft) {
 		}
 		// update current controller
 		ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
-	}
-}
-
-// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
-// is in cruise and has travelled at least 5 NM since the last position check
-func (s *Service) CheckForCruiseSectorChange(ac *Aircraft) {
-
-	// if we are not in cruise, there is no need to check for sector changes
-	if ac.Flight.Phase.Current != flightphase.Cruise.Index() {
-		return
-	}
-
-	// if last check position has not yet been set, set it now and return
-	if ac.Flight.LastCheckedPosition.Lat == 0 && ac.Flight.LastCheckedPosition.Long == 0 {
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
-		return
-	}
-
-	// if we don't have a controller assigned, assign one now, update last checked position and return
-	if ac.Flight.Comms.Controller == nil {
-		ac.Flight.Comms.Controller = s.AssignController(ac)
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
-		return
-	}
-
-	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
-	// since last check (allows for data value fluctuations) then return
-	if ac.Flight.Comms.CruiseHandoff != NoHandoff ||
-		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
-			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
-		return
-	}
-
-	dist := CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	// Only notify if moved more than 5.0 NM
-	if dist > 5.0 {
-		// Trigger the cruise handoff detection logic
-		s.NotifyCruisePositionChange(ac)
-		// Update the checkpoint
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
 	}
 }
 

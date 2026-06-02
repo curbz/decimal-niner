@@ -11,7 +11,6 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
-	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/d9traffic"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
@@ -89,7 +88,7 @@ func main() {
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	var te traffic.Engine
+	var te atc.TrafficEngine
 	var teErr error
 	switch cfg.D9.TrafficEngine {
 	case "trafficglobal":

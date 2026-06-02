@@ -893,8 +893,9 @@ func (xpc *XPConnect) updateAircraftData() {
 			ac.Flight.Phase.Previous = ac.Flight.Phase.Current
 			ac.Flight.Phase.Transition = xpc.atcService.GetCurrentZuluTime()
 		} else {
-			// check for possible sector change
-			xpc.atcService.CheckForCruiseSectorChange(ac)
+			// check for sub-phase changes
+			te := xpc.atcService.GetTrafficEngine()
+			te.CheckForSubPhaseChange(ac)
 		}
 	}
 }

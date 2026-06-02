@@ -124,8 +124,24 @@ func (s *Service) startComms() {
 				continue
 			}
 
-			// process sector handoffs
+			var phraseSource map[string][]Exchange
+			if ac.Flight.Comms.Controller.RoleID == 0 {
+				phraseSource = s.VoiceManager.PhraseClasses.phrasesUnicom
+			} else {
+				phraseSource = s.VoiceManager.PhraseClasses.phrases
+			}
+
+			phraseKey := phaseFacility.atcPhase
+
+			// --------------- sub-phase detection ---------------- 
+			
+			// sub-phases
+			// - cruise sector handoffs: when Flight.Comms.CruiseHandoff is not equal to NoHandoff (default)
+			// - "cruise_tod": 	when Flight.ClearedTOD is true in cruise phase, indicating the aircraft has passed its top of descent point
+
+			// cruise sector handoffs
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
+				//TODO handoff phrases should be defined in phrases.json for maximum flexibility and variety
 				switch ac.Flight.Comms.CruiseHandoff {
 				case HandoffEnterSector:
 					// we don't actually detect entry to sector, this is forced after sector exit is detected (see HandoffExitSector case)
@@ -147,8 +163,8 @@ func (s *Service) startComms() {
 					s.preparePhrase(phrase, roleNameMap[phaseFacility.roleId], ac)
 					s.preparePhrase(autoReadback(phrase), "PILOT", ac)
 					util.GoSafe(func() {
-						// in twenty seconds, simulate the aircraft entering the new sector as this is not actually detected
-						time.Sleep(20 * time.Second)
+						// in thirty seconds, simulate the aircraft entering the new sector as this is not actually detected
+						time.Sleep(30 * time.Second)
 						ac.Flight.Comms.Controller = ac.Flight.Comms.NextController
 						ac.Flight.Comms.CruiseHandoff = HandoffEnterSector
 						// calling transmit brings us back into this same switch code, but the HandoffEnterSector case will trigger.
@@ -157,21 +173,16 @@ func (s *Service) startComms() {
 					})
 				}
 
+				// no further processing required, exit
 				continue
 			}
 
-			var phraseSource map[string][]Exchange
-			if ac.Flight.Comms.Controller.RoleID == 0 {
-				phraseSource = s.VoiceManager.PhraseClasses.phrasesUnicom
-			} else {
-				phraseSource = s.VoiceManager.PhraseClasses.phrases
-			}
-
-			phraseKey := phaseFacility.atcPhase
-			// sub-phase detection
+			// "cruise-tod" detection. the condition should only allow for this to be triggered once
 			if ac.Flight.Phase.Current == flightphase.Cruise.Index() && ac.Flight.ClearedTOD {
 				phraseKey = fmt.Sprintf("%s_tod", phraseKey)
 			}
+
+			// ----------- end of sub-phase detection --------------
 
 			exchanges, exists := phraseSource[phraseKey]
 			if !exists || len(exchanges) == 0 {
@@ -936,7 +947,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase flightphase.Phase
 }
 
 func determineAltClearance(ac *Aircraft, rwy *Runway) int {
-	//TODO - base on phase, use SID/STAR, MA, FAF, Cruise etc.
+
 	var clearance int
 
 	switch ac.Flight.Phase.Current {
