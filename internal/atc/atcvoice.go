@@ -857,7 +857,7 @@ func  formatSID(ac *Aircraft, includeClimbAltitude bool, transLevel int) string 
 			climbAlt = fmt.Sprintf(" and climb to %s", 
 			formatAltitude(float64(ac.Flight.AssignedSID.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
-		return fmt.Sprintf("%s departure %s", phoneticiseSingleAlphas(ac.Flight.AssignedSID.Name), climbAlt)
+		return fmt.Sprintf("%s departure %s", phoneticiseAlphaLast(ac.Flight.AssignedSID.Name), climbAlt)
 	}
 	return "assigned departure"
 }
@@ -869,7 +869,7 @@ func  formatSTAR(ac *Aircraft, includeDescentAltitude bool, transLevel int) stri
 			descendAlt = fmt.Sprintf(" and descend to %s", 
 			formatAltitude(float64(ac.Flight.AssignedSTAR.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
-		return fmt.Sprintf("%s arrival %s", phoneticiseSingleAlphas(ac.Flight.AssignedSTAR.Name), descendAlt)
+		return fmt.Sprintf("%s arrival %s", phoneticiseAlphaLast(ac.Flight.AssignedSTAR.Name), descendAlt)
 	}
 	return "assigned arrival"
 }
@@ -881,22 +881,25 @@ func collateTaxipath(ac *Aircraft) string {
 			path = phoneticiseAlphaFirst(ac.Flight.ArrivalAccess.TaxiwayName, false)
 		}
 		if ac.Flight.AssignedParkingSpot != nil {
+			path2 := phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
+			if path == path2 { path = "" }
 			if path != "" {
 				path = path + ","
 			}
-			path = path + phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
+			path = path + path2
 		}
 	} else {
 		if ac.Flight.AssignedParkingSpot != nil {
 			path = phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
 		}
 		if ac.Flight.DepartureAccess != nil {
+			path2 := phoneticiseAlphaFirst(ac.Flight.DepartureAccess.TaxiwayName, false)
+			if path == path2 { path = "" }
 			if path != "" {
 				path = path + ","
 			}
-			path = path + phoneticiseAlphaFirst(ac.Flight.DepartureAccess.TaxiwayName, false)
+			path = path + path2
 		}
-
 	}
 	if path == "" {
 		return "taxiway"
@@ -1167,6 +1170,18 @@ func phoneticiseAlphaFirst(input string, followedByDigits bool) string {
 		if phonetic, exists := phoneticMap[firstChar]; exists {
 			remaining := input[1:]
 			return strings.TrimSpace(fmt.Sprintf("%s %s", phonetic, remaining))
+		}
+	}
+	return input
+}
+
+// phoneticiseAlphaLast will phoneticise the last character if the string ends with a single alpha.
+func phoneticiseAlphaLast(input string) string {
+	if len(input) > 1 {
+		lastChar := string(input[len(input)-1])
+		if phonetic, exists := phoneticMap[lastChar]; exists {
+			remaining := input[:len(input)-1]
+			return strings.TrimSpace(fmt.Sprintf("%s %s", remaining, phonetic))
 		}
 	}
 	return input

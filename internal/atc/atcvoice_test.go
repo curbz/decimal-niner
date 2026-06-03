@@ -244,6 +244,12 @@ func TestFormatParkingAndPhoneticise(t *testing.T) {
 	if got2 != "Bravo 12" {
 		t.Fatalf("phoneticiseAlphaFirst = %q; want bravo 12", got2)
 	}
+
+	// phoneticise single last alpha
+	got3 := phoneticiseAlphaLast("DETJ 2H")
+	if got3 != "DETJ 2 Hotel" {
+		t.Fatalf("phoneticiseSingleAlphas = %q; want DETJ 2 Hotel", got3)
+	}
 }
 
 func TestCollateTaxipath(t *testing.T) {
@@ -278,6 +284,14 @@ func TestCollateTaxipath(t *testing.T) {
 			phaseCurrent: flightphase.Arrival.Index(),
 			arrivalTaxi:  "Z",
 			want:         "Zulu",
+		},
+		{
+			name:         "same taxi paths",
+			phaseClass:    flightclass.Departing,
+			phaseCurrent:  flightphase.Departure.Index(),
+			parkingTaxi:   "A",
+			departureTaxi: "A",
+			want:          "Alpha",
 		},
 		{
 			name:         "empty taxi path",

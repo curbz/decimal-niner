@@ -6,6 +6,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
+	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/simdata"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 )
@@ -23,8 +24,8 @@ func (m *MockATC) NotifyFlightPhaseChange(ac *atc.Aircraft) {
 }
 
 // Implement other interface methods as NOPs
-func (m *MockATC) SyncSimTime(t1, t2 time.Time)                         {}
-func (m *MockATC) GetAirlineByCode(c string) *atc.AirlineInfo                { return nil }
+func (m *MockATC) SyncSimTime(t1, t2 time.Time)                        {}
+func (m *MockATC) GetAirlineByCode(c string) *atc.AirlineInfo          { return nil }
 func (m *MockATC) GetUserState() atc.UserState                         { return atc.UserState{} }
 func (m *MockATC) GetWeatherState() *atc.Weather                       { return &atc.Weather{} }
 func (m *MockATC) NotifyUserChange(p atc.Position, f1, f2 map[int]int) {}
@@ -32,20 +33,41 @@ func (m *MockATC) AddFlightPlan(ac *atc.Aircraft, t time.Time) bool    { return 
 func (m *MockATC) GetCurrentZuluTime() time.Time                       { return time.Now() }
 func (m *MockATC) SetDataProvider(dp simdata.SimDataProvider)          {}
 
+// MockTrafficEngine implements the minimal atc.TrafficEngine interface
+// so tests can call CheckForSubPhaseChange without a nil pointer.
+type MockTrafficEngine struct{}
+
+func (m *MockTrafficEngine) GetFlightPlanPath() string               { return "" }
+func (m *MockTrafficEngine) Enrich(a *atc.Aircraft, ap *atc.Airport) {}
+func (m *MockTrafficEngine) LoadFlightPlans(p string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
+	return nil, nil
+}
+func (m *MockTrafficEngine) SetATCService(s *atc.Service)                {}
+func (m *MockTrafficEngine) RequiresAircraftData() bool                  { return true }
+func (m *MockTrafficEngine) Start()                                      {}
+func (m *MockTrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft) {}
+func (m *MockTrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft)     {}
+func (m *MockTrafficEngine) CheckForTOD(ac *atc.Aircraft)                {}
+
+// Return a mock traffic engine so xpconnect won't call methods on nil.
+func (m *MockATC) GetTrafficEngine() atc.TrafficEngine {
+	return &MockTrafficEngine{}
+}
+
 func setupMockDatarefs(tail string, flightNum int, phase int) map[int]*xpapimodel.Dataref {
 
-	simdata.DRTrafficEngineAIPositionLat     = "trafficglobal/ai/position_lat"
-	simdata.DRTrafficEngineAIPositionLong    = "trafficglobal/ai/position_long"
+	simdata.DRTrafficEngineAIPositionLat = "trafficglobal/ai/position_lat"
+	simdata.DRTrafficEngineAIPositionLong = "trafficglobal/ai/position_long"
 	simdata.DRTrafficEngineAIPositionHeading = "trafficglobal/ai/position_heading"
-	simdata.DRTrafficEngineAIPositionElev    = "trafficglobal/ai/position_elev"
-	simdata.DRTrafficEngineAIAircraftCode    = "trafficglobal/ai/aircraft_code"
-	simdata.DRTrafficEngineAIAirlineCode     = "trafficglobal/ai/airline_code"
-	simdata.DRTrafficEngineAITailNumber      = "trafficglobal/ai/tail_number"
-	simdata.DRTrafficEngineAIClass           = "trafficglobal/ai/ai_class"
-	simdata.DRTrafficEngineAIFlightNum       = "trafficglobal/ai/flight_num"
-	simdata.DRTrafficEngineAIParking         = "trafficglobal/ai/parking"
-	simdata.DRTrafficEngineAIFlightPhase     = "trafficglobal/ai/flight_phase"
-	simdata.DRTrafficEngineAIRunway          = "trafficglobal/ai/runway"
+	simdata.DRTrafficEngineAIPositionElev = "trafficglobal/ai/position_elev"
+	simdata.DRTrafficEngineAIAircraftCode = "trafficglobal/ai/aircraft_code"
+	simdata.DRTrafficEngineAIAirlineCode = "trafficglobal/ai/airline_code"
+	simdata.DRTrafficEngineAITailNumber = "trafficglobal/ai/tail_number"
+	simdata.DRTrafficEngineAIClass = "trafficglobal/ai/ai_class"
+	simdata.DRTrafficEngineAIFlightNum = "trafficglobal/ai/flight_num"
+	simdata.DRTrafficEngineAIParking = "trafficglobal/ai/parking"
+	simdata.DRTrafficEngineAIFlightPhase = "trafficglobal/ai/flight_phase"
+	simdata.DRTrafficEngineAIRunway = "trafficglobal/ai/runway"
 
 	m := make(map[int]*xpapimodel.Dataref)
 
@@ -107,7 +129,7 @@ func TestUnknownTransitionPreserved(t *testing.T) {
 	xpc.updateAircraftData()
 
 	// In xpconnect_test.go
-	expectedUnknown := int(flightphase.Unknown.Index()) 
+	expectedUnknown := int(flightphase.Unknown.Index())
 
 	if mockATC.ReceivedPreviousPhase != expectedUnknown {
 		t.Errorf("Logic Error: ATC service saw Previous Phase as %d, expected %d",
