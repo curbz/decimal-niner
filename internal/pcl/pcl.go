@@ -16,12 +16,25 @@ type PCLContext map[string]VariableProvider
 
 // ProcessPhrase is the high-level entry point for the PCL engine.
 func ProcessPhrase(input string, ctx PCLContext) (string, error) {
-	// 1. Initial Pass: Expand all {$VAR}, {@MACRO}, or standalone $VAR tokens.
-	// This regex captures: 1:Prefix($/@), 2:Name, 3:Args(optional)
-	tokenRegex := regexp.MustCompile(`\{?([$@])([A-Z0-9_]+)(?:\((.*?)\))?\}?`)
 	cache := make(map[string]string)
 
-	resolved := tokenRegex.ReplaceAllStringFunc(input, func(fullMatch string) string {
+	// 1. First Pass: Process Logic Blocks {WHEN ...} or {SAY ...} on the raw template
+	pclRegex := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
+	resolved := input
+	
+	for {
+		match := pclRegex.FindString(resolved)
+		if match == "" {
+			break
+		}
+		content := match[1 : len(match)-1]
+		replacement := executePCL(content, ctx, cache)
+		resolved = strings.Replace(resolved, match, replacement, 1)
+	}
+
+	// 2. Second Pass: Now substitute tokens into the final chosen message string
+	tokenRegex := regexp.MustCompile(`\{?([$@])([A-Z0-9_]+)(?:\((.*?)\))?\}?`)
+	finalOutput := tokenRegex.ReplaceAllStringFunc(resolved, func(fullMatch string) string {
 		match := tokenRegex.FindStringSubmatch(fullMatch)
 		if len(match) < 3 {
 			return fullMatch
@@ -40,36 +53,12 @@ func ProcessPhrase(input string, ctx PCLContext) (string, error) {
 					args[i] = strings.TrimSpace(args[i])
 				}
 			}
-			
-			val := fmt.Sprintf("%v", provider(args...))
-			
-			// Cache using the full match string to distinguish @MACRO(1) from @MACRO(2)
-			cache[fullMatch] = val
-			// Also cache the bare variable name for use in WHEN logic comparisons
-			cache[prefix+varName] = val 
-			
-			return val
+			return fmt.Sprintf("%v", provider(args...))
 		}
 		return fullMatch
 	})
 
-	// 2. Second Pass: Process Logic Blocks {WHEN ...} or {SAY ...}
-	// Handles nested braces by finding the innermost or sequential blocks.
-	pclRegex := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
-	
-	for {
-		match := pclRegex.FindString(resolved)
-		if match == "" {
-			break
-		}
-		// Strip outer braces and execute logic
-		content := match[1 : len(match)-1]
-		replacement := executePCL(content, ctx, cache)
-		resolved = strings.Replace(resolved, match, replacement, 1)
-	}
-
-	// Final cleanup of extra whitespace and joining
-	return strings.Join(strings.Fields(resolved), " "), nil
+	return strings.Join(strings.Fields(finalOutput), " "), nil
 }
 
 // executePCL determines if a block is a conditional or a direct instruction.
@@ -196,6 +185,7 @@ func evaluateComparison(left interface{}, op string, right interface{}) bool {
 	lVal, errL := strconv.ParseFloat(lStr, 64)
 	rVal, errR := strconv.ParseFloat(rStr, 64)
 
+	// If both values are clean numbers, use float comparisons
 	if errL == nil && errR == nil {
 		switch op {
 		case "NE": return lVal != rVal
@@ -206,7 +196,18 @@ func evaluateComparison(left interface{}, op string, right interface{}) bool {
 		case "GE": return lVal >= rVal
 		}
 	}
-	return lStr == rStr
+
+	// Fallback: If one or both are text/booleans, process via string logic
+	switch op {
+	case "NE":
+		return lStr != rStr
+	case "EQ":
+		return lStr == rStr
+	default:
+		// For LT, LE, GT, GE string fallbacks, you can use lexicographical order
+		// or default to simple equality if the operator is unsupported
+		return lStr == rStr
+	}
 }
 
 // tokenizePCL splits the statement while respecting backticks and nested braces.
