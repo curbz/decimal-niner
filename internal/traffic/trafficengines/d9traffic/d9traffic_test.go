@@ -8,6 +8,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
+	"github.com/curbz/decimal-niner/internal/traffic"
 )
 
 func newTestEngine(simTime time.Time) *D9TrafficEngine {
@@ -15,7 +16,9 @@ func newTestEngine(simTime time.Time) *D9TrafficEngine {
 	svc.SyncSimTime(simTime, simTime)
 
 	return &D9TrafficEngine{
-		atcService: svc,
+        CommonTrafficEngine: traffic.CommonTrafficEngine{
+            AtcService: svc,
+        },
 	}
 }
 

@@ -1,13 +1,12 @@
 package trafficglobal
 
 import (
-	"math"
-
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
+	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
@@ -37,8 +36,8 @@ type TGconfig struct {
 }
 
 type TrafficGlobal struct {
+	traffic.CommonTrafficEngine 
 	FlightPlanPath string
-	atcService     *atc.Service
 }
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -155,7 +154,7 @@ func (tg *TrafficGlobal) Start() {
 }
 
 func (tg *TrafficGlobal) SetATCService(atcService *atc.Service) {
-	tg.atcService = atcService
+	tg.AtcService = atcService
 	if atcService != nil {
 		atcService.RegisterTrafficEngine(tg)
 	}
@@ -167,25 +166,25 @@ func (e *TrafficGlobal) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
 	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 	case flightphase.Final, flightphase.Braking, flightphase.TaxiIn:
 		if ac.Flight.AssignedRunway.ArrivalAccess == nil {
-			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.ARRIVAL_CONTEXT)
+			e.AtcService.AssignRunwayAccessPoint(ac, ap, atc.ARRIVAL_CONTEXT)
 		}
 	}
 
 	if ac.Flight.Phase.Current <= flightphase.TaxiOut.Index() {
 		if ac.Flight.AssignedRunway.DepartureAccess == nil {
-			e.atcService.AssignRunwayAccessPoint(ac, ap, atc.DEPARTURE_CONTEXT)
+			e.AtcService.AssignRunwayAccessPoint(ac, ap, atc.DEPARTURE_CONTEXT)
 		}
 	}
 
 	if ac.Flight.Phase.Current <= flightphase.Departure.Index() {
 		if ac.Flight.AssignedSID == nil {
-			e.atcService.AssignSID(ac, ap, ac.Flight.AssignedRunway)
+			e.AtcService.AssignSID(ac, ap, ac.Flight.AssignedRunway)
 		}
 	}
 
 	if ac.Flight.Phase.Current >= flightphase.Cruise.Index() && ac.Flight.Phase.Current <= flightphase.Approach.Index() {
 		if ac.Flight.AssignedSTAR == nil {
-			e.atcService.AssignSTAR(ac, ap, ac.Flight.AssignedRunway)
+			e.AtcService.AssignSTAR(ac, ap, ac.Flight.AssignedRunway)
 		}
 	}
 }
@@ -204,36 +203,6 @@ func (e *TrafficGlobal) CheckForSubPhaseChange(ac *atc.Aircraft) {
 			e.CheckForCruiseSectorChange(ac)
 			// check for TOD
 			e.CheckForTOD(ac)
-	}
-}
-
-// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
-// is in cruise and has travelled at least 5 NM since the last position check
-func (e *TrafficGlobal) CheckForCruiseSectorChange(ac *atc.Aircraft) {
-
-	// if we don't have a controller assigned, assign one now, update last checked position and return
-	if ac.Flight.Comms.Controller == nil {
-		ac.Flight.Comms.Controller = e.atcService.AssignController(ac)
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
-		// no need to continue as another attempt to assign a controller now would result in the same controller
-		return
-	}
-
-	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
-	// since last check (allows for data value fluctuations) then return
-	if ac.Flight.Comms.CruiseHandoff != atc.NoHandoff ||
-		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
-			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
-		return
-	}
-
-	dist := atc.CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	// Only notify if moved more than 5.0 NM
-	if dist > 5.0 {
-		// Trigger the cruise handoff detection logic
-		e.atcService.NotifyCruisePositionChange(ac)
-		// Update the checkpoint
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
 	}
 }
 
@@ -260,7 +229,7 @@ func (e *TrafficGlobal) CheckForTOD(ac *atc.Aircraft) {
 				// +-----------------------------------------------------------------+
 				// | Only use acSnap to reference the aircraft within the go routine |
 				// +-----------------------------------------------------------------+
-				e.atcService.Transmit(e.atcService.UserState, acSnap)
+				e.AtcService.Transmit(e.AtcService.UserState, acSnap)
 			})
 		}
 		// update position

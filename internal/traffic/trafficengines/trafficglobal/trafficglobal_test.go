@@ -6,6 +6,7 @@ import (
 
 	"github.com/curbz/decimal-niner/internal/atc"
 	"github.com/curbz/decimal-niner/internal/flightphase"
+	"github.com/curbz/decimal-niner/internal/traffic"
 )
 
 func newTestEngine(simTime time.Time) *TrafficGlobal {
@@ -13,7 +14,9 @@ func newTestEngine(simTime time.Time) *TrafficGlobal {
 	svc.SyncSimTime(simTime, simTime)
 
 	return &TrafficGlobal{
-		atcService: svc,
+        CommonTrafficEngine: traffic.CommonTrafficEngine{
+            AtcService: svc,
+        },
 	}
 }
 

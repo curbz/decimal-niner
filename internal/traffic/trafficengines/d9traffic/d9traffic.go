@@ -13,14 +13,15 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
 )
 
 type D9TrafficEngine struct {
+	traffic.CommonTrafficEngine 
 	AirportSchedules map[string]*AirportTimeline
-	atcService       *atc.Service
 	FlightPlanPath   string
 	ActiveAircraft   map[string]*atc.Aircraft
 	initialised      bool
@@ -116,7 +117,7 @@ func New(cfgPath string) (atc.TrafficEngine, error) {
 }
 
 func (e *D9TrafficEngine) SetATCService(atcService *atc.Service) {
-	e.atcService = atcService
+	e.AtcService = atcService
 	if atcService != nil {
 		atcService.RegisterTrafficEngine(e)
 	}
@@ -129,7 +130,7 @@ func (e *D9TrafficEngine) Start() {
 	go func() {
 		for range ticker.C {
 			start := time.Now()
-			currSimZTime := e.atcService.GetCurrentZuluTime()
+			currSimZTime := e.AtcService.GetCurrentZuluTime()
 
 			// Time components
 			day := int(currSimZTime.Weekday())
@@ -142,7 +143,7 @@ func (e *D9TrafficEngine) Start() {
 			// Only check for new spawns and runway refreshes if the minute has rolled over
 			if currentMin != lastSpawnMin {
 				for _, icao := range relevantICAOs {
-					ap := e.atcService.GetAirportByICAO(icao)
+					ap := e.AtcService.GetAirportByICAO(icao)
 					if ap == nil {
 						continue
 					}
@@ -176,7 +177,7 @@ func (e *D9TrafficEngine) needsRunwayRefresh(ap *atc.Airport) bool {
 		return true
 	} // Initial load
 
-	currentWeather := e.atcService.GetWeatherState()
+	currentWeather := e.AtcService.GetWeatherState()
 
 	// Check if wind shifted by more than 15 degrees
 	// OR wind speed changed by more than 5 knots
@@ -256,7 +257,7 @@ func (e *D9TrafficEngine) sortSchedules() {
 func (e *D9TrafficEngine) getRelevantICAOs() []string {
 	icaoMap := make(map[string]bool)
 
-	for _, ctrl := range e.atcService.UserState.ActiveFacilities {
+	for _, ctrl := range e.AtcService.UserState.ActiveFacilities {
 		// We only care about airport-specific controllers (TWR, GND, DEL, etc.)
 		// Center/Approach might not have a single ICAO, so we filter.
 		if ctrl.ICAO != "" {
@@ -265,8 +266,8 @@ func (e *D9TrafficEngine) getRelevantICAOs() []string {
 	}
 
 	// if the user is on the ground, include the nearest airport as a fallback for visual/proximity traffic
-	if e.atcService.UserState.IsOnGround && e.atcService.UserState.NearestAirport != nil {
-		icaoMap[e.atcService.UserState.NearestAirport.ICAO] = true
+	if e.AtcService.UserState.IsOnGround && e.AtcService.UserState.NearestAirport != nil {
+		icaoMap[e.AtcService.UserState.NearestAirport.ICAO] = true
 	}
 
 	var result []string
@@ -347,7 +348,7 @@ func (e *D9TrafficEngine) isCurrentlyActive(registration string, flightNumber in
 
 func (e *D9TrafficEngine) timeDiffToScheduledDeparture(f *flightplan.ScheduledFlight) int {
 	// Calculate diff at spawn time
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 	h, m, _ := currSimZTime.Clock()
 	nowMins := h*60 + m
 	depMins := (f.DepartureHour * 60) + f.DepartureMin
@@ -364,8 +365,8 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	}
 	ip := initialPhase.Index()
 
-	airport := e.atcService.Airports[f.IcaoOrigin]
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	airport := e.AtcService.Airports[f.IcaoOrigin]
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
 	airline := e.resolveAirline(f)
 	if airline == nil {
@@ -417,7 +418,7 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	}
 
 	// Set all pre-requisite states
-	e.atcService.SetFlightPhaseClass(newAc)
+	e.AtcService.SetFlightPhaseClass(newAc)
 	if ip < flightphase.Takeoff.Index() {
 		// assign departure gate - do this BEFORE assigning the departure runway access as this may influence the selected access point
 		e.assignParking(newAc, airport)
@@ -425,11 +426,11 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
 	// assign departure runway
 	newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-	newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
+	newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
 	// assign SID for departure
-	e.atcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
+	e.AtcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
 	// assign departure runway access
-	e.atcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
+	e.AtcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
 
 	newAc.Flight.Phase.Transition = transitionTime // BACKDATED
 	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
@@ -443,11 +444,11 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		if ip == flightphase.Cruise.Index() {
 			//TODO: consider what to do when a departure spawn results in a cruise phase -terminate tracking?
 			rwy := e.getFallbackRunway(f.IcaoDest, atc.ARRIVAL_CONTEXT)
-			destApt := e.atcService.Airports[f.IcaoDest]
+			destApt := e.AtcService.Airports[f.IcaoDest]
 			newAc.Flight.AssignedRunwayName = rwy.Name
-			newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(destApt, newAc.Flight.AssignedRunwayName)
+			newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(destApt, newAc.Flight.AssignedRunwayName)
 			// assign destination procedure
-			e.atcService.AssignSTAR(newAc, destApt, rwy)
+			e.AtcService.AssignSTAR(newAc, destApt, rwy)
 			e.updateCruisePosition(newAc)
 		} else {
 			e.updateLinearPosition(newAc)
@@ -490,9 +491,9 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	initialPhase, remainingDurSecs, fullDurationSecs := e.determineInitialArrivalPhase(tta, f)
 	initialPhaseIdx := initialPhase.Index()
 
-	airport := e.atcService.Airports[f.IcaoDest]
+	airport := e.AtcService.Airports[f.IcaoDest]
 
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
 	airline := e.resolveAirline(f)
 
@@ -527,20 +528,20 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	}
 
 	// set pre-requisite states
-	e.atcService.SetFlightPhaseClass(newAc)
+	e.AtcService.SetFlightPhaseClass(newAc)
 	// arrival runway must be assigned BEFORE assigning runway access point
 	if initialPhaseIdx <= flightphase.TaxiIn.Index() {
 		newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Arrival.Name
-		newAc.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
+		newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
 	}
 	if initialPhaseIdx >= flightphase.Braking.Index() && initialPhaseIdx <= flightphase.Shutdown.Index()+1 {
 		// assign parking BEFORE runway exit point as this may influence the selected exit
 		e.assignParking(newAc, airport)
-		e.atcService.AssignRunwayAccessPoint(newAc, airport, atc.ARRIVAL_CONTEXT)
+		e.AtcService.AssignRunwayAccessPoint(newAc, airport, atc.ARRIVAL_CONTEXT)
 	}
 
 	if initialPhaseIdx >= flightphase.Cruise.Index() && initialPhaseIdx <= flightphase.Approach.Index() {
-		e.atcService.AssignSTAR(newAc, airport, newAc.Flight.AssignedRunway)
+		e.AtcService.AssignSTAR(newAc, airport, newAc.Flight.AssignedRunway)
 	}
 
 	newAc.Flight.Phase.TotalDuration = time.Duration(fullDurationSecs) * time.Second
@@ -594,7 +595,7 @@ func (e *D9TrafficEngine) getFallbackRunway(icao string, arrOrDep int) *atc.Runw
 	}
 
 	// 2. Fallback: Get the first available runway from the global airport data
-	if apt, found := e.atcService.Airports[icao]; found && len(apt.Runways) > 0 {
+	if apt, found := e.AtcService.Airports[icao]; found && len(apt.Runways) > 0 {
 		// Just pick the first one available as a coordinate anchor
 		for _, r := range apt.Runways {
 			return r
@@ -611,7 +612,7 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 
 	apt, flightContext := e.getActiveAirport(ac)
 	icao := apt.ICAO
-	rwy := e.atcService.GetAirportRunway(apt, ac.Flight.AssignedRunwayName)
+	rwy := e.AtcService.GetAirportRunway(apt, ac.Flight.AssignedRunwayName)
 	if rwy == nil {
 		rwy = e.getFallbackRunway(icao, flightContext)
 	}
@@ -702,36 +703,6 @@ func (e *D9TrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft) {
 	}
 }
 
-// CheckForCruiseSectorChange will trigger cruise sector change detection logic if the aircraft
-// is in cruise and has travelled at least 5 NM since the last position check
-func (e *D9TrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft) {
-
-	// if we don't have a controller assigned, assign one now, update last checked position and return
-	if ac.Flight.Comms.Controller == nil {
-		ac.Flight.Comms.Controller = e.atcService.AssignController(ac)
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
-		// no need to continue as another attempt to assign a controller now would result in the same controller
-		return
-	}
-
-	// if a handoff is already in progress or the aircraft has travelled less than ~11 meters (0.0001 degrees)
-	// since last check (allows for data value fluctuations) then return
-	if ac.Flight.Comms.CruiseHandoff != atc.NoHandoff ||
-		(math.Abs(ac.Flight.Position.Lat-ac.Flight.LastCheckedPosition.Lat) < 0.0001 &&
-			math.Abs(ac.Flight.Position.Long-ac.Flight.LastCheckedPosition.Long) < 0.0001) {
-		return
-	}
-
-	dist := atc.CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	// Only notify if moved more than 5.0 NM
-	if dist > 5.0 {
-		// Trigger the cruise handoff detection logic
-		e.atcService.NotifyCruisePositionChange(ac)
-		// Update the checkpoint
-		ac.Flight.LastCheckedPosition = ac.Flight.Position
-	}
-}
-
 func (e *D9TrafficEngine) CheckForTOD(ac *atc.Aircraft) {
 	//NOOP
 }
@@ -741,7 +712,7 @@ func getActiveAircraftKey(ac *atc.Aircraft) string {
 }
 
 func (e *D9TrafficEngine) timeDiffToScheduledArrival(f *flightplan.ScheduledFlight) int {
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 	h, m, _ := currSimZTime.Clock()
 
 	nowMins := (h * 60) + m
@@ -763,7 +734,7 @@ func (e *D9TrafficEngine) timeDiffToScheduledArrival(f *flightplan.ScheduledFlig
 
 func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
 	for _, ac := range e.ActiveAircraft {
 		f := ac.Flight.Schedule
@@ -779,7 +750,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		} else {
 			targetICAO = f.IcaoOrigin
 		}
-		airport = e.atcService.Airports[targetICAO]
+		airport = e.AtcService.Airports[targetICAO]
 
 		// if airport is not relevant to the user's current context, skip it
 		if airport != nil {
@@ -824,9 +795,9 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			// Check for TaxiOut transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
 				ac.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
-				e.atcService.AssignSID(ac, airport, ac.Flight.AssignedRunway)
-				e.atcService.AssignRunwayAccessPoint(ac, airport, atc.DEPARTURE_CONTEXT)
+				ac.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
+				e.AtcService.AssignSID(ac, airport, ac.Flight.AssignedRunway)
+				e.AtcService.AssignRunwayAccessPoint(ac, airport, atc.DEPARTURE_CONTEXT)
 				dur := e.calculateTaxiDuration(ac, atc.DEPARTURE_CONTEXT)
 				if ac.Flight.AssignedParkingSpot != nil {
 					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
@@ -894,9 +865,9 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if tta <= AMINUS_ARRIVAL_MINS {
 				// we are transitioning to arrival so assign or replace any earlier assigned runway
 				ac.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Arrival.Name
-				ac.Flight.AssignedRunway = e.atcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
+				ac.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
 				if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false {
-					e.atcService.AssignSTAR(ac, airport, ac.Flight.AssignedRunway)
+					e.AtcService.AssignSTAR(ac, airport, ac.Flight.AssignedRunway)
 				}
 				durSecs := (AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60
 				e.transitionToPhase(ac, flightphase.Arrival, durSecs, ARRIVAL_JITTER_SECONDS)
@@ -915,7 +886,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				qKey := normalizeRunwayKey(airport.ICAO, e.AirportConfig[airport.ICAO].Arrival)
 				if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
 					// send to hold
-					e.atcService.AssignHold(ac, airport.ICAO)
+					e.AtcService.AssignHold(ac, airport.ICAO)
 					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
 					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
 					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
@@ -961,7 +932,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				} else {
 					// transition to braking phase
 					e.assignParking(ac, airport)
-					e.atcService.AssignRunwayAccessPoint(ac, airport, atc.ARRIVAL_CONTEXT)
+					e.AtcService.AssignRunwayAccessPoint(ac, airport, atc.ARRIVAL_CONTEXT)
 					dur := (AMINUS_LAND_MINS - AMINUS_BRAKING) * 60
 					e.transitionToPhase(ac, flightphase.Braking, dur, 0)
 					ac.Flight.Position.Altitude = airport.Elevation
@@ -977,7 +948,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				// Randomized hold or back into approach flow
 				if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
 					// send to hold
-					e.atcService.AssignHold(ac, airport.ICAO)
+					e.AtcService.AssignHold(ac, airport.ICAO)
 					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
 					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
 					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
@@ -1021,7 +992,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			// phase has changed
 			logMsg := ""
 			if e.initialised {
-				e.atcService.NotifyFlightPhaseChange(ac)
+				e.AtcService.NotifyFlightPhaseChange(ac)
 				logMsg = "flight %d changed phase from %s to %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d estimated next transition at %v"
 			} else {
 				logMsg = "flight %d silently initialised with previous phase %s and current phase %s. Position is lat: %0.6f, lng: %0.6f, alt: %0.6f, hdg: %d next transition at %v"
@@ -1062,7 +1033,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 func (e *D9TrafficEngine) transitionToPhase(ac *atc.Aircraft, next flightphase.FlightPhase, baseSecs int, jitterSecs int) {
 
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
 	// Capture the 'Exit' altitude of the current phase to be the 'Start' of the next
 	ac.Flight.Phase.InitialAltitude = ac.Flight.Position.Altitude
@@ -1086,7 +1057,7 @@ func (e *D9TrafficEngine) transitionToPhase(ac *atc.Aircraft, next flightphase.F
 	ac.Flight.Phase.Transition = currSimZTime
 	ac.Flight.Phase.TotalDuration = dur
 	ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(dur)
-	e.atcService.SetFlightPhaseClass(ac)
+	e.AtcService.SetFlightPhaseClass(ac)
 }
 
 func (e *D9TrafficEngine) assignParking(ac *atc.Aircraft, airport *atc.Airport) {
@@ -1101,7 +1072,7 @@ func (e *D9TrafficEngine) assignParking(ac *atc.Aircraft, airport *atc.Airport) 
 
 // updateLinearPosition handles the position updates for Takeoff, Climbout, Departure, Arrival, Approach, Final, and Braking phases.
 func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 	if totalDuration <= 0 {
@@ -1134,7 +1105,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 	startPos = ac.Flight.Position
 	targetPos = ac.Flight.Position // Default to no movement
 
-	dest := e.atcService.Airports[ac.Flight.Schedule.IcaoDest]
+	dest := e.AtcService.Airports[ac.Flight.Schedule.IcaoDest]
 	switch phase {
 	case flightphase.Takeoff:
 		//Start: snap to runway threshold
@@ -1300,9 +1271,9 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 // otherwise the destination airport is returned. The context, arrival or departure, is also returned.
 func (e *D9TrafficEngine) getActiveAirport(ac *atc.Aircraft) (*atc.Airport, int) {
 	if ac.Flight.Phase.Class >= flightclass.Cruising {
-		return e.atcService.Airports[ac.Flight.Schedule.IcaoDest], atc.ARRIVAL_CONTEXT
+		return e.AtcService.Airports[ac.Flight.Schedule.IcaoDest], atc.ARRIVAL_CONTEXT
 	}
-	return e.atcService.Airports[ac.Flight.Schedule.IcaoOrigin], atc.DEPARTURE_CONTEXT
+	return e.AtcService.Airports[ac.Flight.Schedule.IcaoOrigin], atc.DEPARTURE_CONTEXT
 }
 
 func (e *D9TrafficEngine) calculateTaxiDuration(ac *atc.Aircraft, flightContext int) int {
@@ -1336,7 +1307,7 @@ func (e *D9TrafficEngine) calculateTaxiDuration(ac *atc.Aircraft, flightContext 
 }
 
 func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airport, isOutbound bool) {
-	elapsed := e.atcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
+	elapsed := e.AtcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 	if totalDuration <= 0 {
 		return
@@ -1383,7 +1354,7 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 }
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
-	elapsed := e.atcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
+	elapsed := e.AtcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
 
 	// 4-minute pattern: 2x 1min straights, 2x 1min 180° turns
 	const cycleTime = HOLDING_MIN_DURATION_MINS * 60
@@ -1405,7 +1376,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 }
 
 func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.Airport) {
-	elapsed := e.atcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
+	elapsed := e.AtcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
 	// We don't clamp progress at 1.0 here—if the transition is delayed,
@@ -1427,7 +1398,7 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 
 func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
-	currSimZTime := e.atcService.GetCurrentZuluTime()
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
 	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
@@ -1438,8 +1409,8 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	// 1. Calculate Horizontal Progress (0.0 -> 1.0)
 	progress := math.Min(1.0, elapsed/totalDuration)
 
-	origin := e.atcService.Airports[ac.Flight.Schedule.IcaoOrigin]
-	dest := e.atcService.Airports[ac.Flight.Schedule.IcaoDest]
+	origin := e.AtcService.Airports[ac.Flight.Schedule.IcaoOrigin]
+	dest := e.AtcService.Airports[ac.Flight.Schedule.IcaoDest]
 
 	// 2. Identify Horizontal Start (SID Exit or Origin Center)
 	var startPos atc.Position
@@ -1614,9 +1585,9 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 				// +-----------------------------------------------------------------+
 				// | Only use acSnap to reference the aircraft within the go routine |
 				// +-----------------------------------------------------------------+
-				acSnap.Flight.Comms.Controller = e.atcService.AssignController(acSnap)
+				acSnap.Flight.Comms.Controller = e.AtcService.AssignController(acSnap)
 				if acSnap.Flight.Comms.Controller != nil {
-					e.atcService.Transmit(e.atcService.UserState, acSnap)
+					e.AtcService.Transmit(e.AtcService.UserState, acSnap)
 				}
 			})
 		}
@@ -1631,7 +1602,7 @@ func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {
 }
 
 func (e *D9TrafficEngine) positionAtOriginParking(ac *atc.Aircraft) {
-	airport := e.atcService.Airports[ac.Flight.Origin]
+	airport := e.AtcService.Airports[ac.Flight.Origin]
 	if ac.Flight.AssignedParkingSpot == nil {
 		e.assignParking(ac, airport)
 		if ac.Flight.AssignedParkingSpot == nil {
@@ -1652,7 +1623,7 @@ func (e *D9TrafficEngine) positionAtOriginParking(ac *atc.Aircraft) {
 }
 
 func (e *D9TrafficEngine) positionAtDestParking(ac *atc.Aircraft) {
-	airport := e.atcService.Airports[ac.Flight.Destination]
+	airport := e.AtcService.Airports[ac.Flight.Destination]
 	if ac.Flight.AssignedParkingSpot == nil {
 		e.assignParking(ac, airport)
 		if ac.Flight.AssignedParkingSpot == nil {
@@ -1852,7 +1823,7 @@ func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
 	} else {
 		// continue in hold for another cycle
 		dur := HOLDING_MIN_DURATION_MINS * 60 * time.Second
-		ac.Flight.Phase.EstimatedNextTransition = e.atcService.GetCurrentZuluTime().Add(dur)
+		ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(dur)
 		e.updateHoldingPosition(ac, e.AirportConfig[ap.ICAO].Arrival)
 		util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high - estimated hold exit %v",
 			qKey, ap.ICAO, ac.Flight.Phase.EstimatedNextTransition)
@@ -1878,8 +1849,8 @@ func (e *D9TrafficEngine) findAvailableParking(airport *atc.Airport, reqClass st
 			}
 
 			// 3. User proximity check
-			if e.atcService.UserState.NearestAirport.ICAO == airport.ICAO &&
-				e.atcService.UserState.AssignedParking.Name == spot.Name {
+			if e.AtcService.UserState.NearestAirport.ICAO == airport.ICAO &&
+				e.AtcService.UserState.AssignedParking.Name == spot.Name {
 				continue
 			}
 
@@ -1912,7 +1883,7 @@ func (e *D9TrafficEngine) releaseParking(icao string, spot *atc.ParkingSpot) {
 
 func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 
-	weather := e.atcService.GetWeatherState()
+	weather := e.AtcService.GetWeatherState()
 
 	// 1. Get the primary runway using the smart UTILITY score
 	var primaryRwy *atc.Runway
@@ -2056,7 +2027,7 @@ func (e *D9TrafficEngine) determineSizeClass(f *flightplan.ScheduledFlight, info
 }
 
 func (e *D9TrafficEngine) clampSizeToAirportCapability(icao string, estimatedSize string) string {
-	ap, ok := e.atcService.Airports[icao]
+	ap, ok := e.AtcService.Airports[icao]
 	if !ok {
 		return estimatedSize
 	}
@@ -2079,7 +2050,7 @@ func (e *D9TrafficEngine) clampSizeToAirportCapability(icao string, estimatedSiz
 
 func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.AirlineInfo {
 	// 1. Direct Match: The most efficient path.
-	if info := e.atcService.GetAirlineByName(f.AirlineName); info != nil {
+	if info := e.AtcService.GetAirlineByName(f.AirlineName); info != nil {
 		return info
 	}
 
@@ -2088,11 +2059,11 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 	// We will now find a code and immediately return its full info struct.
 	// 2. Matching Pairs (Airlines at both ends)
 	util.LogWarnWithLabel(f.AircraftRegistration, "airline %s not found - allocating by orign/destination gate pairing logic", f.AirlineName)
-	origin := e.atcService.Airports[f.IcaoOrigin]
-	dest := e.atcService.Airports[f.IcaoDest]
+	origin := e.AtcService.Airports[f.IcaoOrigin]
+	dest := e.AtcService.Airports[f.IcaoDest]
 	if origin != nil && dest != nil {
 		if code := getWeightedCommonAirline(origin, dest); code != "" {
-			airline := e.atcService.GetAirlineByCode(code)
+			airline := e.AtcService.GetAirlineByCode(code)
 			if airline != nil {
 				return airline
 			}
@@ -2103,7 +2074,7 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 	util.LogWarnWithLabel(f.AircraftRegistration, "allocating airline by origin gate logic")
 	if origin != nil && len(origin.HubWeights) > 0 {
 		if code := getWeightedRandomAirline(origin.HubWeights); code != "" {
-			airline := e.atcService.GetAirlineByCode(code)
+			airline := e.AtcService.GetAirlineByCode(code)
 			if airline != nil {
 				return airline
 			}
@@ -2112,15 +2083,15 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 
 	// 4. Registration Country Fallback
 	util.LogWarnWithLabel(f.AircraftRegistration, "allocating airline by country of registration logic")
-	countryCode := e.atcService.GetCountryFromRegistration(f.AircraftRegistration)
+	countryCode := e.AtcService.GetCountryFromRegistration(f.AircraftRegistration)
 	if countryCode == "" {
-		countryCode = e.atcService.Config.ATC.AirlineCountryCodeFallback
+		countryCode = e.AtcService.Config.ATC.AirlineCountryCodeFallback
 	}
 
 	if countryCode != "" {
-		code := e.atcService.GetRandomAirlineByCountry(countryCode)
+		code := e.AtcService.GetRandomAirlineByCountry(countryCode)
 		if code != "" {
-			return e.atcService.GetAirlineByCode(code)
+			return e.AtcService.GetAirlineByCode(code)
 		}
 	}
 
@@ -2135,8 +2106,8 @@ func (e *D9TrafficEngine) resolveAirline(f *flightplan.ScheduledFlight) *atc.Air
 }
 
 func (e *D9TrafficEngine) calculateFlightDistance(originICAO, destICAO string) float64 {
-	origin, okO := e.atcService.Airports[originICAO]
-	dest, okD := e.atcService.Airports[destICAO]
+	origin, okO := e.AtcService.Airports[originICAO]
+	dest, okD := e.AtcService.Airports[destICAO]
 
 	// If we don't have coordinate data for both airports,
 	// return a medium distance as a safe fallback for the size heuristic.
@@ -2198,7 +2169,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 
 	rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
 
-	if e.atcService.UserHasRunwayClearance(rwy) {
+	if e.AtcService.UserHasRunwayClearance(rwy) {
 		e.addToQueue(rwyLockKey, ac.Registration)
 		return false
 	}
@@ -2208,7 +2179,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 		if lock.OccupiedBy.Registration == ac.Registration {
 			return true // Already locked by this aircraft
 		}
-		if lock.OccupiedSince.Add(RUNWAY_LOCK_TIMEOUT_SECONDS * time.Second).Before(e.atcService.GetCurrentZuluTime()) {
+		if lock.OccupiedSince.Add(RUNWAY_LOCK_TIMEOUT_SECONDS * time.Second).Before(e.AtcService.GetCurrentZuluTime()) {
 			// Lock has expired, allow new lock - set to false and fall through to acquire
 			locked = false
 			util.LogWarnWithLabel(ac.Registration, "runway lock for %s at %s has expired, overriding previous lock held by %s", rwy.Name, ap.ICAO, lock.OccupiedBy.Registration)
@@ -2218,7 +2189,7 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 		// acquire lock on runway
 		e.RunwayLocks[rwyLockKey] = &RunwayLock{
 			OccupiedBy:    ac,
-			OccupiedSince: e.atcService.GetCurrentZuluTime(),
+			OccupiedSince: e.AtcService.GetCurrentZuluTime(),
 		}
 		// we got the lock, so no longer queuing for the runway, remove queue entry
 		e.removeFromQueue(rwyLockKey, ac.Registration)
