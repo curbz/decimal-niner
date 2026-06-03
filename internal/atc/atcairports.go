@@ -433,6 +433,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		if code == "1" || code == "16" || code == "17" {
 			if curAirport != nil {
 				finaliseAirport(curAirport, curLat, curLon, airportPoints, apcontrollers, curElev, nodeBuffer, edgeBuffer)
+			}
+
+			if len(apcontrollers) > 0 {
 				allcontrollers = append(allcontrollers, apcontrollers...)
 				// clear apcontrollers for next airport
 				apcontrollers = []*Controller{}
@@ -441,7 +444,10 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			if len(p) >= 5 {
 				curICAO = p[4]
 				curName = cleanAirportName(strings.Join(p[5:], " "))
-				curLat, curLon, transAlt, region = 0, 0, 0, ""
+				curLat = 0.0
+                curLon = 0.0
+                transAlt = 0
+                region = ""
 				curElev, err = strconv.ParseFloat(p[1], 0)
 				if err != nil {
 					logger.Log.Warnf("unable to get airport elevation for %s: %v", curICAO, err)
@@ -599,6 +605,11 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 
 				for _, r := range roles {
+					// X-Plane synthetic objects typically use 5-7 character procedural codes 
+					// starting with X, or containing internal runway/localizer tags.
+					if strings.HasPrefix(curICAO, "XLIL") || strings.HasPrefix(curICAO, "X") && len(curICAO) > 4 {
+						continue // Ignore simulated structural helper entries
+					}
 					c := &Controller{
 						Name:    curName,
 						ICAO:    curICAO,
