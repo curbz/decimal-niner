@@ -6,6 +6,10 @@ import (
 	"github.com/curbz/decimal-niner/internal/atc"
 )
 
+const (
+	LastCheckedPositionLateralThreshold = 5.0 // distance in nautical miles that the aircraft must have moved since the last check to trigger cruise sector change detection logic
+)
+
 type CommonTrafficEngine struct {
 	AtcService *atc.Service
 }
@@ -31,8 +35,8 @@ func (cte *CommonTrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft) {
 	}
 
 	dist := atc.CalculateDistance(ac.Flight.Position, ac.Flight.LastCheckedPosition)
-	// Only notify if moved more than 5.0 NM
-	if dist > 5.0 {
+	// Only notify if moved more than threshold
+	if dist > LastCheckedPositionLateralThreshold {
 		// Trigger the cruise handoff detection logic
 		cte.AtcService.NotifyCruisePositionChange(ac)
 		// Update the checkpoint

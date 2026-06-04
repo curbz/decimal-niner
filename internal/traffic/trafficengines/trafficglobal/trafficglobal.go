@@ -13,6 +13,9 @@ import (
 )
 
 const (
+
+	LastCheckedPositionVerticalThreshold  = 1000.0 // altitude in feet that the aircraft must have descended since the last check to trigger cruise top of descent logic
+
 	FP_Unknown  int = iota - 1
 	FP_Cruise       // 0 - Normal cruise phase.
 	FP_Approach     // 1 - Positioning from cruise to the runway.
@@ -213,8 +216,8 @@ func (e *TrafficGlobal) CheckForTOD(ac *atc.Aircraft) {
 	}
 
 	descent := ac.Flight.LastCheckedPosition.Altitude - ac.Flight.Position.Altitude
-	// Only notify if descent is  more than 3000 ft
-	if descent >= 3000 {
+	// Only notify if descent is more than threshold
+	if descent >= LastCheckedPositionVerticalThreshold {
 		// set new state to trigger subphase
 		ac.Flight.ClearedTOD = true
 		// deep copy and transmit

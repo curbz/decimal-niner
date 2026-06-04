@@ -594,6 +594,18 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		// 3. FREQUENCY RECORDS
 		if rID, ok := roleMap[code]; ok {
 			isEnroute := rID >= 4
+
+			// THE AIRSPACE-AWARE GATEKEEPER
+			if !isRequiredAirport {
+                if len(airportPoints) == 0 {
+                    // True standalone TRACONs/Centers are strictly Approach (5) or Departure (4).
+                    // If it's anything else (like Role 7 Information/ATIS) without a runway, KILL IT.
+                    if rID != 4 && rID != 5 {
+                        continue
+                    }
+                }
+            }
+
 			if isRequiredAirport || isEnroute {
 				fRaw, _ := strconv.Atoi(p[1])
 				fNorm := normaliseFreq(fRaw)
