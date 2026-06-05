@@ -1,4 +1,14 @@
 {
+  "default": [
+    {
+      "id": "greeting",
+      "initiator": "atc",
+      "pilot": "",
+      "atc": "Hello, pilot"
+    }
+  ]
+}
+{
   "pre_flight_parked": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Clearance, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.", "atc": "{$CALLSIGN}, [{$FACILITY} Clearance,] cleared [to] {@DESTINATION} via the {@SID(false)}, squawk {$SQUAWK}. {@HANDOFF}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Delivery, {$CALLSIGN}, IFR to {@DESTINATION}, ready to copy.", "atc": "{$CALLSIGN}, [{$FACILITY} Delivery,] cleared [to] {@DESTINATION} {@SID(false)} [as filed], squawk {$SQUAWK}. {@HANDOFF}" },

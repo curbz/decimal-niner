@@ -19,9 +19,9 @@ import (
 
 type d9config struct {
 	D9 struct {
-		LoggingLevel 	string `yaml:"logging_level"`
-		TrafficEngine 	string `yaml:"traffic_engine"`
-		Resources 		string `yaml:"resources_path"`
+		LoggingLevel  string `yaml:"logging_level"`
+		TrafficEngine string `yaml:"traffic_engine"`
+		Resources     string `yaml:"resources_path"`
 	} `yaml:"d9"`
 }
 
@@ -118,7 +118,7 @@ func main() {
 	atcService.AirportService = atcService
 
 	te.SetATCService(atcService)
-	
+
 	atcService.Run()
 	te.Start()
 

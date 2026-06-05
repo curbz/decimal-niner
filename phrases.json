@@ -1,0 +1,10 @@
+{
+  "default": [
+    {
+      "id": "greeting",
+      "initiator": "atc",
+      "pilot": "",
+      "atc": "Hello, pilot"
+    }
+  ]
+}

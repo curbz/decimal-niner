@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/text/runes"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
@@ -133,8 +134,8 @@ func (s *Service) startComms() {
 
 			phraseKey := phaseFacility.atcPhase
 
-			// --------------- sub-phase detection ---------------- 
-			
+			// --------------- sub-phase detection ----------------
+
 			// sub-phases
 			// - cruise sector handoffs: when Flight.Comms.CruiseHandoff is not equal to NoHandoff (default)
 			// - "cruise_tod": 	when Flight.ClearedTOD is true in cruise phase, indicating the aircraft has passed its top of descent point
@@ -336,8 +337,8 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 	return pcl.PCLContext{
 		// --- RAW DATA ($) ---
 		"$VECTORING": func(args ...string) interface{} { return ac.Flight.Vectoring },
-		"$ALTITUDE": func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
-		"$CALLSIGN": func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
+		"$ALTITUDE":  func(args ...string) interface{} { return int(math.Round(ac.Flight.Position.Altitude)) },
+		"$CALLSIGN":  func(args ...string) interface{} { return strings.ToLower(ac.Flight.Comms.Callsign) },
 		"$FACILITY": func(args ...string) interface{} {
 			if ac.Flight.Comms.Controller != nil {
 				return ac.Flight.Comms.Controller.Name
@@ -541,7 +542,9 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			factor := 5 //default
 			if len(args) > 0 {
 				factor, err := strconv.Atoi(args[0])
-				if err != nil || factor < 1 { factor = 1 }
+				if err != nil || factor < 1 {
+					factor = 1
+				}
 			}
 			return s.generateValediction(factor)
 		},
@@ -830,11 +833,11 @@ func translateRunway(runway string) string {
 func formatRunwayHold(ac *Aircraft) string {
 	if ac.Flight.DepartureAccess != nil {
 		return fmt.Sprintf("hold at %s", phoneticiseAll(ac.Flight.DepartureAccess.Name))
-	} 		
+	}
 	return "hold short"
- }
+}
 
- func formatRunwayExit(ac *Aircraft) string {
+func formatRunwayExit(ac *Aircraft) string {
 	if ac.Flight.ArrivalAccess != nil {
 		highSpeed := ""
 		if ac.Flight.ArrivalAccess.IsHighSpeed {
@@ -844,30 +847,30 @@ func formatRunwayHold(ac *Aircraft) string {
 		prefix := "exit at"
 		if rand.Intn(2) == 0 {
 			prefix = "vacate runway at"
-		} 
-		return fmt.Sprintf("%s %s %s", prefix,highSpeed, phoneticiseAll(ac.Flight.ArrivalAccess.Name))
-	} 		
+		}
+		return fmt.Sprintf("%s %s %s", prefix, highSpeed, phoneticiseAll(ac.Flight.ArrivalAccess.Name))
+	}
 	return "exit when able"
- }
+}
 
-func  formatSID(ac *Aircraft, includeClimbAltitude bool, transLevel int) string {
+func formatSID(ac *Aircraft, includeClimbAltitude bool, transLevel int) string {
 	if ac.Flight.AssignedSID != nil {
 		climbAlt := ""
 		if includeClimbAltitude && ac.Flight.AssignedSID.Entry.ConstraintAlt > 0 {
-			climbAlt = fmt.Sprintf(" and climb to %s", 
-			formatAltitude(float64(ac.Flight.AssignedSID.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
+			climbAlt = fmt.Sprintf(" and climb to %s",
+				formatAltitude(float64(ac.Flight.AssignedSID.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
 		return fmt.Sprintf("%s departure %s", phoneticiseAlphaLast(ac.Flight.AssignedSID.Name), climbAlt)
 	}
 	return "assigned departure"
 }
 
-func  formatSTAR(ac *Aircraft, includeDescentAltitude bool, transLevel int) string {
+func formatSTAR(ac *Aircraft, includeDescentAltitude bool, transLevel int) string {
 	if ac.Flight.AssignedSTAR != nil {
 		descendAlt := ""
 		if includeDescentAltitude && ac.Flight.AssignedSTAR.Entry.ConstraintAlt > 0 {
-			descendAlt = fmt.Sprintf(" and descend to %s", 
-			formatAltitude(float64(ac.Flight.AssignedSTAR.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
+			descendAlt = fmt.Sprintf(" and descend to %s",
+				formatAltitude(float64(ac.Flight.AssignedSTAR.Entry.ConstraintAlt), transLevel, ac.Flight.Phase))
 		}
 		return fmt.Sprintf("%s arrival %s", phoneticiseAlphaLast(ac.Flight.AssignedSTAR.Name), descendAlt)
 	}
@@ -882,7 +885,9 @@ func collateTaxipath(ac *Aircraft) string {
 		}
 		if ac.Flight.AssignedParkingSpot != nil {
 			path2 := phoneticiseAlphaFirst(ac.Flight.AssignedParkingSpot.TaxiwayName, false)
-			if path == path2 { path = "" }
+			if path == path2 {
+				path = ""
+			}
 			if path != "" {
 				path = path + ","
 			}
@@ -894,7 +899,9 @@ func collateTaxipath(ac *Aircraft) string {
 		}
 		if ac.Flight.DepartureAccess != nil {
 			path2 := phoneticiseAlphaFirst(ac.Flight.DepartureAccess.TaxiwayName, false)
-			if path == path2 { path = "" }
+			if path == path2 {
+				path = ""
+			}
 			if path != "" {
 				path = path + ","
 			}
@@ -954,12 +961,12 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 	var clearance int
 
 	switch ac.Flight.Phase.Current {
-	case flightphase.Parked.Index(), flightphase.Startup.Index(), flightphase.TaxiOut.Index(), 
-			flightphase.Takeoff.Index(),flightphase.Climbout.Index():
+	case flightphase.Parked.Index(), flightphase.Startup.Index(), flightphase.TaxiOut.Index(),
+		flightphase.Takeoff.Index(), flightphase.Climbout.Index():
 		if ac.Flight.AssignedSID != nil {
 			clearance = ac.Flight.AssignedSID.Entry.ConstraintAlt
 		} else {
-			clearance = 10000
+			clearance = constants.DefaultCruiseEntryAltFt
 		}
 	case flightphase.Departure.Index():
 		if ac.Flight.AssignedSID != nil {
@@ -971,10 +978,10 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 		clearance = ac.Flight.CruiseAlt
 		// if past TOD, set to assigned STAR entry ALT or 10,000
 		if ac.Flight.ClearedTOD {
-			 if ac.Flight.AssignedSTAR != nil {
+			if ac.Flight.AssignedSTAR != nil {
 				clearance = ac.Flight.AssignedSTAR.Entry.ConstraintAlt
 			} else {
-				clearance = 10000
+				clearance = constants.DefaultCruiseEntryAltFt
 			}
 		}
 	case flightphase.Arrival.Index():
@@ -991,14 +998,14 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 		if clearance == 0 {
 			clearance = roundedUpRunwayElevation(rwy, 1000) + 6000
 		}
-	
+
 	case flightphase.GoAround.Index():
 		if rwy.MAalt > 0 {
 			clearance = rwy.MAalt
 		} else {
 			clearance = roundedUpRunwayElevation(rwy, 1000) + 3000
 		}
-	
+
 	case flightphase.Approach.Index():
 		if rwy.FAFalt > 0 {
 			clearance = rwy.FAFalt
@@ -1016,7 +1023,7 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 		} else {
 			clearance = roundedUpRunwayElevation(rwy, 1000)
 		}
-	} 
+	}
 
 	util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
 
@@ -1186,7 +1193,6 @@ func phoneticiseAlphaLast(input string) string {
 	}
 	return input
 }
-
 
 func phoneticiseAll(input string) string {
 	phontercisedPhrase := ""

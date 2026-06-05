@@ -16,9 +16,9 @@ func newTestEngine(simTime time.Time) *D9TrafficEngine {
 	svc.SyncSimTime(simTime, simTime)
 
 	return &D9TrafficEngine{
-        CommonTrafficEngine: traffic.CommonTrafficEngine{
-            AtcService: svc,
-        },
+		CommonTrafficEngine: traffic.CommonTrafficEngine{
+			AtcService: svc,
+		},
 	}
 }
 

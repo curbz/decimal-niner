@@ -186,10 +186,10 @@ func GetISOWeekday(t time.Time) int {
 
 // In pkg/util/util.go
 func Max(a, b int) int {
-    if a > b {
-        return a
-    }
-    return b
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // logs as debug

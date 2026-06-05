@@ -120,14 +120,13 @@ func TestLocateControllerGlobal(t *testing.T) {
 	}
 }
 
-
 // Mock Role IDs based on common ATC structures
 const (
-	RoleDEL  = 1
-	RoleGND  = 2
-	RoleTWR  = 3
-	RoleAPP  = 4
-	RoleCTR  = 6
+	RoleDEL = 1
+	RoleGND = 2
+	RoleTWR = 3
+	RoleAPP = 4
+	RoleCTR = 6
 )
 
 func TestLocateControllerTierLogic(t *testing.T) {
@@ -137,26 +136,26 @@ func TestLocateControllerTierLogic(t *testing.T) {
 	}
 
 	// --- SETUP MOCK DATA ---
-	
+
 	// Tier 1: Ground (Role 2)
 	egllGnd := &Controller{
-		Name: "London Ground", ICAO: "EGLL", RoleID: RoleGND, 
+		Name: "London Ground", ICAO: "EGLL", RoleID: RoleGND,
 		IsPoint: true, Lat: 51.47, Lon: -0.45, Freqs: []int{121900},
 	}
 	// Tier 1: Tower (Role 3)
 	egllTwr := &Controller{
-		Name: "London Tower", ICAO: "EGLL", RoleID: RoleTWR, 
+		Name: "London Tower", ICAO: "EGLL", RoleID: RoleTWR,
 		IsPoint: true, Lat: 51.47, Lon: -0.45, Freqs: []int{118500},
 	}
 	// Tier 2: Center (Role 6) - Bounding box: Lat 40-60, Lon -10 to 10
 	lonCtr := &Controller{
-		Name: "London Center", ICAO: "LON_CTR", RoleID: RoleCTR, 
+		Name: "London Center", ICAO: "LON_CTR", RoleID: RoleCTR,
 		IsPoint: false, Freqs: []int{133700},
 		Airspaces: []Airspace{
 			{
 				Floor: 0, Ceiling: 60000,
 				MinLat: 40.0, MaxLat: 60.0, MinLon: -10.0, MaxLon: 10.0,
-				Area: 5000,
+				Area:   5000,
 				Points: [][2]float64{{40, -10}, {60, -10}, {60, 10}, {40, 10}},
 			},
 		},
@@ -177,77 +176,77 @@ func TestLocateControllerTierLogic(t *testing.T) {
 	}{
 		// TIER 0: TARGET ICAO SHORTCUT
 		{
-			name:       "Tier 0: Shortcut Match (Tower)",
-			tRole:      RoleTWR,
-			uLa:        51.48, uLo: -0.44, // Within 50nm
+			name:  "Tier 0: Shortcut Match (Tower)",
+			tRole: RoleTWR,
+			uLa:   51.48, uLo: -0.44, // Within 50nm
 			targetICAO: "EGLL",
 			wantName:   "London Tower",
 		},
 		{
-			name:       "Tier 0: Shortcut Fallback (Distance > 50nm)",
-			tRole:      RoleTWR,
-			uLa:        55.0, uLo: -5.0, // > 50nm from EGLL
+			name:  "Tier 0: Shortcut Fallback (Distance > 50nm)",
+			tRole: RoleTWR,
+			uLa:   55.0, uLo: -5.0, // > 50nm from EGLL
 			targetICAO: "EGLL",
 			wantName:   "", // Should fail shortcut and find nothing in proximity
 		},
 
 		// TIER 1: POINTS (FREQ & PROXIMITY)
 		{
-			name:     "Tier 1: Freq Match (Tower)",
-			tFreq:    118500,
-			tRole:    RoleNone,
-			uLa:      51.47, uLo: -0.45,
+			name:  "Tier 1: Freq Match (Tower)",
+			tFreq: 118500,
+			tRole: RoleNone,
+			uLa:   51.47, uLo: -0.45,
 			uAl:      2000,
 			wantName: "London Tower",
 		},
 		{
-			name:     "Tier 1: Pure Proximity (No Freq, GND)",
-			tFreq:    0,
-			tRole:    RoleGND,
-			uLa:      51.471, uLo: -0.451,
+			name:  "Tier 1: Pure Proximity (No Freq, GND)",
+			tFreq: 0,
+			tRole: RoleGND,
+			uLa:   51.471, uLo: -0.451,
 			uAl:      100,
 			wantName: "London Ground",
 		},
 		{
-			name:     "Tier 1: Altitude Gate (GND Hidden at 12k ft)",
-			tFreq:    121900,
-			tRole:    RoleNone,
-			uLa:      51.47, uLo: -0.45,
+			name:  "Tier 1: Altitude Gate (GND Hidden at 12k ft)",
+			tFreq: 121900,
+			tRole: RoleNone,
+			uLa:   51.47, uLo: -0.45,
 			uAl:      12000, // Above 10,000ft gate
 			wantName: "",
 		},
 		{
-			name:     "Tier 1: Search Limit (No Freq, > 15nm)",
-			tFreq:    0,
-			tRole:    RoleTWR,
-			uLa:      52.0, uLo: -0.45, // ~32nm away
-			wantName: "", 
+			name:  "Tier 1: Search Limit (No Freq, > 15nm)",
+			tFreq: 0,
+			tRole: RoleTWR,
+			uLa:   52.0, uLo: -0.45, // ~32nm away
+			wantName: "",
 		},
 
 		// TIER 2: POLYGONS (CENTER)
 		{
-			name:     "Tier 2: Polygon Match (Inside Center Airspace)",
-			tFreq:    133700,
-			tRole:    RoleNone,
-			uLa:      52.0, uLo: 0.0,
+			name:  "Tier 2: Polygon Match (Inside Center Airspace)",
+			tFreq: 133700,
+			tRole: RoleNone,
+			uLa:   52.0, uLo: 0.0,
 			uAl:      35000,
 			wantName: "London Center",
 		},
 		{
-			name:     "Tier 2: Polygon Ceiling Check",
-			tFreq:    133700,
-			uLa:      52.0, uLo: 0.0,
+			name:  "Tier 2: Polygon Ceiling Check",
+			tFreq: 133700,
+			uLa:   52.0, uLo: 0.0,
 			uAl:      70000, // Above 60k ceiling
 			wantName: "",
 		},
 
 		// COMPLEX FALLBACKS
 		{
-			name:     "Fallback: High Alt Freq Match skips Points to check Polygons",
-			tFreq:    133700,
-			tRole:    RoleNone,
-			uLa:      51.47, uLo: -0.45, // Directly over the Tower point
-			uAl:      35000,            // But high altitude
+			name:  "Fallback: High Alt Freq Match skips Points to check Polygons",
+			tFreq: 133700,
+			tRole: RoleNone,
+			uLa:   51.47, uLo: -0.45, // Directly over the Tower point
+			uAl:      35000, // But high altitude
 			wantName: "London Center",
 		},
 	}

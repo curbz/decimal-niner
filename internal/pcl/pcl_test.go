@@ -98,7 +98,7 @@ func TestPCL(t *testing.T) {
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 			}
-			
+
 			if res != tc.expected {
 				t.Errorf("Result mismatch.\nGot:  %q\nWant: %q", res, tc.expected)
 			}

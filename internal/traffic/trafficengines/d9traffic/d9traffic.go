@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
@@ -20,7 +21,7 @@ import (
 )
 
 type D9TrafficEngine struct {
-	traffic.CommonTrafficEngine 
+	traffic.CommonTrafficEngine
 	AirportSchedules map[string]*AirportTimeline
 	FlightPlanPath   string
 	ActiveAircraft   map[string]*atc.Aircraft
@@ -179,12 +180,12 @@ func (e *D9TrafficEngine) needsRunwayRefresh(ap *atc.Airport) bool {
 
 	currentWeather := e.AtcService.GetWeatherState()
 
-	// Check if wind shifted by more than 15 degrees
-	// OR wind speed changed by more than 5 knots
+	// Check if wind shifted by more than configured degrees
+	// OR wind speed changed by more than configured knots
 	dirDelta := math.Abs(currentWeather.Wind.Direction - config.LastWindDir)
 	speedDelta := math.Abs(currentWeather.Wind.Speed - config.LastWindSpeed)
 
-	return dirDelta > 15.0 || speedDelta > 5.0
+	return dirDelta > constants.WindDirShiftDeg || speedDelta > constants.WindSpeedDeltaKts
 }
 
 func (e *D9TrafficEngine) RequiresAircraftData() bool {
@@ -628,16 +629,16 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 
 	case flightphase.Climbout:
 		if rwy != nil {
-			startAlt = rwy.ThresholdElevation + 100.0
+			startAlt = rwy.ThresholdElevation + float64(constants.RunwayElevationOffsetFt)
 		} else {
-			startAlt = apt.Elevation + 100.0
+			startAlt = apt.Elevation + float64(constants.RunwayElevationOffsetFt)
 		}
 
 	case flightphase.Departure:
 		if sid := ac.Flight.AssignedSID; sid != nil && sid.Entry.ConstraintAlt > 0 {
 			startAlt = float64(sid.Entry.ConstraintAlt)
 		} else {
-			startAlt = apt.Elevation + 3000.0
+			startAlt = apt.Elevation + float64(constants.VerticalStepFt)
 		}
 
 	case flightphase.Cruise:
@@ -651,7 +652,7 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 			}
 		} else {
 			if startAlt == 0.0 {
-				startAlt = 10000.0
+				startAlt = float64(constants.DefaultCruiseEntryAltFt)
 			}
 		}
 
@@ -659,21 +660,21 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.ConstraintAlt > 0 {
 			startAlt = float64(star.Entry.ConstraintAlt)
 		} else {
-			startAlt = 10000.0
+			startAlt = float64(constants.DefaultCruiseEntryAltFt)
 		}
 
 	case flightphase.Approach:
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.ConstraintAlt > 0 {
 			startAlt = float64(star.Exit.ConstraintAlt)
 		} else {
-			startAlt = apt.Elevation + 4000.0
+			startAlt = apt.Elevation + float64(constants.StandardApproachAltFt)
 		}
 
 	case flightphase.Final:
 		if rwy != nil && rwy.FAFalt > 0 {
 			startAlt = float64(rwy.FAFalt)
 		} else {
-			startAlt = apt.Elevation + 1500.0
+			startAlt = apt.Elevation + float64(constants.DestinationBufferAltFt)
 		}
 	}
 
@@ -696,10 +697,10 @@ func (e *D9TrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft) {
 
 	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 	case flightphase.Cruise:
-			// check for possible sector change
-			e.CheckForCruiseSectorChange(ac)
-			// check for TOD
-			e.CheckForTOD(ac)
+		// check for possible sector change
+		e.CheckForCruiseSectorChange(ac)
+		// check for TOD
+		e.CheckForTOD(ac)
 	}
 }
 
@@ -1097,7 +1098,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 	// Determine Runway Length in NM (Default to 1.2 if missing)
 	rwyLengthNM := 1.2
 	if rwy.Length > 0 {
-		rwyLengthNM = rwy.Length * 0.000164579 // Feet to NM
+		rwyLengthNM = rwy.Length * constants.FeetToNM // Feet to NM
 	}
 
 	// Initialize with current position as a safety "anchor". These values should get modified by the
@@ -1122,14 +1123,14 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 			targetAlt = float64(sid.Entry.ConstraintAlt)
 		} else {
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, 5.0)
-			targetAlt = startAlt + 3000
+			targetAlt = startAlt + float64(constants.VerticalStepFt)
 		}
 		heading = rwy.Heading
 
 	case flightphase.Departure:
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, 5.0)
 		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, 30.0)
-		targetAlt = 10000.0
+		targetAlt = float64(constants.DefaultCruiseEntryAltFt)
 		if sid := ac.Flight.AssignedSID; sid != nil {
 			if sid.Entry.Fix.Lat != 0 {
 				startPos = atc.Position{Lat: sid.Entry.Fix.Lat, Long: sid.Entry.Fix.Lon}
@@ -1143,14 +1144,14 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Arrival:
-		// 1. Establish initial entry point 
+		// 1. Establish initial entry point
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 			startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
 			targetAlt = float64(star.Entry.ConstraintAlt)
 		} else {
 			// Default 40NM out on extended centerline
-			startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 40.0)
-			targetAlt = 5000.0 // Sane baseline altitude for terminal entry
+			startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.SpawnProjectOffsetNM)
+			targetAlt = float64(constants.TerminalEntryAltFt) // Sane baseline altitude for terminal entry
 		}
 
 		// 2. Establish target exit point of arrival phase (15NM gate)
@@ -1159,7 +1160,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 			targetAlt = float64(star.Exit.ConstraintAlt)
 		} else {
 			// No STAR: Target/Start at the 15NM extended centerline point
-			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.CenterlineProjectNM)
 
 			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
 			if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
@@ -1169,7 +1170,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 			// Push the aircraft 2.88 NM out to the side instead of 5.0 NM
 			// This mathematically forces a standard 30-degree intercept track to the 10NM gate!
 			targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, 2.88)
-			targetAlt = 4000.0
+			targetAlt = float64(constants.StandardApproachAltFt)
 		}
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
@@ -1179,7 +1180,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 			startPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
 		} else {
 			// No STAR: Target/Start at the 15NM extended centerline point
-			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 15.0)
+			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.CenterlineProjectNM)
 
 			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
 			if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
@@ -1193,17 +1194,17 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 
 		// 2. Establish Final Exit point (FAF at 4.0NM out)
 		finalTargetPos := atc.Position{}
-		finalTargetPos.Lat, finalTargetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 4.0)
+		finalTargetPos.Lat, finalTargetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.FinalTargetProjectNM)
 
 		targetAlt = float64(rwy.FAFalt)
 		if targetAlt == 0 {
-			targetAlt = dest.Elevation + 1500
+			targetAlt = dest.Elevation + float64(constants.DestinationBufferAltFt)
 		}
 
 		// 3. Calculate the Intermediate Intercept Gate (Localizer Capture at 10.0NM out)
 		gatePos := atc.Position{}
-		gatePos.Lat, gatePos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 10.0)
-		gateAlt := targetAlt + (6.0 * 318.0)
+		gatePos.Lat, gatePos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.GateProjectNM)
+		gateAlt := targetAlt + (float64(constants.InterceptMultiplier) * float64(constants.InterceptUnitFt))
 
 		// 4. Time-Split Vector Segment Logic (60% to gate, 40% on centerline)
 		splitPoint := 0.60
@@ -1229,7 +1230,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 		ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
 	case flightphase.Final:
 		// Start: FAF (4.0NM out)
-		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), 4.0)
+		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), constants.FinalTargetProjectNM)
 
 		targetPos = atc.Position{Lat: rwy.Lat, Long: rwy.Lon}
 		targetAlt = rwy.ThresholdElevation
@@ -1393,8 +1394,8 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 	ac.Flight.Position.Lat = newLat
 	ac.Flight.Position.Long = newLon
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(rwy.Heading + 10)
-	// Climb to 3000ft
-	ac.Flight.Position.Altitude = math.Min(airport.Elevation+3000, airport.Elevation+(progress*3000))
+	// Climb to VerticalStepFt
+	ac.Flight.Position.Altitude = math.Min(airport.Elevation+float64(constants.VerticalStepFt), airport.Elevation+(progress*float64(constants.VerticalStepFt)))
 }
 
 func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
@@ -1404,7 +1405,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
 
 	if totalDuration <= 0 {
-		return 
+		return
 	}
 
 	// 1. Calculate Horizontal Progress (0.0 -> 1.0)
@@ -1415,7 +1416,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	// 2. Identify Horizontal Start (SID Exit or Origin Center)
 	var startPos atc.Position
-	startAlt := 10000.0 // Default departure exit alt
+	startAlt := float64(constants.DefaultCruiseEntryAltFt) // Default departure exit alt
 	if sid := ac.Flight.AssignedSID; sid != nil && sid.Exit.Fix.Lat != 0 {
 		startPos = atc.Position{Lat: sid.Exit.Fix.Lat, Long: sid.Exit.Fix.Lon}
 		// Check if constraint is explicitly defined
@@ -1434,14 +1435,14 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 			} else if sid.Entry.ConstraintAlt >= 1000 {
 				entryAlt = float64(sid.Entry.ConstraintAlt)
 			} else {
-				entryAlt = origin.Elevation + 3000.0 // True runway structural backup
+				entryAlt = origin.Elevation + float64(constants.VerticalStepFt) // True runway structural backup
 			}
 
 			// Calculate distance between Entry and Exit gates
 			distNM := geometry.DistNM(sid.Entry.Fix.Lat, sid.Entry.Fix.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
 
-			// Climb slope: 1000ft per 3NM added to the entry baseline
-			startAlt = entryAlt + ((distNM / 3.0) * 1000.0)
+			// Climb slope: FeetPerFL per 3NM added to the entry baseline
+			startAlt = entryAlt + ((distNM / constants.NMPerFL) * float64(constants.FeetPerFL))
 		} else {
 			startAlt = 10000.0
 		}
@@ -1460,7 +1461,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	// 3. Identify Horizontal Target (STAR Entry or Destination Center)
 	var targetPos atc.Position
-	targetAlt := 10000.0 // Default arrival entry alt
+	targetAlt := float64(constants.DefaultCruiseEntryAltFt) // Default arrival entry alt
 	if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 		targetPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
 
@@ -1480,16 +1481,16 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 			} else if star.Exit.ConstraintAlt >= 1000 {
 				exitAlt = float64(star.Exit.ConstraintAlt)
 			} else {
-				exitAlt = 3000.0 // Standard terminal approach platform floor
+				exitAlt = float64(constants.VerticalStepFt) // Standard terminal approach platform floor
 			}
 
 			// Calculate distance between Entry and Exit gates
 			distNM := geometry.DistNM(star.Entry.Fix.Lat, star.Entry.Fix.Lon, star.Exit.Fix.Lat, star.Exit.Fix.Lon)
 
-			// Descent slope back-projection: 1000ft per 3NM added to the exit platform floor
-			targetAlt = exitAlt + ((distNM / 3.0) * 1000.0)
+			// Descent slope back-projection: FeetPerFL per 3NM added to the exit platform floor
+			targetAlt = exitAlt + ((distNM / constants.NMPerFL) * float64(constants.FeetPerFL))
 		} else {
-			targetAlt = 10000.0
+			targetAlt = float64(constants.DefaultCruiseEntryAltFt)
 		}
 	} else {
 		// project 30NM out from destination
@@ -1515,19 +1516,19 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
 	// 5. Vertical Profile using the 3-to-1 Rule for Descent
 	cruiseAlt := float64(ac.Flight.CruiseAlt)
-	if cruiseAlt < 10000 {
-		cruiseAlt = 10000.0
+	if cruiseAlt < float64(constants.DefaultCruiseEntryAltFt) {
+		cruiseAlt = float64(constants.DefaultCruiseEntryAltFt)
 		util.LogErrWithLabel(ac.Registration, "cruise altitude is set to %d - setting to %d - possible bug", ac.Flight.CruiseAlt, int(cruiseAlt))
 	}
 	distToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
-	// Math: 3 NM for every 1000ft of altitude loss
+	// Math: 3 NM for every FeetPerFL of altitude loss
 	altitudeToLose := cruiseAlt - targetAlt
-	requiredDescentDist := (altitudeToLose / 1000.0) * 3.0
+	requiredDescentDist := (altitudeToLose / float64(constants.FeetPerFL)) * constants.NMPerFL
 
 	var calculatedAlt float64
 
-	inDescent:= false
+	inDescent := false
 	descentProgress := 0.0
 	if distToTarget <= requiredDescentDist && altitudeToLose > 0 {
 		// --- PHASE: DESCENT (Post-TOD) ---
@@ -1541,7 +1542,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 		util.LogDebugWithLabel(ac.Registration, "elapsed cruise is %0.2f seconds - in descent phase, distance to target is %0.2f NM, required descent distance is %0.2f NM, descent progress is %0.2f%%, calculated altitude is %0.2f",
 			elapsed, distToTarget, requiredDescentDist, descentProgress*100, calculatedAlt)
 		// if we don't have arrival procedures defined, set to vectoring
-		if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false  {
+		if ac.Flight.AssignedSTAR == nil && ac.Flight.Vectoring == false {
 			ac.Flight.Vectoring = true
 		}
 	} else {
@@ -1592,7 +1593,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 				}
 			})
 		}
-	} 
+	}
 }
 
 func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {
@@ -1971,8 +1972,8 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
 	viable := []*atc.Runway{}
 	for _, rwy := range ap.Runways {
-		// Only consider runways longer than 5000ft (approx 1500m)
-		if rwy.Length >= 5000 {
+		// Only consider runways longer than configured minimum (meters)
+		if rwy.Length >= constants.RunwayLengthMinFilterM {
 			viable = append(viable, rwy)
 		}
 	}

@@ -1,0 +1,10 @@
+{
+  "default": [
+    {
+      "id": "greeting_unicom",
+      "initiator": "atc",
+      "pilot": "",
+      "atc": "Unicom hello"
+    }
+  ]
+}

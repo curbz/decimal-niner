@@ -20,7 +20,7 @@ type Dataref struct {
 	APIInfo         DatarefInfo
 	Value           any
 	DecodedDataType string
-	SetValue		func(dr *Dataref, newValue any)
+	SetValue        func(dr *Dataref, newValue any)
 }
 
 type DatarefSubscriptionRequest struct {

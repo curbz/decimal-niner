@@ -31,7 +31,7 @@ func TestNotifyUserStateChange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Service{
-				Controllers: []*Controller{ctrl},
+				Controllers:    []*Controller{ctrl},
 				AirportService: &MockAirportProvider{MockReturn: tt.mockReturn},
 				Airports: map[string]*Airport{
 					"TEST": {ICAO: "TEST"},

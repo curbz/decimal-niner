@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
@@ -49,7 +50,7 @@ type Flight struct {
 	DepartureDelay      int
 	ArrivalAccess       *AccessPoint
 	DepartureAccess     *AccessPoint
-	ClearedTOD 			bool
+	ClearedTOD          bool
 }
 
 type Position struct {
@@ -427,9 +428,9 @@ func (s *Service) getTransistionAltitude(ac *Aircraft) (transitionAlt int) {
 		// 3. FINAL FALLBACK: Continental Standards
 		// If ICAO starts with E or L (Europe), use 6000, otherwise 18000
 		if strings.HasPrefix(nearICAO, "E") || strings.HasPrefix(nearICAO, "L") {
-			transitionAlt = 6000
+			transitionAlt = constants.TransitionAltRegionEUFt
 		} else {
-			transitionAlt = 18000
+			transitionAlt = constants.TransitionAltRegionOtherFt
 		}
 	}
 

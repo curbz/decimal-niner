@@ -1,4 +1,14 @@
 {
+  "default": [
+    {
+      "id": "greeting_unicom",
+      "initiator": "atc",
+      "pilot": "",
+      "atc": "Unicom hello"
+    }
+  ]
+}
+{
   "pre_flight_parked": [
     {
       "id": "pre_dest",

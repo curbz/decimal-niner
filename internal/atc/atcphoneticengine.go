@@ -46,7 +46,7 @@ func (pe *PhoneticEngine) Apply(text string) string {
 
 		// 2. Lookup using LOWERCASE
 		if replacement, ok := pe.Dictionaries[lower]; ok {
-			// 3. Replace the 'clean' part of the original 'word' 
+			// 3. Replace the 'clean' part of the original 'word'
 			// to preserve the commas/periods.
 			words[i] = strings.Replace(word, clean, replacement, 1)
 			modified = true

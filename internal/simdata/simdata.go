@@ -32,7 +32,7 @@ const (
 	DRSimFlightmodelPositionElevation = "sim/flightmodel/position/elevation"
 	DRSimFlightmodelPositionPsi       = "sim/flightmodel/position/psi"
 
-	DRSimFlightModelIsOnGround 		  = "sim/flightmodel/failures/onground_any"
+	DRSimFlightModelIsOnGround = "sim/flightmodel/failures/onground_any"
 
 	DRSimCockpitRadiosCom1FreqHz = "sim/cockpit/radios/com1_freq_hz"
 	DRSimCockpitRadiosCom2FreqHz = "sim/cockpit/radios/com2_freq_hz"
@@ -95,12 +95,12 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 	{Name: DRSimFlightmodelPositionElevation,
 		APIInfo: xpapimodel.DatarefInfo{}},
-	{Name: DRSimFlightmodelPositionPsi, 	// heading
+	{Name: DRSimFlightmodelPositionPsi, // heading
 		APIInfo: xpapimodel.DatarefInfo{}},
 
-	{Name: DRSimFlightModelIsOnGround, 		// is on ground
+	{Name: DRSimFlightModelIsOnGround, // is on ground
 		APIInfo: xpapimodel.DatarefInfo{}},
-	
+
 	//user tuned atc facilities and frequencies
 	{Name: DRSimCockpitRadiosCom1FreqHz,
 		APIInfo: xpapimodel.DatarefInfo{}},
@@ -116,7 +116,7 @@ var SubscribeDatarefs = []xpapimodel.Dataref{
 		APIInfo: xpapimodel.DatarefInfo{}},
 }
 
-// GetZuluDateTime converts sim datarefs into a standard Go time.Time object. 
+// GetZuluDateTime converts sim datarefs into a standard Go time.Time object.
 // Generally this should be used at application startup only. Use the atc service's
 // GetGetCurrentZuluTime function instead for an immediate response.
 func GetZuluDateTime(xpt XPlaneTime) time.Time {

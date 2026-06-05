@@ -21,7 +21,7 @@ type Baro struct {
 	Sealevel float64
 }
 
-func (s *Service) GetWeatherState() *Weather { 
+func (s *Service) GetWeatherState() *Weather {
 	return s.Weather
 }
 
@@ -37,4 +37,3 @@ func getTransitionLevel(transitionAlt int, currBaroPascals float64) int {
 	// If pressure is low, we need more space, so we add an extra level
 	return (transitionAlt / 100) + 20 // e.g., 6000ft -> FL80
 }
-
