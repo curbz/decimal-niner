@@ -115,10 +115,9 @@ type NamedNode struct {
 	Importance int
 }
 
-
 const (
-	minArrivalDistNM = 0.8        // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
-	lastExitBufferNM = 0.1        // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
+	minArrivalDistNM       = 0.8  // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
+	lastExitBufferNM       = 0.1  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
 	highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
 
 	DEPARTURE_CONTEXT = 0
@@ -184,7 +183,7 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 }
 
 func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
-	
+
 	if depRwy == nil {
 		util.LogErrWithLabel(ac.Registration, "unable to assign SID as no runway provided (nil)")
 		return
@@ -220,11 +219,11 @@ func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
 		util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
 		return
 	}
-	
+
 }
 
 func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
-	
+
 	if arrRwy == nil {
 		util.LogErrWithLabel(ac.Registration, "unable to assign STAR as no runway provided (nil)")
 		return
@@ -268,7 +267,7 @@ func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
 		util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
 		return
 	}
-	
+
 }
 
 // assignRunwayAccessPoint assigns the runway access or exit point depending on whether the arrOrDep flag
@@ -315,7 +314,6 @@ func (s *Service) AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep in
 	}
 
 }
-
 
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
 	airportHolds map[string][]*Hold, allHolds map[string]*Hold, allFixes map[string]*Fix) error {
@@ -384,7 +382,7 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 
 // parseApt processes the X-Plane apt.dat file with deep fallback logic for missing coordinates.
 func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map[string]*Airport, error) {
-	
+
 	var allcontrollers, apcontrollers []*Controller
 	airports := make(map[string]*Airport)
 
@@ -448,9 +446,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				curICAO = p[4]
 				curName = cleanAirportName(strings.Join(p[5:], " "))
 				curLat = 0.0
-                curLon = 0.0
-                transAlt = 0
-                region = ""
+				curLon = 0.0
+				transAlt = 0
+				region = ""
 				curElev, err = strconv.ParseFloat(p[1], 0)
 				if err != nil {
 					logger.Log.Warnf("unable to get airport elevation for %s: %v", curICAO, err)
@@ -540,40 +538,40 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				region = p[2]
 			}
 			if curAirport != nil {
-			curAirport.TransAlt, curAirport.Region = transAlt, region
+				curAirport.TransAlt, curAirport.Region = transAlt, region
 			}
 			continue
 		}
 
 		// Runway records (100 = Asphalt/Concrete, 101 = Water, 102 = Helipad)
-        if code == "100" || code == "101" || code == "102" {
-            fields := strings.Fields(line)
-            if code == "102" && len(fields) >= 4 {
-                // Helipad format: 102 <designator> <lat> <lon> ...
-                hLat, _ := strconv.ParseFloat(fields[2], 64)
-                hLon, _ := strconv.ParseFloat(fields[3], 64)
-                if hLat != 0 && hLon != 0 {
-                    airportPoints = append(airportPoints, aptPoint{hLat, hLon})
-                }
-            } else if (code == "100" || code == "101") && len(fields) >= 20 {
-                width, _ := strconv.ParseFloat(fields[1], 64)
-                lat1, _ := strconv.ParseFloat(fields[9], 64)
-                lon1, _ := strconv.ParseFloat(fields[10], 64)
-                lat2, _ := strconv.ParseFloat(fields[18], 64)
-                lon2, _ := strconv.ParseFloat(fields[19], 64)
+		if code == "100" || code == "101" || code == "102" {
+			fields := strings.Fields(line)
+			if code == "102" && len(fields) >= 4 {
+				// Helipad format: 102 <designator> <lat> <lon> ...
+				hLat, _ := strconv.ParseFloat(fields[2], 64)
+				hLon, _ := strconv.ParseFloat(fields[3], 64)
+				if hLat != 0 && hLon != 0 {
+					airportPoints = append(airportPoints, aptPoint{hLat, hLon})
+				}
+			} else if (code == "100" || code == "101") && len(fields) >= 20 {
+				width, _ := strconv.ParseFloat(fields[1], 64)
+				lat1, _ := strconv.ParseFloat(fields[9], 64)
+				lon1, _ := strconv.ParseFloat(fields[10], 64)
+				lat2, _ := strconv.ParseFloat(fields[18], 64)
+				lon2, _ := strconv.ParseFloat(fields[19], 64)
 
-				// 🚀 DYNAMIC LENGTH MATH: Calculate physical length from coordinates
-                calculatedLength := 0.0
-                if lat1 != 0 && lat2 != 0 {
-                    calculatedLength = geometry.DistanceInMeters(lat1, lon1, lat2, lon2)
-                }
+				// DYNAMIC LENGTH MATH: Calculate physical length from coordinates
+				calculatedLength := 0.0
+				if lat1 != 0 && lat2 != 0 {
+					calculatedLength = geometry.DistanceInMeters(lat1, lon1, lat2, lon2)
+				}
 
 				if curAirport != nil {
 					id1 := fields[8]
 					rwy1 := getOrCreateRunway(curAirport, id1)
 					rwy1.Lat = lat1
 					rwy1.Lon = lon1
-					rwy1.EndLat = lat2 
+					rwy1.EndLat = lat2
 					rwy1.EndLon = lon2
 					rwy1.Width = width
 					rwy1.Length = calculatedLength
@@ -583,18 +581,18 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 						rwy2 := getOrCreateRunway(curAirport, id2)
 						rwy2.Lat = lat2
 						rwy2.Lon = lon2
-						rwy2.EndLat = lat1 
+						rwy2.EndLat = lat1
 						rwy2.EndLon = lon1
 						rwy2.Width = width
 						rwy2.Length = calculatedLength
 					}
 				}
-                if lat1 != 0 && lat2 != 0 {
-                    airportPoints = append(airportPoints, aptPoint{lat1, lon1}, aptPoint{lat2, lon2})
-                }
-            }
-            continue
-        }
+				if lat1 != 0 && lat2 != 0 {
+					airportPoints = append(airportPoints, aptPoint{lat1, lon1}, aptPoint{lat2, lon2})
+				}
+			}
+			continue
+		}
 
 		// 3. FREQUENCY RECORDS
 		if isRequiredController {
@@ -603,13 +601,13 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 				//THE AIRSPACE-AWARE GATEKEEPER
 				if !isRequiredAirport {
-				    if len(airportPoints) == 0 {
-				        // True standalone TRACONs/Centers are strictly Approach (5) or Departure (4).
-				        // If it's anything else (like Role 7 Information/ATIS) without a runway, KILL IT.
-				        if rID != 4 && rID != 5 {
-				            continue
-				        }
-				    }
+					if len(airportPoints) == 0 {
+						// True standalone TRACONs/Centers are strictly Approach (5) or Departure (4).
+						// If it's anything else (like Role 7 Information/ATIS) without a runway, KILL IT.
+						if rID != 4 && rID != 5 {
+							continue
+						}
+					}
 				}
 
 				if isRequiredAirport || isEnroute {
@@ -618,7 +616,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					batchStartIdx = len(apcontrollers)
 
 					// DYNAMIC POSITION CORRECTION
-					// If 1302 datum was missing, calculate a fallback coordinate using 
+					// If 1302 datum was missing, calculate a fallback coordinate using
 					// the runway physical layout points collected so far before generating the controller.
 					targetLat := curLat
 					targetLon := curLon
@@ -638,7 +636,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					}
 
 					for _, r := range roles {
-						// X-Plane synthetic objects typically use 5-7 character procedural codes 
+						// X-Plane synthetic objects typically use 5-7 character procedural codes
 						// starting with X, or containing internal runway/localizer tags.
 						if strings.HasPrefix(curICAO, "XLIL") || strings.HasPrefix(curICAO, "X") && len(curICAO) > 4 {
 							continue // Ignore simulated structural helper entries
@@ -773,8 +771,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 	// file scanner complete - check for errors
 	if err := scanner.Err(); err != nil {
-        return nil, nil, fmt.Errorf("scanner error: %w", err)
-    }
+		return nil, nil, fmt.Errorf("scanner error: %w", err)
+	}
 
 	// Finalize the final block
 	if curAirport != nil {
@@ -829,11 +827,11 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, apctrls []
 
 	// Retroactive update for any controllers created with 0,0
 	for _, ctrl := range apctrls {
-        if ctrl.Lat == 0 {
-            ctrl.Lat = ap.Lat
-            ctrl.Lon = ap.Lon
-        }
-    }
+		if ctrl.Lat == 0 {
+			ctrl.Lat = ap.Lat
+			ctrl.Lon = ap.Lon
+		}
+	}
 
 	// validate
 	for _, rwy := range ap.Runways {
@@ -1244,7 +1242,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 
 					if xtd < 0.03 { // 0.03 NM (~50m) is roughly half a runway width
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.05, true)
-						entryBrg := geometry.Bearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
+						entryBrg := geometry.CalculateBearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
 
 						updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, nodeOnRwy, distToStart, touching, entryBrg)
 					}
@@ -1283,8 +1281,8 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)
 
 						if touching != "" || isLastChance {
-							rwyHeading := geometry.Bearing(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
-							exitBrg := geometry.Bearing(nodeOnRwy.Lat, nodeOnRwy.Lon, nextNode.Lat, nextNode.Lon)
+							rwyHeading := geometry.CalculateBearing(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
+							exitBrg := geometry.CalculateBearing(nodeOnRwy.Lat, nodeOnRwy.Lon, nextNode.Lat, nextNode.Lon)
 
 							angleDiff := math.Abs(rwyHeading - exitBrg)
 							if angleDiff > 180 {
@@ -1439,14 +1437,14 @@ func normaliseRunwayName(rw string) string {
 
 // normaliseRunwayID ensures single digit runways match standard 3-char identifiers (e.g., "8" -> "08", "7L" -> "07L")
 func normaliseRunwayID(id string) string {
-    id = strings.TrimSpace(id)
-    if len(id) > 0 && id[0] >= '1' && id[0] <= '9' {
-        // If the second char isn't a digit, it means it's a single digit (like "8" or "7L")
-        if len(id) == 1 || (id[1] < '0' || id[1] > '9') {
-            return "0" + id
-        }
-    }
-    return id
+	id = strings.TrimSpace(id)
+	if len(id) > 0 && id[0] >= '1' && id[0] <= '9' {
+		// If the second char isn't a digit, it means it's a single digit (like "8" or "7L")
+		if len(id) == 1 || (id[1] < '0' || id[1] > '9') {
+			return "0" + id
+		}
+	}
+	return id
 }
 
 func normaliseCIFPAlt(altStr string) int {
