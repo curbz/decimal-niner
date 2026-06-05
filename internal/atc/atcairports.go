@@ -557,12 +557,16 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
                 }
             } else if (code == "100" || code == "101") && len(fields) >= 20 {
                 width, _ := strconv.ParseFloat(fields[1], 64)
-                length, _ := strconv.ParseFloat(fields[3], 64)
-
                 lat1, _ := strconv.ParseFloat(fields[9], 64)
                 lon1, _ := strconv.ParseFloat(fields[10], 64)
                 lat2, _ := strconv.ParseFloat(fields[18], 64)
                 lon2, _ := strconv.ParseFloat(fields[19], 64)
+
+				// 🚀 DYNAMIC LENGTH MATH: Calculate physical length from coordinates
+                calculatedLength := 0.0
+                if lat1 != 0 && lat2 != 0 {
+                    calculatedLength = geometry.DistanceInMeters(lat1, lon1, lat2, lon2)
+                }
 
 				if curAirport != nil {
 					id1 := fields[8]
@@ -572,7 +576,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 					rwy1.EndLat = lat2 
 					rwy1.EndLon = lon2
 					rwy1.Width = width
-					rwy1.Length = length
+					rwy1.Length = calculatedLength
 
 					id2 := fields[17]
 					if id2 != "" && id2 != "xxx" && id2 != "nil" {
@@ -582,7 +586,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 						rwy2.EndLat = lat1 
 						rwy2.EndLon = lon1
 						rwy2.Width = width
-						rwy2.Length = length
+						rwy2.Length = calculatedLength
 					}
 				}
                 if lat1 != 0 && lat2 != 0 {
@@ -830,6 +834,19 @@ func finaliseAirport(ap *Airport, dLat, dLon float64, pts []aptPoint, apctrls []
             ctrl.Lon = ap.Lon
         }
     }
+
+	// validate
+	for _, rwy := range ap.Runways {
+		if rwy.Lat == 0 && rwy.Lon == 0 {
+			util.LogWarnWithLabel("D9", "%s runway %s no location", ap.ICAO, rwy.Name)
+		}
+		if rwy.Length == 0 {
+			util.LogWarnWithLabel("D9", "%s runway %s no length", ap.ICAO, rwy.Name)
+		}
+		if rwy.Width == 0 {
+			util.LogWarnWithLabel("D9", "%s runway %s no width", ap.ICAO, rwy.Name)
+		}
+	}
 }
 
 func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
@@ -1394,6 +1411,7 @@ func lowestAltitudeOf(at, above, below string) int {
 	return best
 }
 
+// normaliseRunwayName takes a raw runway identifier from CIFP which are prefixed with "RW" and normalises it to a standard format like "09L", "27R", etc.
 func normaliseRunwayName(rw string) string {
 	// fix is like "RW27", "RW27L", "RW9", "RW09R"
 	if !strings.HasPrefix(rw, "RW") {
@@ -1417,6 +1435,18 @@ func normaliseRunwayName(rw string) string {
 	}
 
 	return strings.TrimSpace(num + suffix)
+}
+
+// normaliseRunwayID ensures single digit runways match standard 3-char identifiers (e.g., "8" -> "08", "7L" -> "07L")
+func normaliseRunwayID(id string) string {
+    id = strings.TrimSpace(id)
+    if len(id) > 0 && id[0] >= '1' && id[0] <= '9' {
+        // If the second char isn't a digit, it means it's a single digit (like "8" or "7L")
+        if len(id) == 1 || (id[1] < '0' || id[1] > '9') {
+            return "0" + id
+        }
+    }
+    return id
 }
 
 func normaliseCIFPAlt(altStr string) int {
@@ -1608,6 +1638,8 @@ func finaliseHubWeights(ap *Airport) {
 }
 
 func getOrCreateRunway(ap *Airport, rwyID string) *Runway {
+
+	rwyID = normaliseRunwayID(rwyID)
 	if rwy, exists := ap.Runways[rwyID]; exists {
 		return rwy
 	}
