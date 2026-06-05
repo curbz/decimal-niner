@@ -405,6 +405,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	var curLat, curLon, curElev float64
 	var transAlt int
 	var isRequiredAirport bool
+	var isRequiredController bool
 	var batchStartIdx int
 	var airportPoints []aptPoint
 	var curParking *ParkingSpot // Temporary pointer to the spot being built
@@ -431,6 +432,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 		// 1. HEADER RECORD (New Airport Start)
 		if code == "1" || code == "16" || code == "17" {
+			isRequiredController = (code == "1")
+
 			if curAirport != nil {
 				finaliseAirport(curAirport, curLat, curLon, airportPoints, apcontrollers, curElev, nodeBuffer, edgeBuffer)
 			}
@@ -542,102 +545,117 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 			continue
 		}
 
-		// Runway records (100 = Asphalt/Concrete, 101 = Water)
-		if curAirport != nil && code == "100" {
-			// fields is often more reliable than manual slicing if columns shift
-			fields := strings.Fields(line)
+		// Runway records (100 = Asphalt/Concrete, 101 = Water, 102 = Helipad)
+        if code == "100" || code == "101" || code == "102" {
+            fields := strings.Fields(line)
+            if code == "102" && len(fields) >= 4 {
+                // Helipad format: 102 <designator> <lat> <lon> ...
+                hLat, _ := strconv.ParseFloat(fields[2], 64)
+                hLon, _ := strconv.ParseFloat(fields[3], 64)
+                if hLat != 0 && hLon != 0 {
+                    airportPoints = append(airportPoints, aptPoint{hLat, hLon})
+                }
+            } else if (code == "100" || code == "101") && len(fields) >= 20 {
+                width, _ := strconv.ParseFloat(fields[1], 64)
+                length, _ := strconv.ParseFloat(fields[3], 64)
 
-			if len(fields) >= 20 {
-				// Parse Dimensions
-				width, _ := strconv.ParseFloat(fields[1], 64)
-				// Note: fields[3] is length in meters in the spec
-				length, _ := strconv.ParseFloat(fields[3], 64)
+                lat1, _ := strconv.ParseFloat(fields[9], 64)
+                lon1, _ := strconv.ParseFloat(fields[10], 64)
+                lat2, _ := strconv.ParseFloat(fields[18], 64)
+                lon2, _ := strconv.ParseFloat(fields[19], 64)
 
-				// Threshold 1 Coordinates
-				lat1, _ := strconv.ParseFloat(fields[9], 64)
-				lon1, _ := strconv.ParseFloat(fields[10], 64)
+				if curAirport != nil {
+					id1 := fields[8]
+					rwy1 := getOrCreateRunway(curAirport, id1)
+					rwy1.Lat = lat1
+					rwy1.Lon = lon1
+					rwy1.EndLat = lat2 
+					rwy1.EndLon = lon2
+					rwy1.Width = width
+					rwy1.Length = length
 
-				// Threshold 2 Coordinates
-				lat2, _ := strconv.ParseFloat(fields[18], 64)
-				lon2, _ := strconv.ParseFloat(fields[19], 64)
-
-				// --- Handle Primary End (e.g., 09L) ---
-				id1 := fields[8]
-				rwy1 := getOrCreateRunway(curAirport, id1)
-				rwy1.Lat = lat1
-				rwy1.Lon = lon1
-				rwy1.EndLat = lat2 // The "Finish Line" for 09L
-				rwy1.EndLon = lon2
-				rwy1.Width = width
-				rwy1.Length = length
-
-				// --- Handle Reciprocal End (e.g., 27R) ---
-				id2 := fields[17]
-				if id2 != "" && id2 != "xxx" && id2 != "nil" {
-					rwy2 := getOrCreateRunway(curAirport, id2)
-					rwy2.Lat = lat2
-					rwy2.Lon = lon2
-					rwy2.EndLat = lat1 // The "Finish Line" for 27R is 09L's start
-					rwy2.EndLon = lon1
-					rwy2.Width = width
-					rwy2.Length = length
+					id2 := fields[17]
+					if id2 != "" && id2 != "xxx" && id2 != "nil" {
+						rwy2 := getOrCreateRunway(curAirport, id2)
+						rwy2.Lat = lat2
+						rwy2.Lon = lon2
+						rwy2.EndLat = lat1 
+						rwy2.EndLon = lon1
+						rwy2.Width = width
+						rwy2.Length = length
+					}
 				}
-
-				// AIRPORT POSITION FALLBACK
-				if lat1 != 0 && lat2 != 0 {
-					airportPoints = append(airportPoints, aptPoint{lat1, lon1}, aptPoint{lat2, lon2})
-				}
-			}
-			continue
-		}
-
-		// 3. FREQUENCY RECORDS
-		if rID, ok := roleMap[code]; ok {
-			isEnroute := rID >= 4
-
-			// THE AIRSPACE-AWARE GATEKEEPER
-			if !isRequiredAirport {
-                if len(airportPoints) == 0 {
-                    // True standalone TRACONs/Centers are strictly Approach (5) or Departure (4).
-                    // If it's anything else (like Role 7 Information/ATIS) without a runway, KILL IT.
-                    if rID != 4 && rID != 5 {
-                        continue
-                    }
+                if lat1 != 0 && lat2 != 0 {
+                    airportPoints = append(airportPoints, aptPoint{lat1, lon1}, aptPoint{lat2, lon2})
                 }
             }
+            continue
+        }
 
-			if isRequiredAirport || isEnroute {
-				fRaw, _ := strconv.Atoi(p[1])
-				fNorm := normaliseFreq(fRaw)
-				batchStartIdx = len(apcontrollers)
+		// 3. FREQUENCY RECORDS
+		if isRequiredController {
+			if rID, ok := roleMap[code]; ok {
+				isEnroute := rID >= 4
 
-				roles := []int{rID}
-				if code == "1051" || code == "1054" {
-					roles = []int{rID, 1, 2}
+				//THE AIRSPACE-AWARE GATEKEEPER
+				if !isRequiredAirport {
+				    if len(airportPoints) == 0 {
+				        // True standalone TRACONs/Centers are strictly Approach (5) or Departure (4).
+				        // If it's anything else (like Role 7 Information/ATIS) without a runway, KILL IT.
+				        if rID != 4 && rID != 5 {
+				            continue
+				        }
+				    }
 				}
 
-				for _, r := range roles {
-					// X-Plane synthetic objects typically use 5-7 character procedural codes 
-					// starting with X, or containing internal runway/localizer tags.
-					if strings.HasPrefix(curICAO, "XLIL") || strings.HasPrefix(curICAO, "X") && len(curICAO) > 4 {
-						continue // Ignore simulated structural helper entries
+				if isRequiredAirport || isEnroute {
+					fRaw, _ := strconv.Atoi(p[1])
+					fNorm := normaliseFreq(fRaw)
+					batchStartIdx = len(apcontrollers)
+
+					// DYNAMIC POSITION CORRECTION
+					// If 1302 datum was missing, calculate a fallback coordinate using 
+					// the runway physical layout points collected so far before generating the controller.
+					targetLat := curLat
+					targetLon := curLon
+					if targetLat == 0 && targetLon == 0 && len(airportPoints) > 0 {
+						var sumLat, sumLon float64
+						for _, pt := range airportPoints {
+							sumLat += pt.Lat
+							sumLon += pt.Lon
+						}
+						targetLat = sumLat / float64(len(airportPoints))
+						targetLon = sumLon / float64(len(airportPoints))
 					}
-					c := &Controller{
-						Name:    curName,
-						ICAO:    curICAO,
-						RoleID:  r,
-						Freqs:   []int{fNorm},
-						IsPoint: true,
-						Lat:     curLat,
-						Lon:     curLon,
+
+					roles := []int{rID}
+					if code == "1051" || code == "1054" {
+						roles = []int{rID, 1, 2}
 					}
-					apcontrollers = append(apcontrollers, c)
-					if curAirport != nil {
-						curAirport.Controllers = append(curAirport.Controllers, c)
+
+					for _, r := range roles {
+						// X-Plane synthetic objects typically use 5-7 character procedural codes 
+						// starting with X, or containing internal runway/localizer tags.
+						if strings.HasPrefix(curICAO, "XLIL") || strings.HasPrefix(curICAO, "X") && len(curICAO) > 4 {
+							continue // Ignore simulated structural helper entries
+						}
+						c := &Controller{
+							Name:    curName,
+							ICAO:    curICAO,
+							RoleID:  r,
+							Freqs:   []int{fNorm},
+							IsPoint: true,
+							Lat:     targetLat,
+							Lon:     targetLon,
+						}
+						apcontrollers = append(apcontrollers, c)
+						if curAirport != nil {
+							curAirport.Controllers = append(curAirport.Controllers, c)
+						}
 					}
 				}
+				continue
 			}
-			continue
 		}
 
 		// 4. TRANSMITTER OVERRIDE (1100)
@@ -764,7 +782,7 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 	for i := range allcontrollers {
 		c := allcontrollers[i]
 		if c.Lat == 0 && c.Lon == 0 {
-			logger.Log.Warnf("no location found for ICAO:%s Name: %s Role: %d\n", c.ICAO, c.Name, c.RoleID)
+			logger.Log.Warnf("no controller location found for ICAO:%s Name: %s Role: %d\n", c.ICAO, c.Name, c.RoleID)
 		}
 		c.Airspaces = []Airspace{{
 			Floor: -99999, Ceiling: 99999, Area: 0,
