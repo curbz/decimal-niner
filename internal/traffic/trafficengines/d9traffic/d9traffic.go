@@ -1728,11 +1728,26 @@ func (e *D9TrafficEngine) determineInitialDeparturePhase(minsToSchedDep int, f *
 		tta := e.timeDiffToScheduledArrival(f)
 		remainingCruiseSecs := (AbsDiff(tta, AMINUS_ARRIVAL_MINS) * 60) + jitter
 
-		// Total Cruise Duration extraction
-		totalCruiseMins := AbsDiff(f.ArrivalHour*60+f.ArrivalMin, f.DepartureHour*60+f.DepartureMin) - AbsInt(DMINUS_DEPARTURE_MINS) - AMINUS_ARRIVAL_MINS
+		// Total Cruise Duration extraction — compute duration between departure
+		// and arrival while handling midnight wrap-around (e.g., dep 23:57 -> arr 00:27).
+		depMins := f.DepartureHour*60 + f.DepartureMin
+		arrMins := f.ArrivalHour*60 + f.ArrivalMin
+
+		diff := arrMins - depMins
+		if diff < -720 {
+			diff += 1440
+		} else if diff > 720 {
+			diff -= 1440
+		}
+
+		totalCruiseMins := AbsInt(diff) - AbsInt(DMINUS_DEPARTURE_MINS) - AMINUS_ARRIVAL_MINS
 		if totalCruiseMins*60 <= remainingCruiseSecs {
 			totalCruiseMins = (remainingCruiseSecs / 60) + 15
 		}
+		if totalCruiseMins < 0 {
+			totalCruiseMins = 0
+		}
+
 		totalCruiseSecs := totalCruiseMins * 60
 
 		return flightphase.Cruise, AbsInt(remainingCruiseSecs), AbsInt(totalCruiseSecs), delay
