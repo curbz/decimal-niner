@@ -1143,16 +1143,17 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft) {
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Arrival:
-		// 1. Establish initial entry point (Default 40NM out on extended centerline)
+		// 1. Establish initial entry point 
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 			startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
 			targetAlt = float64(star.Entry.ConstraintAlt)
 		} else {
+			// Default 40NM out on extended centerline
 			startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), 40.0)
 			targetAlt = 5000.0 // Sane baseline altitude for terminal entry
 		}
 
-		// 2. Establish target exit point (15NM gate)
+		// 2. Establish target exit point of arrival phase (15NM gate)
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
 			targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
 			targetAlt = float64(star.Exit.ConstraintAlt)
