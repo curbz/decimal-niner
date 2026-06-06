@@ -966,7 +966,7 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 		if ac.Flight.AssignedSID != nil {
 			clearance = ac.Flight.AssignedSID.Entry.ConstraintAlt
 		} else {
-			clearance = constants.DefaultCruiseEntryAltFt
+			clearance = constants.DefaultDepartureExitCruiseEntryAltFt
 		}
 	case flightphase.Departure.Index():
 		if ac.Flight.AssignedSID != nil {
@@ -981,7 +981,7 @@ func determineAltClearance(ac *Aircraft, rwy *Runway) int {
 			if ac.Flight.AssignedSTAR != nil {
 				clearance = ac.Flight.AssignedSTAR.Entry.ConstraintAlt
 			} else {
-				clearance = constants.DefaultCruiseEntryAltFt
+				clearance = constants.DefaultDepartureExitCruiseEntryAltFt
 			}
 		}
 	case flightphase.Arrival.Index():

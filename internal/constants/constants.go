@@ -15,21 +15,23 @@ const (
 	CrossTrackThresholdNMAlt3 = 0.45
 
 	// Vertical/altitude related (feet)
-	VerticalStepFt              = 3000
-	DefaultCruiseEntryAltFt     = 10000
-	TerminalEntryAltFt          = 5000
-	StandardApproachAltFt       = 4000
-	DestinationBufferAltFt      = 1500
-	ApproachTerminalAltBufferFt = 2800
-	FeetPerFL                   = 1000
-	TransitionAltRegionEUFt     = 6000
-	TransitionAltRegionOtherFt  = 18000
+	DefaultClimbExitDepartureEntryAltFt  = 3000
+	DefaultDepartureExitCruiseEntryAltFt = 10000
+	DefaultCruiseExitArrivalEntryAltFt   = 10000
+	DefaultArrivalExitApproachEntryAltFt = 4000
+	DefaultApproachExitFinalEntryAltFt   = 1500
+	TerminalEntryAltFt                   = 5000
+	ApproachTerminalAltBufferFt          = 2800
+	FeetPerFL                            = 1000
+	TransitionAltRegionEUFt              = 6000
+	TransitionAltRegionOtherFt           = 18000
 	// Small offset used when computing runway threshold/start altitudes
 	RunwayElevationOffsetFt = 100
 
 	// Intercept (formerly gate) values
-	InterceptUnitFt     = 318
-	InterceptMultiplier = 6
+	InterceptLOCUnitFt     = 318
+	InterceptLOCMultiplier = 6
+	InterceptLOCProjectNM  = 10.0
 
 	// Squawk generation
 	SquawkMin   = 1200
@@ -44,7 +46,7 @@ const (
 
 	// Runway / approach thresholds (meters)
 	RunwayXtdThresholdM  = 50.0
-	RunwayAtdNegPaddingM = 50.0
+	RunwayAtdNegPaddingM = -50.0
 	RunwayAtdPosPaddingM = 100.0
 	ApproachXtdWidenM    = 80.0
 
@@ -62,6 +64,8 @@ const (
 	ControllerSearchLimitProximityNM = 15.0
 	ControllerTargetICAOCloseNM      = 50.0
 	ControllerTieBreakDeltaNM        = 2.0
+	ControllerLowThresholdAltFt      = 5000
+	ControllerHighThresholdAltFt     = 10000
 
 	// Runway defaults and thresholds
 	RunwayWidthLargeM        = 150.0
@@ -69,11 +73,11 @@ const (
 	RunwayLengthLargeThreshM = 6000.0
 
 	// D9 traffic engine distances and thresholds
-	SpawnProjectOffsetNM = 40.0
-	CenterlineProjectNM  = 15.0
-	FinalTargetProjectNM = 4.0
-	GateProjectNM        = 10.0
-	NMPerFL              = 3.0
+	SpawnArrivalEntryProjectOffsetNM = 40.0
+	SpawnArrivalExitProjectOffsetNM  = 15.0
+	FinalTargetProjectNM             = 4.0
+	DefaultClimbRateNMPerFL          = 3.0
+	DefaultDescentRateNMPerFL        = 3.0
 
 	// Wind/check thresholds
 	WindDirShiftDeg   = 15.0

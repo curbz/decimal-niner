@@ -317,7 +317,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 		// Vertical Gate: Ground/Tower/Delivery shouldn't be "reachable" at high altitude
 		// Typically, these facilities are only tuned within the terminal environment.
-		if tFreq > 0 && uAl > 10000 && (c.RoleID >= 1 && c.RoleID <= 3) {
+		if tFreq > 0 && uAl > constants.ControllerHighThresholdAltFt && (c.RoleID >= 1 && c.RoleID <= 3) {
 			continue
 		}
 
@@ -373,7 +373,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// High priority for airport facilities if low or frequency matched
-	if (uAl < float64(constants.TerminalEntryAltFt) || tFreq > 0) && bestPointMatch != nil {
+	if (uAl < float64(constants.ControllerLowThresholdAltFt) || tFreq > 0) && bestPointMatch != nil {
 		return bestPointMatch
 	}
 
