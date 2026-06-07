@@ -20,7 +20,7 @@ func BenchmarkPhoneticEngine_Pipeline(b *testing.B) {
 	for i := 0; i < 50; i++ {
 		localeReplacements[fmt.Sprintf("localword%d", i)] = fmt.Sprintf("LocalReplacement%d", i)
 	}
-	// Note: In serial mode, if base changes "word10" to "Replacement10", 
+	// Note: In serial mode, if base changes "word10" to "Replacement10",
 	// the locale must target "replacement10" to override it.
 	localeReplacements["replacement10"] = "Custom-Override-10"
 	localeEngine := &PhoneticEngine{Dictionaries: localeReplacements}

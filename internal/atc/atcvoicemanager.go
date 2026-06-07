@@ -12,6 +12,7 @@ import (
 	"time"
 
 	d9 "github.com/curbz/decimal-niner/internal"
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
@@ -27,7 +28,7 @@ var (
 		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
 		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
 		"$VECTORING": true,
-		"@RUNWAY": true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
+		"@RUNWAY":    true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
 		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
 		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
 		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
@@ -60,7 +61,7 @@ type VoiceManager struct {
 	globalVoicePool   []string
 	voiceLocks        sync.Map // Map of string -> *sync.Mutex
 	allowedSpeakerIDs map[string][]int
-	dictionaries 	  map[string]*PhoneticEngine
+	dictionaries      map[string]*PhoneticEngine
 }
 
 type PhraseClasses struct {
@@ -150,13 +151,13 @@ func (vm *VoiceManager) loadPhrases() {
 }
 
 func (vm *VoiceManager) LoadDictionaries() {
-    vm.dictionaries = make(map[string]*PhoneticEngine)
-    
-    files, err := os.ReadDir(d9.Resources)
-    if err != nil {
-        logger.Log.Errorf("error: failed to scan resources directory %s, for dictionaries: %v", d9.Resources, err)
-        return
-    }
+	vm.dictionaries = make(map[string]*PhoneticEngine)
+
+	files, err := os.ReadDir(d9.Resources)
+	if err != nil {
+		logger.Log.Errorf("error: failed to scan resources directory %s, for dictionaries: %v", d9.Resources, err)
+		return
+	}
 
 	for _, file := range files {
 		// Only process files like "en-dictionary.json" or "en_GB-dictionary.json"
@@ -166,14 +167,14 @@ func (vm *VoiceManager) LoadDictionaries() {
 
 		// Key will be "en" or "en_GB"
 		isoCode := strings.Split(file.Name(), "-")[0]
-		
+
 		fullPath := filepath.Join(d9.Resources, file.Name())
 		engine, err := NewPhoneticEngine(fullPath)
 		if err != nil {
 			logger.Log.Errorf("error loading pronunciation dictionary %s: %v", file.Name(), err)
 			continue
 		}
-		
+
 		vm.dictionaries[strings.ToUpper(isoCode)] = engine
 		logger.Log.Infof("Registered pronunciation dictionary: %s", isoCode)
 	}
@@ -366,15 +367,15 @@ func (vm *VoiceManager) selectVoice(msg *ATCMessage, partnerVoice string) string
 	countryCode := msg.CountryCode
 	if msg.Role != "PILOT" {
 		countryCode = msg.ControllerICAO[:2] // For ATC, derive country from ICAO
-		logLabel = fmt.Sprintf("%s_%s_%s", msg.ControllerICAO, 
-					strings.ReplaceAll(msg.ControllerName, " ", ""), msg.Role)
+		logLabel = fmt.Sprintf("%s_%s_%s", msg.ControllerICAO,
+			strings.ReplaceAll(msg.ControllerName, " ", ""), msg.Role)
 	} else {
 		logLabel = fmt.Sprintf("%s_%s_%s", msg.AircraftSnap.Registration, msg.Role,
-					strings.ReplaceAll(msg.AircraftSnap.Flight.Comms.Callsign, " ", ""))
+			strings.ReplaceAll(msg.AircraftSnap.Flight.Comms.Callsign, " ", ""))
 	}
 
 	targetISO, _ := convertIcaoToIso(countryCode)
-	
+
 	util.LogWithLabel(logLabel, "voice selection started - ISO code: %s (country code %s)", targetISO, countryCode)
 
 	// 1. TIER 1: Primary Country Match
@@ -501,7 +502,7 @@ func (vm *VoiceManager) getVoiceMetadata(voiceKey string, msg *ATCMessage) (stri
 	}
 
 	path := filepath.Join(vm.voiceDir, baseName+".onnx")
-	rate := 22050
+	rate := constants.AudioSampleRate
 
 	if f, err := os.Open(path + ".json"); err == nil {
 		var cfg struct {

@@ -21,7 +21,7 @@ func ProcessPhrase(input string, ctx PCLContext) (string, error) {
 	// 1. First Pass: Process Logic Blocks {WHEN ...} or {SAY ...} on the raw template
 	pclRegex := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
 	resolved := input
-	
+
 	for {
 		match := pclRegex.FindString(resolved)
 		if match == "" {
@@ -128,12 +128,12 @@ func executePCL(statement string, ctx PCLContext, cache map[string]string) strin
 func resolveValue(token string, ctx PCLContext, cache map[string]string) interface{} {
 	// Clean backticks
 	clean := strings.Trim(token, "`")
-	
+
 	if strings.HasPrefix(clean, "$") || strings.HasPrefix(clean, "@") {
 		if val, ok := cache[clean]; ok {
 			return val
 		}
-		
+
 		// Fallback regex for parameterized tokens inside WHEN blocks
 		tokenRegex := regexp.MustCompile(`([$@])([A-Z0-9_]+)(?:\((.*?)\))?`)
 		m := tokenRegex.FindStringSubmatch(clean)
@@ -153,12 +153,16 @@ func resolveValue(token string, ctx PCLContext, cache map[string]string) interfa
 
 // evaluateComplexCondition handles logical AND/OR comparisons.
 func evaluateComplexCondition(tokens []string, ctx PCLContext, cache map[string]string) bool {
-	if len(tokens) == 0 { return false }
+	if len(tokens) == 0 {
+		return false
+	}
 	result := false
 	currentOp := "OR"
 
 	for i := 0; i < len(tokens); i += 4 {
-		if i+2 >= len(tokens) { break }
+		if i+2 >= len(tokens) {
+			break
+		}
 
 		left := resolveValue(tokens[i], ctx, cache)
 		op := tokens[i+1]
@@ -188,12 +192,18 @@ func evaluateComparison(left interface{}, op string, right interface{}) bool {
 	// If both values are clean numbers, use float comparisons
 	if errL == nil && errR == nil {
 		switch op {
-		case "NE": return lVal != rVal
-		case "EQ": return lVal == rVal
-		case "LT": return lVal < rVal
-		case "LE": return lVal <= rVal
-		case "GT": return lVal > rVal
-		case "GE": return lVal >= rVal
+		case "NE":
+			return lVal != rVal
+		case "EQ":
+			return lVal == rVal
+		case "LT":
+			return lVal < rVal
+		case "LE":
+			return lVal <= rVal
+		case "GT":
+			return lVal > rVal
+		case "GE":
+			return lVal >= rVal
 		}
 	}
 
@@ -218,19 +228,23 @@ func tokenizePCL(s string) []string {
 	depth := 0
 	for i := 0; i < len(s); i++ {
 		char := s[i]
-		
+
 		// Use backticks for quoting to allow apostrophes like don't
-		if char == '`' { 
-			inQuotes = !inQuotes 
+		if char == '`' {
+			inQuotes = !inQuotes
 			current.WriteByte(char)
 			continue
 		}
-		
+
 		if !inQuotes {
-			if char == '{' { depth++ }
-			if char == '}' { depth-- }
+			if char == '{' {
+				depth++
+			}
+			if char == '}' {
+				depth--
+			}
 		}
-		
+
 		if char == ' ' && !inQuotes && depth == 0 {
 			if current.Len() > 0 {
 				tokens = append(tokens, current.String())
@@ -240,6 +254,8 @@ func tokenizePCL(s string) []string {
 			current.WriteByte(char)
 		}
 	}
-	if current.Len() > 0 { tokens = append(tokens, current.String()) }
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
 	return tokens
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
@@ -116,14 +117,8 @@ type NamedNode struct {
 }
 
 const (
-	minArrivalDistNM       = 0.8  // Discards early exits (e.g., anything up to and including A5 on 27R at EGLL)
-	lastExitBufferNM       = 0.1  // "Last Chance" zone at the very end of runway for access points to be considered as 'IsNearEnd'
-	highSpeedExitThreshold = 47.0 // High speed (RTE) max angle - anything more and access point is not considered high speed
-
 	DEPARTURE_CONTEXT = 0
 	ARRIVAL_CONTEXT   = 1
-
-	STAR_PROBABILITY_FACTOR = 0.5
 )
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -230,7 +225,7 @@ func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
 	}
 
 	// 30% probability of STAR assignment to allow for vectoring as alternative
-	if rand.Float32() < STAR_PROBABILITY_FACTOR && len(arrRwy.STARs) > 0 {
+	if rand.Float32() < constants.STARProbabilityFactor && len(arrRwy.STARs) > 0 {
 		var bestSTAR *Procedure
 		minDiff := 360.0
 
@@ -1169,12 +1164,11 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 			// 4. Default Width if missing
 			if rw.Width == 0 {
-				// 150ft is the standard for most commercial runways.
-				// We could even scale this based on the length:
-				if rw.Length > 6000 {
-					rw.Width = 150.0
+				// Check if it's a major commercial-length strip or a smaller secondary/GA runway
+				if rw.Length > constants.RunwayLengthLargeThreshM {
+					rw.Width = constants.RunwayWidthStandardM
 				} else {
-					rw.Width = 100.0
+					rw.Width = constants.RunwayWidthNarrowM
 				}
 			}
 		}
@@ -1274,8 +1268,8 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 					}
 
 					distFromEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-					isLastChance := distFromEnd < lastExitBufferNM
-					isSafeRollout := distFromStart > minArrivalDistNM
+					isLastChance := distFromEnd < constants.LastExitBufferNM
+					isSafeRollout := distFromStart > constants.DefaultRolloutDistNM
 
 					if isSafeRollout || isLastChance {
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)
@@ -1299,7 +1293,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 								acp := updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, nodeOnRwy, distFromEnd, touching, exitBrg)
 								if acp != nil {
 									// RETs (Rapid Exit Taxiways)
-									acp.IsHighSpeed = (angleDiff <= highSpeedExitThreshold)
+									acp.IsHighSpeed = (angleDiff <= constants.HighSpeedExitThresholdDeg)
 									acp.IsNearEnd = isLastChance
 								}
 							}

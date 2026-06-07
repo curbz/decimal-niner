@@ -40,7 +40,7 @@ var (
 		simdata.DRSimFlightmodelPositionLongitude: "double",
 		simdata.DRSimFlightmodelPositionElevation: "double",
 		simdata.DRSimFlightmodelPositionPsi:       "float",
-		simdata.DRSimFlightModelIsOnGround: 	   "int",
+		simdata.DRSimFlightModelIsOnGround:        "int",
 
 		simdata.DRSimCockpitRadiosCom1FreqHz: "int",
 		simdata.DRSimCockpitRadiosCom2FreqHz: "int",
@@ -319,11 +319,11 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	// --- Sim Time ---
 	case simdata.DRSimTimeLocalDateDays:
-		return now.YearDay() - 1  //15 // days since Jan 1 (16th Jan)
+		return now.YearDay() - 1 //15 // days since Jan 1 (16th Jan)
 	case simdata.DRSimTimeLocalTimeSec:
-		return hours*3600 + minutes*60 + seconds  //39600.0 + float64(iter) // 11:00:00 am local time
+		return hours*3600 + minutes*60 + seconds //39600.0 + float64(iter) // 11:00:00 am local time
 	case simdata.DRSimTimeZuluTimeSec:
-		return hours*3600 + minutes*60 + seconds  //39600.0 + float64(iter) // 12:00:00 Zulu
+		return hours*3600 + minutes*60 + seconds //39600.0 + float64(iter) // 12:00:00 Zulu
 
 	// --- Weather ---
 	case simdata.DRSimWeatherAircraftBarometer:
@@ -382,7 +382,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 
 	case simdata.DRTrafficEngineAIFlightPhase:
 		// Provide deterministic transitions per-iteration for the three sample aircraft:
-		// G-AOWK Speedbird 138 Heavy (index 0): Parked -> Startup -> TaxiOut  
+		// G-AOWK Speedbird 138 Heavy (index 0): Parked -> Startup -> TaxiOut
 		// G-BCOL Easy 599			  (index 1): TaxiOut -> Depart -> Climbout
 		// G-ARBD Virgin 342 Heavy    (index 2): Approach -> Final -> Braking
 		mod := iter % 3

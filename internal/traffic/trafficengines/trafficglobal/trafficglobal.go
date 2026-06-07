@@ -13,8 +13,7 @@ import (
 )
 
 const (
-
-	LastCheckedPositionVerticalThreshold  = 1000.0 // altitude in feet that the aircraft must have descended since the last check to trigger cruise top of descent logic
+	LastCheckedPositionVerticalThreshold = 1000.0 // altitude in feet that the aircraft must have descended since the last check to trigger cruise top of descent logic
 
 	FP_Unknown  int = iota - 1
 	FP_Cruise       // 0 - Normal cruise phase.
@@ -39,7 +38,7 @@ type TGconfig struct {
 }
 
 type TrafficGlobal struct {
-	traffic.CommonTrafficEngine 
+	traffic.CommonTrafficEngine
 	FlightPlanPath string
 }
 
@@ -165,7 +164,7 @@ func (tg *TrafficGlobal) SetATCService(atcService *atc.Service) {
 
 // Enrich will apply additional data to the aircraft and should be called by the ATC Service on aircraft phase change
 func (e *TrafficGlobal) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
-	
+
 	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 	case flightphase.Final, flightphase.Braking, flightphase.TaxiIn:
 		if ac.Flight.AssignedRunway.ArrivalAccess == nil {
@@ -202,10 +201,10 @@ func (e *TrafficGlobal) CheckForSubPhaseChange(ac *atc.Aircraft) {
 
 	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 	case flightphase.Cruise:
-			// check for possible sector change
-			e.CheckForCruiseSectorChange(ac)
-			// check for TOD
-			e.CheckForTOD(ac)
+		// check for possible sector change
+		e.CheckForCruiseSectorChange(ac)
+		// check for TOD
+		e.CheckForTOD(ac)
 	}
 }
 

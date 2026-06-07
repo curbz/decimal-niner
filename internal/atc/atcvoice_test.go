@@ -286,7 +286,7 @@ func TestCollateTaxipath(t *testing.T) {
 			want:         "Zulu",
 		},
 		{
-			name:         "same taxi paths",
+			name:          "same taxi paths",
 			phaseClass:    flightclass.Departing,
 			phaseCurrent:  flightphase.Departure.Index(),
 			parkingTaxi:   "A",

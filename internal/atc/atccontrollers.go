@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -265,9 +266,9 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	smallestArea := math.MaxFloat64
 
 	// Adjust search limit: 100nm for frequency, 15nm for pure proximity
-	searchLimit := 100.0
+	searchLimit := constants.ControllerSearchMaxRangeNM
 	if tFreq <= 0 {
-		searchLimit = 15.0
+		searchLimit = constants.ControllerSearchLimitProximityNM
 	}
 	closestPointDist := searchLimit
 
@@ -281,9 +282,9 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 			// airport not found, resort to proximity search
 			util.LogWithLabel(label, "no airport found for target ICAO of %s - fallback to proximity search", targetICAO)
 		} else {
-			// distance sanity check - is this airport within 50nm?
+			// distance sanity check - is this airport within ControllerTargetICAOCloseNM?
 			distToTarget := geometry.DistNM(uLa, uLo, ap.Lat, ap.Lon)
-			if distToTarget < 50.0 {
+			if distToTarget < constants.ControllerTargetICAOCloseNM {
 				var backupMatch *Controller
 				for _, c := range ap.Controllers {
 					if c.ICAO == targetICAO && c.IsPoint {
@@ -316,7 +317,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 
 		// Vertical Gate: Ground/Tower/Delivery shouldn't be "reachable" at high altitude
 		// Typically, these facilities are only tuned within the terminal environment.
-		if tFreq > 0 && uAl > 10000 && (c.RoleID >= 1 && c.RoleID <= 3) {
+		if tFreq > 0 && uAl > constants.ControllerHighThresholdAltFt && (c.RoleID >= 1 && c.RoleID <= 3) {
 			continue
 		}
 
@@ -348,8 +349,8 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 				// Scenario B: User is looking for ANY role (-1)
 				if tRole == RoleNone {
 					// Logic: Priority 1 is Distance. Priority 2 (Tie-break) is Role Importance.
-					isSignificantImprovement := dist < (closestPointDist - 2.0)
-					isSimilarDist := math.Abs(dist-closestPointDist) <= 2.0
+					isSignificantImprovement := dist < (closestPointDist - constants.ControllerTieBreakDeltaNM)
+					isSimilarDist := math.Abs(dist-closestPointDist) <= constants.ControllerTieBreakDeltaNM
 
 					if bestPointMatch == nil || isSignificantImprovement || (isSimilarDist && c.RoleID > bestPointMatch.RoleID) {
 						//util.LogWithLabel(label, "  -> Potential Freq Match Found: %s %s (Role %d) at %.2fnm", c.Name, c.ICAO, c.RoleID, dist)
@@ -372,7 +373,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	}
 
 	// High priority for airport facilities if low or frequency matched
-	if (uAl < 5000 || tFreq > 0) && bestPointMatch != nil {
+	if (uAl < float64(constants.ControllerLowThresholdAltFt) || tFreq > 0) && bestPointMatch != nil {
 		return bestPointMatch
 	}
 

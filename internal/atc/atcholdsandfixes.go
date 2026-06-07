@@ -372,8 +372,8 @@ func parseFixData(path string) (map[string]*Fix, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-        return nil,fmt.Errorf("scanner error: %w", err)
-    }
+		return nil, fmt.Errorf("scanner error: %w", err)
+	}
 	return fixes, nil
 
 }

@@ -40,7 +40,7 @@ func TestPhoneticEngine_SerialPipeline(t *testing.T) {
 			expected: "Report passing Vienna,",
 		},
 		{
-			name:     "Locale override beats Base",
+			name: "Locale override beats Base",
 			// Base turns 'route' to 'rowt', then Locale turns rowt' to 'root'
 			// Note: this relies on the Locale having the post-processed word if the base changes it.
 			input:    "Follow the assigned route.",

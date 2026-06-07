@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -15,7 +16,7 @@ type UserState struct {
 	TunedFreqs         map[int]int         // Key: 1 for COM1, 2 for COM2
 	TunedFacilityRoles map[int]int         // Key: 1 for COM1, 2 for COM2
 	AssignedParking    ParkingSpot
-	IsOnGround 	   	   bool
+	IsOnGround         bool
 }
 
 func (s *Service) GetUserState() UserState {
@@ -72,40 +73,40 @@ func (s *Service) UserHasRunwayClearance(rwy *Runway) bool {
 	}
 
 	u := s.GetUserState()
-	if !u.IsOnGround { return false}
-
-	// simple AABB (Axis-Aligned Bounding Box) check to avoid expensive maths
-	if math.Abs(u.Position.Lat - rwy.Lat) > 0.1 {
+	if !u.IsOnGround {
 		return false
 	}
 
+	// simple AABB (Axis-Aligned Bounding Box) check to avoid expensive maths
+	if math.Abs(u.Position.Lat-rwy.Lat) > 0.1 {
+		return false
+	}
 
-    xtd := geometry.DistanceFromLine(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
-    atd := geometry.AlongTrackDistance(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
+	xtd := geometry.DistanceFromLine(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
+	atd := geometry.AlongTrackDistance(u.Position.Lat, u.Position.Long, rwy.Lat, rwy.Lon, rwy.Heading)
 
-    // 1. PHYSICAL CHECK (On Ground)
-    if u.IsOnGround {
-        result := xtd < 50.0 && atd > -50.0 && atd < (rwy.Length + 100.0)
+	// 1. PHYSICAL CHECK (On Ground)
+	if u.IsOnGround {
+		result := xtd < constants.RunwayXtdThresholdM && atd > -constants.RunwayAtdNegPaddingM && atd < (rwy.Length+constants.RunwayAtdPosPaddingM)
 		if result == true {
 			util.LogWithLabel("USER", "user is occupying runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
 		}
 		return result
 	}
 
-    // 2. APPROACH CHECK (In Air)
-    // 3nm = 5556 meters. We use 1800ft AGL to cover the 3-degree glideslope height at 3nm plus a buffer of 1000
-    if !u.IsOnGround && u.Position.Altitude < (rwy.ThresholdElevation + 2800) {
-        // We widen the XTD slightly (80m) for the air check. 
-        // Players aren't always perfectly on the center line when flying manually.
-        isAligned := xtd < 80.0              
-        isInside3NM := atd < 0 && atd > -5556 
-        
-        if isAligned && isInside3NM {
-            util.LogWithLabel("USER", "User is occupying 3nm approach tunnel for runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
-            return true
-        }
-    }
+	// 2. APPROACH CHECK (In Air)
+	// 3nm = 5556 meters. We use 1800ft AGL to cover the 3-degree glideslope height at 3nm plus a buffer of 1000
+	if !u.IsOnGround && u.Position.Altitude < (rwy.ThresholdElevation+constants.ApproachTerminalAltBufferFt) {
+		// We widen the XTD slightly (80m) for the air check.
+		// Players aren't always perfectly on the center line when flying manually.
+		isAligned := xtd < constants.ApproachXtdWidenM
+		isInside3NM := atd < 0 && atd > -5556
 
-    return false
+		if isAligned && isInside3NM {
+			util.LogWithLabel("USER", "User is occupying 3nm approach tunnel for runway %s at %s", rwy.Name, u.NearestAirport.ICAO)
+			return true
+		}
+	}
+
+	return false
 }
-
