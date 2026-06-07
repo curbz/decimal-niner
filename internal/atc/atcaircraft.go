@@ -461,3 +461,4 @@ func (s *Service) GetCountryFromRegistration(reg string) string {
 func CalculateDistance(pos1, pos2 Position) float64 {
 	return geometry.DistNM(pos1.Lat, pos1.Long, pos2.Lat, pos2.Long)
 }
+

@@ -1797,3 +1797,18 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 
 	return ""
 }
+
+func GetElevation(ap *Airport, rwy *Runway) float64 {
+
+	var elevation float64
+
+	if rwy != nil {
+		elevation = rwy.ThresholdElevation
+	}
+
+	if elevation == 0.0 && ap != nil {
+		elevation = ap.Elevation
+	}
+
+	return elevation
+}

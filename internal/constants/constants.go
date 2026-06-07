@@ -22,11 +22,12 @@ const (
 	// Vertical/altitude related (feet)
 	FeetPerFL                        	 = 1000
 	DefaultClimbExitDepartureEntryAltFt  = 3000
-	DefaultDepartureExitCruiseEntryAltFt = 10000
-	DefaultCruiseExitArrivalEntryAltFt   = 10000
+	DefaultDepartureExitCruiseEntryAltFt = 10000  // + safety buffer for high terrain airfields
+	DefaultCruiseExitArrivalEntryAltFt   = 10000  // + safety buffer for high terrain airfields
 	DefaultArrivalExitApproachEntryAltFt = 4000
 	DefaultApproachExitFinalEntryAltFt   = 1500
-	TerminalEntryAltFt                   = 5000
+	DefaultHoldingAltFt				     = 6000
+	DefaultMissedApproachAltFt			 = 3000
 	ApproachTerminalAltBufferFt          = 2800
 	TransitionAltRegionEUFt              = 6000
 	TransitionAltRegionOtherFt           = 18000
