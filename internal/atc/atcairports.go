@@ -1164,12 +1164,11 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 			// 4. Default Width if missing
 			if rw.Width == 0 {
-				// 150ft is the standard for most commercial runways.
-				// We could even scale this based on the length:
+				// Check if it's a major commercial-length strip or a smaller secondary/GA runway
 				if rw.Length > constants.RunwayLengthLargeThreshM {
-					rw.Width = constants.RunwayWidthLargeM
+					rw.Width = constants.RunwayWidthStandardM
 				} else {
-					rw.Width = constants.RunwayWidthDefaultM
+					rw.Width = constants.RunwayWidthNarrowM
 				}
 			}
 		}
@@ -1270,7 +1269,7 @@ func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer 
 
 					distFromEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
 					isLastChance := distFromEnd < constants.LastExitBufferNM
-					isSafeRollout := distFromStart > constants.MinArrivalDistNM
+					isSafeRollout := distFromStart > constants.DefaultRolloutDistNM
 
 					if isSafeRollout || isLastChance {
 						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)

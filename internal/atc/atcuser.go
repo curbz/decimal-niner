@@ -100,7 +100,7 @@ func (s *Service) UserHasRunwayClearance(rwy *Runway) bool {
 		// We widen the XTD slightly (80m) for the air check.
 		// Players aren't always perfectly on the center line when flying manually.
 		isAligned := xtd < constants.ApproachXtdWidenM
-		isInside3NM := atd < 0 && atd > -constants.ThreeNMMeters
+		isInside3NM := atd < 0 && atd > -5556
 
 		if isAligned && isInside3NM {
 			util.LogWithLabel("USER", "User is occupying 3nm approach tunnel for runway %s at %s", rwy.Name, u.NearestAirport.ICAO)

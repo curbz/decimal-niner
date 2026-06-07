@@ -266,7 +266,7 @@ func (s *Service) locateController(label string, tFreq, tRole int, uLa, uLo, uAl
 	smallestArea := math.MaxFloat64
 
 	// Adjust search limit: 100nm for frequency, 15nm for pure proximity
-	searchLimit := constants.ControllerSearchLimitFreqNM
+	searchLimit := constants.ControllerSearchMaxRangeNM
 	if tFreq <= 0 {
 		searchLimit = constants.ControllerSearchLimitProximityNM
 	}
