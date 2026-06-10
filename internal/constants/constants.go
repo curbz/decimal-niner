@@ -21,7 +21,7 @@ const (
 	DefaultApproachExitFinalEntryAltFt   = 1500
 	DefaultHoldingAltFt                  = 6000
 	DefaultMissedApproachAltFt           = 3000
-	MinSafeCrossingAltFt                 = 5000
+	MinSafeCrossingAltFt                 = 9000
 	ApproachTerminalAltBufferFt          = 2800
 	TransitionAltRegionEUFt              = 6000
 	TransitionAltRegionOtherFt           = 18000
