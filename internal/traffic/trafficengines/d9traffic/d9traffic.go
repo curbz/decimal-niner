@@ -418,7 +418,7 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 		},
 	}
 
-	// Set all pre-requisite states
+	// Set all pre-requisite states - strict order is important
 	e.AtcService.SetFlightPhaseClass(newAc)
 	if ip < flightphase.Takeoff.Index() {
 		// assign departure gate - do this BEFORE assigning the departure runway access as this may influence the selected access point
@@ -430,8 +430,11 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
 	// assign SID for departure
 	e.AtcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
-	// assign departure runway access
-	e.AtcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
+
+	if ip < flightphase.Takeoff.Index() {
+		// assign departure runway access - must be done after parking assignment
+		e.AtcService.AssignRunwayAccessPoint(newAc, airport, atc.DEPARTURE_CONTEXT)
+	}
 
 	newAc.Flight.Phase.Transition = transitionTime // BACKDATED
 	newAc.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(time.Duration(remainingDurSecs) * time.Second)
@@ -1117,7 +1120,6 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	case flightphase.Climbout:
 		// Start: End of Runway
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM)
-		targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultClimbExitDepartureEntryAltFt)
 		if sid := ac.Flight.AssignedSID; sid != nil && sid.Entry.Fix.Lat != 0 {
 			targetPos = atc.Position{Lat: sid.Entry.Fix.Lat, Long: sid.Entry.Fix.Lon}
 			targetAlt = float64(sid.Entry.ConstraintAlt)
@@ -1125,11 +1127,13 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, constants.DefaultClimbExitDepartureEntryNM)
 		}
 		heading = rwy.Heading
+		if targetAlt == 0 {
+			targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultClimbExitDepartureEntryAltFt)
+		}
 
 	case flightphase.Departure:
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, constants.DefaultClimbExitDepartureEntryNM)
 		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, constants.DefaultDepartureExitCruiseEntryNM)
-		targetAlt = atc.GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ctxAp)
 		if sid := ac.Flight.AssignedSID; sid != nil {
 			if sid.Entry.Fix.Lat != 0 {
 				startPos = atc.Position{Lat: sid.Entry.Fix.Lat, Long: sid.Entry.Fix.Lon}
@@ -1140,9 +1144,11 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			}
 		} 
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+		if targetAlt == 0 {
+			targetAlt = atc.GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ctxAp)
+		}
 
 	case flightphase.Arrival:
-		targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
 		// 1. Establish initial entry point
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 			startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
@@ -1169,6 +1175,9 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
 		}
 		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+		if targetAlt == 0 {
+			targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+		}
 
 	case flightphase.Approach:
 		// 1. Establish the Entry point (Must perfectly match Arrival's exit target!)
@@ -1255,10 +1264,14 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	}
 	// Note: flightphase.Approach is completely self-contained, preventing cross-contamination from global progress ratios.
 
-	// Safety Check: ensure calculated values are correct
+	// Safety Checks: ensure calculated values are correct
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
 		util.LogWarnWithLabel(ac.Registration, "Latitude out of bounds: %f. Check phase %d logic.",
 			ac.Flight.Position.Lat, phase)
+	}
+	if targetAlt <= 0 {
+		util.LogWarnWithLabel(ac.Registration, "Target altitude is non-positive: %f. Check phase %d logic.",
+			targetAlt, phase)
 	}
 
 	util.LogDebugWithLabel(ac.Registration, "phase: %s phaseInitAlt: %f targetAlt: %f", 
