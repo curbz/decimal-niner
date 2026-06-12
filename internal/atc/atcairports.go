@@ -1797,3 +1797,28 @@ func findArterialFast(targetLat, targetLon float64, currentName string, namedNod
 
 	return ""
 }
+
+// GetElevation returns the runway elevation, falling back to the airport elevation if necessary.
+func GetElevation(ap *Airport, rwy *Runway) float64 {
+	var elevation float64
+	if rwy != nil {
+		elevation = rwy.ThresholdElevation
+	}
+	if elevation == 0.0 && ap != nil {
+		elevation = ap.Elevation
+	}
+	return elevation
+}
+
+func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
+
+	// Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
+	minSafeCrossingAlt := ap.Elevation + constants.MinSafeCrossingAltFt
+
+	if baseAlt < minSafeCrossingAlt {
+		// Elevate the transition crossing point to match the high terrain profile
+		// and round it cleanly to a standard aviation flight level block
+		baseAlt = math.Ceil(minSafeCrossingAlt / 1000.0) * 1000.0
+	}
+	return baseAlt
+}
