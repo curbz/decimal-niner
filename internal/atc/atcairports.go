@@ -1812,13 +1812,13 @@ func GetElevation(ap *Airport, rwy *Runway) float64 {
 
 func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
 
-	// Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
-	minSafeCrossingAlt := ap.Elevation + constants.MinSafeCrossingAltFt
+    // Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
+    minSafeCrossingAlt := ap.Elevation + constants.MinSafeCrossingAltFt
 
-	if baseAlt < minSafeCrossingAlt {
-		// Elevate the transition crossing point to match the high terrain profile
-		// and round it cleanly to a standard aviation flight level block
-		baseAlt = math.Ceil(minSafeCrossingAlt / 1000.0) * 1000.0
-	}
-	return baseAlt
+    if baseAlt < minSafeCrossingAlt {
+        // Smoothly hold the aircraft right at the minimum safety floor limit
+        // instead of bouncing it back up to the next flight level ceiling block.
+        baseAlt = minSafeCrossingAlt
+    }
+    return baseAlt
 }

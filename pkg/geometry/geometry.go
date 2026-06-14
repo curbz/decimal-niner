@@ -281,3 +281,18 @@ func DistNM(lat1, lon1, lat2, lon2 float64) float64 {
 	// Uses the package global constant instead of the arbitrary literal * 60
 	return EarthRadiusNM * greatCircleArc(lat1, lon1, lat2, lon2)
 }
+
+// Interpolate calculates a point along a linear track between two coordinates based on a ratio (0.0 to 1.0)
+func InterpolateCoords(startLat, startLon, targetLat, targetLon, ratio float64) (float64, float64) {
+    if ratio <= 0.0 {
+        return startLat, startLon
+    }
+    if ratio >= 1.0 {
+        return targetLat, targetLon
+    }
+    
+    lat := startLat + (targetLat-startLat)*ratio
+    lon := startLon + (targetLon-startLon)*ratio
+    return lat, lon
+}
+
