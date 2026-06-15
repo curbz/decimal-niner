@@ -2,6 +2,7 @@ package geometry
 
 import (
 	"math"
+	"time"
 
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -296,3 +297,20 @@ func InterpolateCoords(startLat, startLon, targetLat, targetLon, ratio float64) 
     return lat, lon
 }
 
+// CalculateKinematicDuration estimates how long it will take an aircraft to travel
+// a given distance in NM based on its current groundspeed in knots.
+func CalculateKinematicDuration(distNM float64, groundSpeedKnots float64) time.Duration {
+    // Safety floor: If groundspeed is zero or invalid, fall back to a reasonable default
+    // to avoid an infinite time duration or a divide-by-zero crash.
+    if groundSpeedKnots <= 10.0 {
+        return 5 * time.Minute 
+    }
+
+    // Ground speed in NM per second
+    nmPerSecond := groundSpeedKnots / 3600.0
+
+    // Total seconds required to close the spatial gap
+    secondsRequired := distNM / nmPerSecond
+
+    return time.Duration(secondsRequired) * time.Second
+}

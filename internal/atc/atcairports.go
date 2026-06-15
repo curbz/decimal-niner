@@ -177,92 +177,92 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 	return spot
 }
 
+
+func (s *Service) GetMatchingSID(airport *Airport, depRwy *Runway, destAirport *Airport) *Procedure {
+    if depRwy == nil || len(depRwy.SIDs) == 0 {
+        return nil
+    }
+
+    bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+
+    var bestSID *Procedure
+    minDiff := 360.0
+
+    for i := range depRwy.SIDs {
+        sid := depRwy.SIDs[i]
+        sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+        
+        diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
+        if diff < minDiff {
+            minDiff = diff
+            bestSID = sid
+        }
+    }
+    
+    return bestSID
+}
+
 func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
+    destAirport := s.GetAirportByICAO(ac.Flight.Destination)
+    if destAirport == nil {
+        util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
+        return
+    }
 
-	if depRwy == nil {
-		util.LogErrWithLabel(ac.Registration, "unable to assign SID as no runway provided (nil)")
-		return
-	}
+    bestSID := s.GetMatchingSID(airport, depRwy, destAirport)
 
-	//SID assignment
-	destAirport := s.GetAirportByICAO(ac.Flight.Destination)
-	if destAirport == nil {
-		util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
-		return
-	}
+    if bestSID != nil {
+        ac.Flight.AssignedSID = bestSID
+        util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
+    }
+}
 
-	// Calculate the bearing from the airport to the destination
-	bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport *Airport) *Procedure {
+    if arrRwy == nil || len(arrRwy.STARs) == 0 || origAirport == nil {
+        return nil
+    }
 
-	var bestSID *Procedure
-	minDiff := 360.0
+    bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
 
-	for i := range depRwy.SIDs {
-		sid := depRwy.SIDs[i]
-		// For a SID, we look at the EXIT fix (where the plane enters the enroute structure)
-		sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+    var bestSTAR *Procedure
+    minDiff := 360.0
 
-		diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
-		if diff < minDiff {
-			minDiff = diff
-			bestSID = sid
-		}
-	}
-
-	if bestSID != nil {
-		ac.Flight.AssignedSID = bestSID
-		util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
-		return
-	}
-
+    for i := range arrRwy.STARs {
+        star := arrRwy.STARs[i]
+        // Compare the STAR entry bearing to the route bearing from origin
+        starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
+        
+        diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
+        if diff < minDiff {
+            minDiff = diff
+            bestSTAR = star
+        }
+    }
+    
+    return bestSTAR
 }
 
 func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
+    if arrRwy == nil {
+        util.LogErrWithLabel(ac.Registration, "unable to assign STAR: nil runway")
+        return
+    }
 
-	if arrRwy == nil {
-		util.LogErrWithLabel(ac.Registration, "unable to assign STAR as no runway provided (nil)")
-		return
-	}
+    // STAR assignment probability check
+    if rand.Float32() < constants.STARProbabilityFactor {
+        origAirport := s.GetAirportByICAO(ac.Flight.Schedule.IcaoOrigin)
+        bestSTAR := s.GetMatchingSTAR(airport, arrRwy, origAirport)
 
-	// 30% probability of STAR assignment to allow for vectoring as alternative
-	if rand.Float32() < constants.STARProbabilityFactor && len(arrRwy.STARs) > 0 {
-		var bestSTAR *Procedure
-		minDiff := 360.0
+        if bestSTAR != nil {
+            ac.Flight.AssignedSTAR = bestSTAR
+            util.LogWithLabel(ac.Registration, "assigned STAR %s", bestSTAR.Name)
+            return
+        }
+    }
 
-		origAirport := s.GetAirportByICAO(ac.Flight.Origin)
-		if origAirport == nil {
-			util.LogWarnWithLabel(ac.Registration, "origin airport %s not found - unable to assign STAR", ac.Flight.Origin)
-			ac.Flight.Vectoring = true
-			util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
-			return
-		}
-
-		// Calculate the bearing from the origin to the destination
-		bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
-
-		for i := range arrRwy.STARs {
-			star := arrRwy.STARs[i]
-			// For a STAR, we look at the ENTRY fix (where the plane starts the arrival)
-			starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
-
-			diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
-			if diff < minDiff {
-				minDiff = diff
-				bestSTAR = star
-			}
-		}
-
-		if bestSTAR != nil {
-			ac.Flight.AssignedSTAR = bestSTAR
-			util.LogWithLabel(ac.Registration, "assigned STAR %s", bestSTAR.Name)
-			return
-		}
-	} else {
-		ac.Flight.Vectoring = true
-		util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
-		return
-	}
-
+    // Fallback to vectoring
+    ac.Flight.Vectoring = true
+    util.LogWithLabel(ac.Registration, "no arrival procedure assigned - vectoring to runway")
 }
 
 // assignRunwayAccessPoint assigns the runway access or exit point depending on whether the arrOrDep flag

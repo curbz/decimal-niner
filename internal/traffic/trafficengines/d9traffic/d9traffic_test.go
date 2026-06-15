@@ -664,9 +664,9 @@ func TestGetPhaseVerticalRateFpmPerSize(t *testing.T) {
 	acHeavy := &atc.Aircraft{SizeClass: "F"}
 
 	// Final expected: small/default -700, medium -700, heavy -500 (per tuning)
-	vSmall := e.getPhaseVerticalRateFpm(acSmall, flightphase.Final)
-	vMed := e.getPhaseVerticalRateFpm(acMed, flightphase.Final)
-	vHeavy := e.getPhaseVerticalRateFpm(acHeavy, flightphase.Final)
+	vSmall := e.getPhaseVerticalRateFpm(acSmall.SizeClass, flightphase.Final)
+	vMed := e.getPhaseVerticalRateFpm(acMed.SizeClass, flightphase.Final)
+	vHeavy := e.getPhaseVerticalRateFpm(acHeavy.SizeClass, flightphase.Final)
 
 	if vMed != -700.0 {
 		t.Fatalf("expected medium Final -700 fpm, got %v", vMed)
@@ -705,7 +705,7 @@ func TestFinalVerticalRateIsAppliedDuringLinearPosition(t *testing.T) {
 	e.updateLinearPosition(ac, airport)
 
 	// Compute allowed change
-	vrate := e.getPhaseVerticalRateFpm(ac, flightphase.Final)
+	vrate := e.getPhaseVerticalRateFpm(ac.SizeClass, flightphase.Final)
 	elapsed := e.AtcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
 	allowedChange := vrate * (elapsed / 60.0)
 
@@ -731,8 +731,8 @@ func TestCruiseTODCalculationPerSize(t *testing.T) {
 
 	for _, tt := range types {
 		ac := &atc.Aircraft{SizeClass: tt.size}
-		vrateAbs := math.Abs(e.getPhaseVerticalRateFpm(ac, flightphase.Approach))
-		cruiseGs := e.getPhaseGroundSpeedKts(ac, flightphase.Cruise)
+		vrateAbs := math.Abs(e.getPhaseVerticalRateFpm(ac.SizeClass, flightphase.Approach))
+		cruiseGs := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Cruise)
 
 		var expectedDist float64
 		if vrateAbs > 0 {
@@ -758,8 +758,8 @@ func TestApproachDescentStartDiffersBySize(t *testing.T) {
 	heavy := &atc.Aircraft{SizeClass: "F"}
 
 	computeDist := func(ac *atc.Aircraft) float64 {
-		vrateAbs := math.Abs(e.getPhaseVerticalRateFpm(ac, flightphase.Approach))
-		cruiseGs := e.getPhaseGroundSpeedKts(ac, flightphase.Cruise)
+		vrateAbs := math.Abs(e.getPhaseVerticalRateFpm(ac.SizeClass, flightphase.Approach))
+		cruiseGs := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Cruise)
 		if vrateAbs > 0 {
 			timeMin := altitudeToLose / vrateAbs
 			return cruiseGs * (timeMin / 60.0)
@@ -936,5 +936,222 @@ func TestHoldStackAssignment(t *testing.T) {
 	}
 	if alts[0] != 3000 || alts[1] != 4000 || alts[2] != 5000 {
 		t.Fatalf("unexpected stack altitudes: %v", alts)
+	}
+}
+
+
+// Mock helper to set up a baseline engine instance
+func setupMockEngine() *D9TrafficEngine {
+
+	baseTime := time.Now().Truncate(time.Minute)
+	svc := &atc.Service{}
+	svc.SyncSimTime(baseTime, baseTime)
+
+	engine := &D9TrafficEngine{
+		CommonTrafficEngine: traffic.CommonTrafficEngine{
+			AtcService: svc,
+		},
+		ActiveAircraft: make(map[string]*atc.Aircraft),
+		AirportConfig:  make(map[string]ActiveRunwaySet),
+		// Initialize minimum required service layer maps here
+	}
+	return engine
+}
+
+// Verifies mid-air spawns do not break their progress ratio or freeze altitude
+func TestUpdateLinearPosition_MidAirSpawnProgress(t *testing.T) {
+	engine := setupMockEngine()
+
+	// FIX: Provide explicit altitudes so the slope calculation doesn't use 0
+	mockRwy := &atc.Runway{
+		Lat:     51.4700, 
+		Lon:     -0.4543, 
+		Heading: 270.0, 
+		FAFalt:  3000.0, // <-- Target altitude for the end of Approach phase!
+	}
+	mockAirport := &atc.Airport{
+		ICAO:      "EGLL", 
+		Lat:       51.4700, 
+		Lon:       -0.4543,
+		Elevation: 83.0,   // Real Heathrow elevation baseline
+	}
+
+	ac := &atc.Aircraft{
+		Registration: "G-TTNO",
+		SizeClass:    "C",
+		Flight: atc.Flight{
+			AssignedRunway: mockRwy,
+			Position: atc.Position{
+				Lat:      51.5500, 
+				Long:     -0.2000,
+				Altitude: 5500.0, // Spawned mid-air
+				Heading:  180.0,
+			},
+			Phase: flightphase.Phase{
+				Current:         flightphase.Approach.Index(),
+				Previous:        flightphase.Unknown.Index(), 
+				InitialAltitude: 7000.0, // Phase started at 7000ft
+			},
+		},
+	}
+
+	// Capture initial tracking baselines
+	initialLat := ac.Flight.Position.Lat
+	initialAlt := ac.Flight.Position.Altitude
+
+	// Frame Tick 1: Initialize system context (Frame Zero)
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateLinearPosition(ac, mockAirport)
+
+	// Frame Tick 2: Simulate physical spatial progression 10 seconds later
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateLinearPosition(ac, mockAirport)
+
+	// Assertions
+	if ac.Flight.Position.Lat == initialLat {
+		t.Errorf("FAIL: Aircraft coordinates are frozen spatially.")
+	}
+	
+	// CRITICAL TEST: Check if altitude updated correctly along the slope
+	t.Logf("DEBUG VERIFICATION: Initial Spawn Alt: %0.2f -> Updated Tick Alt: %0.2f", initialAlt, ac.Flight.Position.Altitude)
+	
+	if ac.Flight.Position.Altitude == initialAlt {
+		t.Errorf("FAIL: Altitude is frozen at %0.2f (Tracking loop trap).", ac.Flight.Position.Altitude)
+	}
+	if ac.Flight.Position.Altitude == 0 {
+		t.Errorf("FAIL: Aircraft dropped straight to 0ft due to an uninitialized vertical target anchor.")
+	}
+}
+
+func TestUpdateLinearPosition_NoFAFAltitudeFallback(t *testing.T) {
+	engine := setupMockEngine()
+
+	// Simulate a runway with NO FAF altitude data (set to 0)
+	mockRwy := &atc.Runway{
+		Lat:     51.4700, 
+		Lon:     -0.4543, 
+		Heading: 270.0, 
+		FAFalt:  0.0, // <--- Missing data scenario
+	}
+	mockAirport := &atc.Airport{
+		ICAO:      "EGLL", 
+		Lat:       51.4700, 
+		Lon:       -0.4543,
+		Elevation: 100.0, // Airport is 100ft above sea level
+	}
+
+	ac := &atc.Aircraft{
+		Registration: "G-TTNO",
+		SizeClass:    "C",
+		Flight: atc.Flight{
+			AssignedRunway: mockRwy,
+			Position: atc.Position{
+				Lat:      51.5500, 
+				Long:     -0.2000,
+				Altitude: 5500.0, 
+				Heading:  180.0,
+			},
+			Phase: flightphase.Phase{
+				Current:         flightphase.Approach.Index(),
+				Previous:        flightphase.Unknown.Index(), 
+				InitialAltitude: 7000.0, 
+			},
+		},
+	}
+
+	// Capture initial metrics
+	initialAlt := ac.Flight.Position.Altitude
+
+	// Frame Tick 1: Initialize phase tracking context
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateLinearPosition(ac, mockAirport)
+
+	// Frame Tick 2: Run kinematic tick execution
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateLinearPosition(ac, mockAirport)
+
+	// Assertions
+	t.Logf("FALLBACK VERIFICATION: Initial: %0.2f -> Post-Tick: %0.2f", initialAlt, ac.Flight.Position.Altitude)
+
+	if ac.Flight.Position.Altitude == 0 {
+		t.Errorf("FAIL: Aircraft dropped straight to 0ft because the fallback mechanism failed to catch the missing FAF altitude.")
+	}
+	
+	if ac.Flight.Position.Altitude == initialAlt {
+		t.Errorf("FAIL: Altitude is frozen at %0.2f. The fallback target didn't drive a slope change.", ac.Flight.Position.Altitude)
+	}
+}
+
+// Verifies that Approach tracks localizer intercept based on geographic boundary limits
+func TestUpdateLinearPosition_ApproachLocalizerIntercept(t *testing.T) {
+	engine := setupMockEngine()
+	mockRwy := &atc.Runway{Lat: 51.4700, Lon: -0.4543, Heading: 270.0, FAFalt: 3000.0}
+	mockAirport := &atc.Airport{ICAO: "EGLL", Lat: 51.4700, Lon: -0.4543}
+
+	// Place aircraft significantly far away from centerline to ensure it stays in Intercept mode
+	ac := &atc.Aircraft{
+		Registration: "TEST-LOC",
+		Flight: atc.Flight{
+			AssignedRunway: mockRwy,
+			Position: atc.Position{
+				Lat:      51.6500, // North of field
+				Long:     -0.1000,
+				Altitude: 6000.0,
+			},
+			Phase: flightphase.Phase{
+				Current:         flightphase.Approach.Index(),
+				Previous:        flightphase.Approach.Index(),
+				InitialAltitude: 6000.0,
+			},
+		},
+	}
+
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateLinearPosition(ac, mockAirport)
+
+	// Plane should track toward intercept location before matching runway heading
+	if ac.Flight.Position.Heading == mockRwy.Heading {
+		t.Errorf("FAIL: Aircraft matched runway localizer alignment heading prematurely while outside intercept envelope.")
+	}
+}
+
+// Verifies a spawn in cruise is advanced to arrival phase when close to arrival range
+func TestUpdateCruisePosition_AdvacneToArrival(t *testing.T) {
+	engine := setupMockEngine()
+	
+	mockOriginAirport := &atc.Airport{ICAO: "EGAC", Lat: 54.6181, Lon: -5.8725}  
+	mockDestAirport := &atc.Airport{ICAO: "EGLL", Lat: 51.4700, Lon: -0.4543}
+
+	engine.AtcService.Airports = make(map[string]*atc.Airport)
+	engine.AtcService.Airports["EGAC"] = mockOriginAirport
+    engine.AtcService.Airports["EGLL"] = mockDestAirport
+
+	// Set up simple route profile
+	ac := &atc.Aircraft{
+		Registration: "TEST-TOD",
+		Flight: atc.Flight{
+			CruiseAlt: 35000,
+			Schedule: &flightplan.ScheduledFlight{
+				IcaoOrigin: "EGAC",
+				IcaoDest:   "EGLL",
+			},
+			Position: atc.Position{
+				Lat:      52.0000, // Artificially close to destination airport
+				Long:     -0.4000,
+				Altitude: 35000.0,
+			},
+			Phase: flightphase.Phase{
+				Current: flightphase.Cruise.Index(),
+			},
+			ClearedTOD: false,
+		},
+	}
+
+	// Force execution using a mock 10-second tick step
+	ac.Flight.Phase.LastUpdateTime = time.Now().Add(-10 * time.Second)
+	engine.updateCruisePosition(ac)
+
+	if ac.Flight.Phase.Current != flightphase.Arrival.Index() {
+		t.Errorf("FAIL: Cruise tracking failed to hand off to Arrival sector for late spawn.")
 	}
 }
