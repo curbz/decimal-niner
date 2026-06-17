@@ -540,8 +540,13 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 
 func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
     tta := e.timeDiffToScheduledArrival(f)
+
+	util.LogDebugWithLabel(f.AircraftRegistration, "spawning arrival flight schedDep %d:%d schedArr %d:%d remaining time to arrival %d",
+				f.DepartureHour, f.DepartureMin, f.ArrivalHour, f.ArrivalMin, tta)
+
     initialPhase, remainingDurSecs, fullDurationSecs := e.determineInitialArrivalPhase(tta, f)
-    
+    util.LogDebugWithLabel(f.AircraftRegistration, "initial timed-based phase is %s", flightphase.FlightPhase(initialPhase).String())
+     
     airport := e.AtcService.Airports[f.IcaoDest]
     originAp := e.AtcService.Airports[f.IcaoOrigin]
 
@@ -561,27 +566,37 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
     requiredDescentDistNM := speedKts * ((cruiseAlt - targetArrivalAlt) / vrateDescent / 60.0)
 
     if initialPhase == flightphase.Cruise && generatedDistToDest <= requiredDescentDistNM {
+		util.LogDebugWithLabel(f.AircraftRegistration, "moving initial phase from cruise to arrival - too close to destination: %f NM", generatedDistToDest)
         initialPhase = flightphase.Arrival
         remainingDurSecs = int((generatedDistToDest / speedKts) * 3600.0)
         fullDurationSecs = int((requiredDescentDistNM / speedKts) * 3600.0)
         timeRatio = float64(remainingDurSecs) / float64(fullDurationSecs)
     }
 
-    // =========================================================================
+	// =========================================================================
     // PURE SPAWN COORDINATE & ALTITUDE SEPARATION
     // =========================================================================
     var spawnLat, spawnLon, spawnHdg, spawnAlt float64
     progressRatio := 1.0 - timeRatio
 
-    if initialPhase == flightphase.Arrival {
-        // Resolve assigned runway and STAR exactly like the frame tick engine does
-        rwyName := e.AirportConfig[airport.ICAO].Arrival.Name // Or your fallback logic
-        rwy := e.AtcService.GetAirportRunway(airport, rwyName)
-        
+    // Resolve assigned runway properties ahead of block branching
+    rwyName := e.AirportConfig[airport.ICAO].Arrival.Name 
+    rwy := e.AtcService.GetAirportRunway(airport, rwyName)
+    star := e.AtcService.GetMatchingSTAR(airport, rwy, originAp)
+
+    switch initialPhase {
+    case flightphase.Cruise:
+        // Pure Cruise Track Spawn
+        reverseBearing := geometry.NormalizeHeading(bearing + 180.0)
+        spawnLat, spawnLon = geometry.Project(airport.Lat, airport.Lon, reverseBearing, generatedDistToDest)
+        spawnHdg = bearing
+        spawnAlt = cruiseAlt
+
+    case flightphase.Arrival:
         var startLat, startLon, targetLat, targetLon float64
         
         // Replicate Step 1A track anchors from updateLinearPosition
-        if star := e.AtcService.GetMatchingSTAR(airport, rwy, originAp); star != nil && star.Entry.Fix.Lat != 0 {
+        if star != nil && star.Entry.Fix.Lat != 0 {
             startLat, startLon = star.Entry.Fix.Lat, star.Entry.Fix.Lon
             if star.Exit.Fix.Lat != 0 {
                 targetLat, targetLon = star.Exit.Fix.Lat, star.Exit.Fix.Lon
@@ -589,40 +604,57 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
             }
         } 
         
-        // Fallback anchors if no formal STAR procedure matches
+        // Fallback Fix B long-range vectoring anchors if no STAR matches
         if startLat == 0 {
-            startLat, startLon = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultCruiseExitArrivalEntryNM)
-        }
-        if targetLat == 0 {
-            centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultArrivalExitApproachEntryNM)
-            offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
-            if len(f.AircraftRegistration) > 0 && f.AircraftRegistration[len(f.AircraftRegistration)-1]%2 == 0 {
-                offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
-            }
-            targetLat, targetLon = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
-            targetArrivalAlt = atc.GetElevation(airport, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+            routeBearing := geometry.CalculateBearing(originAp.Lat, originAp.Lon, airport.Lat, airport.Lon)
+            reverseRouteBearing := geometry.NormalizeHeading(routeBearing + 180.0)
+            
+            startLat, startLon = geometry.Project(airport.Lat, airport.Lon, reverseRouteBearing, 150.0)
+            targetLat, targetLon = geometry.Project(airport.Lat, airport.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
+            targetArrivalAlt = atc.GetMinSafeAltitude(float64(constants.DefaultCruiseExitArrivalEntryAltFt), airport)
         }
 
-        // Calculate track properties
         trackBearing := geometry.CalculateBearing(startLat, startLon, targetLat, targetLon)
         trackDistance := geometry.DistNM(startLat, startLon, targetLat, targetLon)
 
-        // Line up the spatial placement directly with the time progress ratio
         distAlongTrack := trackDistance * progressRatio
         spawnLat, spawnLon = geometry.Project(startLat, startLon, trackBearing, distAlongTrack)
         spawnHdg = trackBearing
 
-        // Synchronize the spawn altitude to match the exact mathematical 
-        // expectation of updateLinearPosition's interpolation step.
-        phaseInitAlt := cruiseAlt // Phase starts at the termination of cruise
+        phaseInitAlt := cruiseAlt 
         spawnAlt = phaseInitAlt + (progressRatio * (targetArrivalAlt - phaseInitAlt))
 
-    } else {
-        // Pure Cruise Track Spawn
-        reverseBearing := geometry.NormalizeHeading(bearing + 180.0)
-        spawnLat, spawnLon = geometry.Project(airport.Lat, airport.Lon, reverseBearing, generatedDistToDest)
-        spawnHdg = bearing
-        spawnAlt = cruiseAlt
+    case flightphase.Approach:
+        // =====================================================================
+        // NEW SEGMENT: EXPLICIT APPROACH SPAWN COORDINATE CORRIDOR
+        // =====================================================================
+        var startLat, startLon, targetLat, targetLon float64
+        var approachInitAlt, approachTargetAlt float64
+
+        // Approach entry anchor mirrors the exit profile of the arrival phase
+        if star != nil && star.Exit.Fix.Lat != 0 {
+            startLat, startLon = star.Exit.Fix.Lat, star.Exit.Fix.Lon
+            approachInitAlt = float64(star.Exit.ConstraintAlt)
+        } else {
+            // No-STAR Local Approach Anchor (e.g., 25 NM out on the extended centerline vector)
+            routeBearing := geometry.CalculateBearing(originAp.Lat, originAp.Lon, airport.Lat, airport.Lon)
+            reverseRouteBearing := geometry.NormalizeHeading(routeBearing + 180.0)
+            startLat, startLon = geometry.Project(airport.Lat, airport.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
+            approachInitAlt = atc.GetElevation(airport, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+        }
+
+        // Target point is the FAF/Intercept gate closer to the runway (e.g., 6 to 8 NM out)
+        targetLat, targetLon = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultApproachExitFinalEntryNM)
+        approachTargetAlt = atc.GetElevation(airport, rwy) + 2000.0 // Standard terminal glide capture height
+
+        trackBearing := geometry.CalculateBearing(startLat, startLon, targetLat, targetLon)
+        trackDistance := geometry.DistNM(startLat, startLon, targetLat, targetLon)
+
+        // Project position inside the localized terminal vector boundaries
+        distAlongTrack := trackDistance * progressRatio
+        spawnLat, spawnLon = geometry.Project(startLat, startLon, trackBearing, distAlongTrack)
+        spawnHdg = trackBearing
+        spawnAlt = approachInitAlt + (progressRatio * (approachTargetAlt - approachInitAlt))
     }
 
     initialPhaseIdx := initialPhase.Index()
@@ -806,18 +838,41 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
         }
 
 	case flightphase.Approach:
-		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.ConstraintAlt > 0 {
-			phaseInitAlt = float64(star.Exit.ConstraintAlt)
-		} else {
-			phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
-		}
+        // Check if this is an en-route spawn injected directly into the Approach sector
+        if ac.Flight.Position.Altitude > 0 && ac.Flight.Phase.InitialAltitude == 0.0 {
+            // Anchor to the true theoretical baseline computed by the spawner block
+            if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.ConstraintAlt > 0 {
+                phaseInitAlt = float64(star.Exit.ConstraintAlt)
+            } else {
+                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+            }
+            util.LogDebugWithLabel(ac.Registration, "En-route spawn detected in Approach: setting theoretical baseline altitude to %f", phaseInitAlt)
+        } else {
+            // Standard progressive runtime transition from Arrival -> Approach
+            if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.ConstraintAlt > 0 {
+                phaseInitAlt = float64(star.Exit.ConstraintAlt)
+            } else {
+                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+            }
+        }
 
-	case flightphase.Final:
-		if rwy != nil && rwy.FAFalt > 0 {
-			phaseInitAlt = float64(rwy.FAFalt)
-		} else {
-			phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
-		}
+    case flightphase.Final:
+        // Check if spawning right onto the final approach glideslope capture point
+        if ac.Flight.Position.Altitude > 0 && ac.Flight.Phase.InitialAltitude == 0.0 {
+            if rwy != nil && rwy.FAFalt > 0 {
+                phaseInitAlt = float64(rwy.FAFalt)
+            } else {
+                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
+            }
+            util.LogDebugWithLabel(ac.Registration, "En-route spawn detected on Final: setting baseline capture altitude to %f", phaseInitAlt)
+        } else {
+            // Standard progressive runtime transition from Approach -> Final
+            if rwy != nil && rwy.FAFalt > 0 {
+                phaseInitAlt = float64(rwy.FAFalt)
+            } else {
+                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
+            }
+        }
 	}
 
 	if phaseInitAlt == 0.0 {
@@ -1466,6 +1521,25 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 					}
 					ac.Flight.Position.Altitude -= descentStep
 				}
+			}
+
+			// Calculate how far the plane flies in a single frame tick (e.g., 10 seconds)
+			// Groundspeed converted to NM per second * frame delta time in seconds
+			frameDistNM := (speedKts / 3600.0) * deltaTimeSec
+
+			// If the remaining distance is smaller than our next step, or within a tight terminal tolerance (0.1 NM)
+			if distToFinalTarget <= frameDistNM || distToFinalTarget < 0.1 {
+				util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", distToFinalTarget)
+				
+				// Snap to the target coordinate exactly to prevent downstream injection drift
+				ac.Flight.Position.Lat = targetPos.Lat
+				ac.Flight.Position.Long = targetPos.Long
+				ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+				
+				// Force transition to Final Approach phase
+				ac.Flight.Phase.PositionComplete = true
+
+				return
 			}
 		}
 		ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
