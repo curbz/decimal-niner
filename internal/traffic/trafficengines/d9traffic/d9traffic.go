@@ -790,7 +790,7 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
             // FIX: If we spawned mid-air inside the Arrival phase, the theoretical starting 
             // altitude of this phase was the cruise altitude ceiling, NOT the mid-way point.
             if ac.Flight.CruiseAlt > 0 {
-                phaseInitAlt = float64(ac.Flight.CruiseAlt * 100)
+                phaseInitAlt = float64(ac.Flight.CruiseAlt)
             } else if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.ConstraintAlt > 0 {
                 phaseInitAlt = float64(star.Entry.ConstraintAlt)
             } else {
@@ -1335,26 +1335,32 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		}
 
 	case flightphase.Arrival:
+		targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 			startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
-		} else {
-			startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultCruiseExitArrivalEntryNM)
-		}
-
-		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
-			targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
-			targetAlt = float64(star.Exit.ConstraintAlt)
-		} else {
-			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultArrivalExitApproachEntryNM)
-			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
-			if len(ac.Registration) > 0 && ac.Registration[len(ac.Registration)-1]%2 == 0 {
-				offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
+			if star.Exit.Fix.Lat != 0 {
+				targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
+				targetAlt = float64(star.Exit.ConstraintAlt)
 			}
-			targetPos.Lat, targetPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
-		}
-		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
-		if targetAlt == 0 {
-			targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+		} else {
+			// =====================================================================
+			// FIX B: NO-STAR TRUE ROUTE VECTOR FALLBACK
+			// =====================================================================
+			// Fetch the true origin airport to establish a real routing vector
+			originAp := e.AtcService.Airports[ac.Flight.Origin]
+			
+			// Calculate the native track heading from origin directly to destination
+			routeBearing := geometry.CalculateBearing(originAp.Lat, originAp.Lon, ctxAp.Lat, ctxAp.Lon)
+			reverseRouteBearing := geometry.NormalizeHeading(routeBearing + 180.0)
+
+			// Set the START anchor far out along the true arrival route (e.g., 150 NM out)
+			// This easily swallows any distant en-route spawn points.
+			startLat, startLon := geometry.Project(ctxAp.Lat, ctxAp.Lon, reverseRouteBearing, 150.0)
+			startPos = atc.Position{Lat: startLat, Long: startLon}
+
+			// Set the TARGET anchor to a standard terminal entry point (e.g., 25 NM out)
+			targetLat, targetLon := geometry.Project(ctxAp.Lat, ctxAp.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
+			targetPos = atc.Position{Lat: targetLat, Long: targetLon}
 		}
 
 	case flightphase.Approach:
