@@ -1577,16 +1577,15 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			
 			if totalPlannedDist > 0 {
 				progRatio := 1.0 - (currentDistToTarget / totalPlannedDist)
-				
-				// MICRO-DIVE TELEMETRY
-    			util.LogDebugWithLabel(ac.Registration, "[TRACKING-DEEP-DIVE] Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f", 
-        		phase.String(), currentDistToTarget, totalPlannedDist, progRatio)
-
 				if progRatio < 0.0 {
 					progRatio = 0.0
 				} else if progRatio > 1.0 {
 					progRatio = 1.0
 				}
+
+				// MICRO-DIVE TELEMETRY
+    			util.LogDebugWithLabel(ac.Registration, "[TRACKING-DEEP-DIVE] Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f", 
+        		phase.String(), currentDistToTarget, totalPlannedDist, progRatio)
 
 				switch phase {
 				case flightphase.Takeoff:
