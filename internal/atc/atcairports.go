@@ -50,6 +50,7 @@ type Runway struct {
 	Width                    float64 // Width in meters
 	ThresholdElevation       float64 // feet
 	FAFalt                   int     // Final approach fix altitude
+	FAFdistNM				 float64 // Final approach fix distance from threshold
 	MAalt                    int     // highest missed approach altitude
 	MAHeading                int     // initial MA course (degrees)
 	MAFix                    string
@@ -856,6 +857,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 	var rw Runway // keep as value - not pointer
 	var inApproach bool
 	var currentAppType string
+	FAFdistNM := 0.0
 
 	saveApproach := func() {
 		if !inApproach || currentRunway == "" {
@@ -1038,7 +1040,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 		// Route/segment type: A, I, L, etc.
 		routeType := strings.TrimSpace(fields[1])
-		isFinal := routeType == "I" || routeType == "L" || routeType == "R" || routeType == "N"
+		isFinalAppch := routeType == "I" || routeType == "L" || routeType == "R" || routeType == "N"
 
 		// Start of a new approach
 		if strings.HasPrefix(fields[0], "APPCH:010") {
@@ -1049,7 +1051,8 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 			inApproach = true
 			currentRunway = ""
 			rw = Runway{}
-			currentAppType = ""
+			currentAppType = ""	
+			FAFdistNM = 0.0
 			sawRunwayLeg = false
 
 			// Extract approach type from approach name
@@ -1096,15 +1099,8 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 		atOrBelow := strings.TrimSpace(fields[25])
 		alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
 
-		// FAF detection (FFxx or FIxx)
-		if (strings.HasPrefix(fix, "FF") || strings.HasPrefix(fix, "FI")) && alt >= 0 {
-			if rw.FAFalt == 0 || alt < rw.FAFalt {
-				rw.FAFalt = alt
-			}
-		}
-
 		// Missed-approach detection (final segment only)
-		isMA := isFinal && (strings.HasPrefix(fix, "MA") ||
+		isMA := isFinalAppch && (strings.HasPrefix(fix, "MA") ||
 			strings.HasPrefix(fix, "RW") ||
 			strings.HasPrefix(fix, "FD") ||
 			strings.HasPrefix(fix, "CI") ||
@@ -1118,9 +1114,30 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 			rw.MAalt = alt
 		}
 
+		// accumulate distances to determine FAF distance from runway threshold
+		if fix != "" && isFinalAppch && rw.FAFalt > 0 {
+			distStr := strings.TrimSpace(fields[21])
+			if dist, err := strconv.Atoi(distStr); err == nil {
+				FAFdistNM = FAFdistNM + (float64(dist) / 10.0)
+			}
+		}
+
+		// FAF detection (FFxx or FIxx)
+		if (strings.HasPrefix(fix, "FF") || strings.HasPrefix(fix, "FI")) && alt >= 0 {
+			if rw.FAFalt == 0 || alt < rw.FAFalt {
+				rw.FAFalt = alt
+			}
+			// set FAFdist to zero as we calculate from here onwards
+			FAFdistNM = 0.0
+		}
+
 		// Detect RW leg
 		if strings.HasPrefix(fix, "RW") {
 			sawRunwayLeg = true
+			if FAFdistNM > 0 {
+				rw.FAFdistNM = FAFdistNM
+				FAFdistNM = 0.0
+			}
 		}
 
 		// Capture missed-approach heading
@@ -1366,6 +1383,11 @@ func mergeRunway(existing *Runway, incoming Runway, appType string) {
 	// FAFalt: keep lowest non-zero
 	if incoming.FAFalt > 0 && (existing.FAFalt == 0 || incoming.FAFalt < existing.FAFalt) {
 		existing.FAFalt = incoming.FAFalt
+	}
+
+	// FAFdistNM: keep smallest non-zero
+	if incoming.FAFdistNM > 0 && (existing.FAFdistNM == 0 || incoming.FAFdistNM < existing.FAFdistNM) {
+		existing.FAFdistNM = incoming.FAFdistNM
 	}
 
 	// MAalt: keep highest

@@ -857,22 +857,13 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
         }
 
     case flightphase.Final:
-        // Check if spawning right onto the final approach glideslope capture point
-        if ac.Flight.Position.Altitude > 0 && ac.Flight.Phase.InitialAltitude == 0.0 {
-            if rwy != nil && rwy.FAFalt > 0 {
-                phaseInitAlt = float64(rwy.FAFalt)
-            } else {
-                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
-            }
-            util.LogDebugWithLabel(ac.Registration, "En-route spawn detected on Final: setting baseline capture altitude to %f", phaseInitAlt)
-        } else {
-            // Standard progressive runtime transition from Approach -> Final
-            if rwy != nil && rwy.FAFalt > 0 {
-                phaseInitAlt = float64(rwy.FAFalt)
-            } else {
-                phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
-            }
-        }
+		if rwy != nil && rwy.FAFalt > 0 {
+			phaseInitAlt = float64(rwy.FAFalt)
+			util.LogDebugWithLabel(ac.Registration, "FAF detected - phase init altitude is %f", phaseInitAlt)
+		} else {
+			phaseInitAlt = atc.GetElevation(ap, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
+			util.LogDebugWithLabel(ac.Registration, "no FAF detected - phase init altitude defaulted to %f", phaseInitAlt)
+		}
 	}
 
 	if phaseInitAlt == 0.0 {
@@ -1439,14 +1430,22 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
             startPos.Lat, startPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
         }
 
-        targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultApproachExitFinalEntryNM)
-        targetAlt = float64(rwy.FAFalt)
-        if targetAlt == 0 {
-            targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
-        }
-
+		target := constants.DefaultApproachExitFinalEntryNM
+		if rwy.FAFdistNM > 0 {
+			target = rwy.FAFdistNM
+		}
+		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), target)
+		targetAlt = float64(rwy.FAFalt)
+		if targetAlt == 0 {
+			targetAlt = atc.GetElevation(ctxAp, rwy) + float64(constants.DefaultApproachExitFinalEntryAltFt)
+		}
+	
 	case flightphase.Final:
-		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180), constants.DefaultApproachExitFinalEntryNM)
+		start := constants.DefaultApproachExitFinalEntryNM
+		if rwy.FAFdistNM > 0 {
+			start = rwy.FAFdistNM
+		}
+		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), start)
 		targetPos = atc.Position{Lat: rwy.Lat, Long: rwy.Lon}
 		targetAlt = atc.GetElevation(ctxAp, rwy)
 		heading = rwy.Heading
@@ -1463,16 +1462,13 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		heading = rwy.Heading
 	}
 
-	util.LogDebugWithLabel(ac.Registration, "updateLinearPosition - step 1A - targets startlat %f startlon %f starthdg %f startalt %f",
-			startPos.Lat, startPos.Long, startPos.Heading, startPos.Altitude)
-
 	// --- STEP 1B: DEFENSIBLY VERIFY POSITION INITIALIZATION ---
 	if ac.Flight.Position.Lat == 0 && ac.Flight.Position.Long == 0 {
 		util.LogErrWithLabel(ac.Registration, "CRITICAL: Flight entered kinematic loop without valid coordinates. Dropping frame.")
 		return
 	}
 
-	// --- STEP 1C: SYSTEM INJECTION PROGRESSION SYNCHRONIZATION ---
+	// --- IMPORTANT! SYSTEM INJECTION PROGRESSION SYNCHRONIZATION ---
 	if ac.Flight.Phase.Previous == flightphase.Unknown.Index() {
 		// FIX: Do NOT overwrite startPos here anymore for mid-air spawns! 
 		// Simply acknowledge that the spawn configuration was read and advance the index state.
@@ -1486,7 +1482,6 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	if speedKts <= 0 {
 		speedKts = 180.0
 	}
-	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(totalPlannedDist, speedKts))
 
 	distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
 
@@ -1649,6 +1644,11 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	// 3. Evaluate Position-Based Triggers for State Transition Flags
 	const posTransitionThresholdNM = 0.05 
 	distRemaining := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+
+	// set estimated next transition once at beginning of new phase
+	//if ac.Flight.Phase.Previous != ac.Flight.Phase.Current {
+		ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(distRemaining, speedKts))
+	//}
 
 	currentBearingToTarget := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 	bearingDifference := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - geometry.NormalizeHeading(heading))
@@ -1998,17 +1998,11 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
         }
     }
 
-	distRemainingToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-
     speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Cruise)
     if speedKts <= 0 {
         speedKts = 420.0
     }
     
-	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(
-        geometry.CalculateKinematicDuration(distRemainingToTarget, speedKts),
-    )
-
     distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
     
     // Calculate raw distance to the target position
@@ -2037,6 +2031,13 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 
     // Recalculate live tracking distance after position update step
     distToTarget = geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)      
+
+	// set estimated next transition once at beginning of new phase
+	//if ac.Flight.Phase.Previous != ac.Flight.Phase.Current {
+		ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(
+			geometry.CalculateKinematicDuration(distToTarget, speedKts),
+		)	
+	//}
 
     // 5. Dynamic Spatial Vertical Profile
     cruiseAlt := float64(ac.Flight.CruiseAlt)
