@@ -987,11 +987,10 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				ac.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
 				e.AtcService.AssignSID(ac, airport, ac.Flight.AssignedRunway)
 				e.AtcService.AssignRunwayAccessPoint(ac, airport, atc.DEPARTURE_CONTEXT)
-				dur := e.calculateTaxiDuration(ac, atc.DEPARTURE_CONTEXT)
 				if ac.Flight.AssignedParkingSpot != nil {
 					e.releaseParking(f.IcaoOrigin, ac.Flight.AssignedParkingSpot)
 				}
-				e.transitionToPhase(ac, flightphase.TaxiOut, dur, 0)
+				e.transitionToPhase(ac, flightphase.TaxiOut, 0, 0)
 			}
 
 		case flightphase.TaxiOut:
@@ -1182,8 +1181,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Braking:
 			if ac.Flight.Phase.PositionComplete {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
-				dur := e.calculateTaxiDuration(ac, atc.ARRIVAL_CONTEXT)
-				e.transitionToPhase(ac, flightphase.TaxiIn, dur, 0)
+				e.transitionToPhase(ac, flightphase.TaxiIn, 0, 0)
 			} else {
 				e.updateLinearPosition(ac, airport)
 			}
@@ -1270,7 +1268,7 @@ func (e *D9TrafficEngine) transitionToPhase(ac *atc.Aircraft, next flightphase.F
 	}
 
 	ac.Flight.Phase.TotalDuration = 0
-	// only set estimated durations for specifc phases here, others are set in the linear/cruise upate functions
+	// only set estimated durations for specific phases here, others are set in the linear/cruise upate functions
 	if (ac.Flight.Phase.Current <= flightphase.Startup.Index() && 
 		ac.Flight.Phase.Current >= flightphase.Shutdown.Index()) || ac.Flight.Phase.Current == flightphase.Holding.Index() {
 		
@@ -1686,46 +1684,19 @@ func (e *D9TrafficEngine) getActiveAirport(ac *atc.Aircraft) (*atc.Airport, int)
 	return e.AtcService.Airports[ac.Flight.Schedule.IcaoOrigin], atc.DEPARTURE_CONTEXT
 }
 
-func (e *D9TrafficEngine) calculateTaxiDuration(ac *atc.Aircraft, flightContext int) int {
-	// 1. Get the legs from the logic we established for updateTaxiPosition
-	// Leg 1: Gate to Access Point | Leg 2: Access Point to Runway
-	spot := ac.Flight.AssignedParkingSpot
-	var access *atc.AccessPoint
-	if flightContext == atc.DEPARTURE_CONTEXT {
-		access = ac.Flight.DepartureAccess
-	} else {
-		access = ac.Flight.ArrivalAccess
-	}
-
-	rwy := ac.Flight.AssignedRunway
-	if spot == nil || access == nil || rwy == nil {
-		return 300 // Fallback 5 mins
-	}
-
-	// Total distance in NM
-	dist1 := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
-	dist2 := geometry.DistNM(access.Coord.Lat, access.Coord.Lon, rwy.Lat, rwy.Lon)
-	totalDist := dist1 + dist2
-
-	// 2. Calculate time at ~18 knots (18nm per 3600s = 1nm per 200s)
-	// Formula: (Distance / Speed) * 3600
-	taxiSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.TaxiOut) // both TaxiIn and Out are the same, so pass either here
-	duration := (totalDist / taxiSpeed) * 3600
-
-	// Add a small buffer for "startup/slowdown" feel
-	return int(duration) + 30
-}
-
 func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airport, isOutbound bool) {
-	elapsed := e.AtcService.GetCurrentZuluTime().Sub(ac.Flight.Phase.Transition).Seconds()
-	totalDuration := ac.Flight.Phase.TotalDuration.Seconds()
-	if totalDuration <= 0 {
-		return
+	currSimZTime := e.AtcService.GetCurrentZuluTime()
+
+	// 1. Calculate time elapsed strictly for this discrete simulation tick frame.
+	var deltaTimeSec float64 = 10.0
+	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
+		deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
+		if deltaTimeSec <= 0 {
+			deltaTimeSec = 10.0
+		}
 	}
 
-	// Clamp progress 0.0 -> 1.0. If duration is exceeded, it stays at 1.0 (the destination)
-	progress := math.Min(1.0, elapsed/totalDuration)
-
+	// 2. Resolve geographic endpoints based on direction
 	var startLat, startLon, endLat, endLon float64
 	var startHdg float64
 
@@ -1743,30 +1714,86 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 		startHdg = ac.Flight.ArrivalAccess.Bearing
 	}
 
-	// Define the "Corner" for the 90-degree taxi path
-	// We move along start's Longitude first, then align to end's Latitude (or vice versa)
+	// Define the L-shaped inflection point (the corner)
 	cornerLat, cornerLon := startLat, endLon
 
-	if progress < 0.5 {
-		subP := progress * 2.0
+	// 3. Compute Segment and Total Physical Distances
+	leg1Dist := geometry.DistNM(startLat, startLon, cornerLat, cornerLon)
+	leg2Dist := geometry.DistNM(cornerLat, cornerLon, endLat, endLon)
+	totalPlannedDist := leg1Dist + leg2Dist
+
+	if totalPlannedDist <= 0 {
+		ac.Flight.Phase.PositionComplete = true
+		ac.Flight.Phase.LastUpdateTime = currSimZTime
+		ac.Flight.Phase.EstimatedNextTransition = currSimZTime
+		return
+	}
+
+	// Get current distance from aircraft to its final terminal target
+	currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon)
+
+	// 4. Calculate step progression from size-class performance metrics
+	speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.TaxiOut)
+	if speedKts <= 0 {
+		speedKts = 15.0 // Defensive fallback
+	}
+	distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
+
+	// Derive progress ratio cleanly from current physical positions
+	progRatio := 0.0
+	if currentDistToTarget > 0 && totalPlannedDist > 0 {
+		progRatio = 1.0 - (currentDistToTarget / totalPlannedDist)
+	}
+	progRatio = math.Max(0.0, math.Min(1.0, progRatio))
+
+	// Project out the next position vector along the two-leg track
+	nextProgRatio := math.Min(1.0, progRatio+(distanceMovedThisTick/totalPlannedDist))
+	leg1Ratio := leg1Dist / totalPlannedDist
+
+	if nextProgRatio <= leg1Ratio {
+		// Moving on Leg 1 (Gate/Access to Corner)
+		var subP float64
+		if leg1Ratio > 0 {
+			subP = nextProgRatio / leg1Ratio
+		} else {
+			subP = 1.0
+		}
+
 		ac.Flight.Position.Lat = startLat + (subP * (cornerLat - startLat))
 		ac.Flight.Position.Long = startLon + (subP * (cornerLon - startLon))
-		ac.Flight.Position.Heading = geometry.NormalizeHeading(startHdg) // Maintain start heading for first leg
+		ac.Flight.Position.Heading = geometry.NormalizeHeading(startHdg)
 	} else {
-		subP := (progress - 0.5) * 2.0
+		// Moving on Leg 2 (Corner to Runway/Gate Target)
+		var subP float64
+		leg2Ratio := 1.0 - leg1Ratio
+		if leg2Ratio > 0 {
+			subP = (nextProgRatio - leg1Ratio) / leg2Ratio
+		} else {
+			subP = 1.0
+		}
+
 		ac.Flight.Position.Lat = cornerLat + (subP * (endLat - cornerLat))
 		ac.Flight.Position.Long = cornerLon + (subP * (endLon - cornerLon))
-		// Use a 90-degree change from the start heading at the halfway point to
-		// produce a simple two-leg taxi route (gate -> corner -> runway).
-		ac.Flight.Position.Heading = geometry.NormalizeHeading(startHdg + 90.0)
+		ac.Flight.Position.Heading = geometry.CalculateBearing(cornerLat, cornerLon, endLat, endLon)
 	}
+
 	ac.Flight.Position.Altitude = airport.Elevation
 
-	// If we've reached (or practically reached) the taxi destination, trigger a position-driven transition
-	if progress >= 0.999 {
+	// 5. Update the Estimated Next Transition Time
+	// Time remaining in hours = remaining distance / speed in knots
+	timeRemainingHours := currentDistToTarget / speedKts
+	timeRemainingDuration := time.Duration(timeRemainingHours * float64(time.Hour))
+	ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(timeRemainingDuration)
+
+	// 6. Position-driven transition guard
+	if nextProgRatio >= 1.0 || geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon) < 0.005 {
 		ac.Flight.Phase.PositionComplete = true
-		util.LogDebugWithLabel(ac.Registration, "position-driven: taxi progress >= 0.999")
+		ac.Flight.Phase.EstimatedNextTransition = currSimZTime
+		util.LogDebugWithLabel(ac.Registration, "position-driven: taxi progression boundary crossed")
 	}
+
+	// Housekeeping tick track update
+	ac.Flight.Phase.LastUpdateTime = currSimZTime
 }
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
