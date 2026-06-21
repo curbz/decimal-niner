@@ -1684,115 +1684,125 @@ func (e *D9TrafficEngine) getActiveAirport(ac *atc.Aircraft) (*atc.Airport, int)
 }
 
 func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airport, isOutbound bool) {
-	currSimZTime := e.AtcService.GetCurrentZuluTime()
+    currSimZTime := e.AtcService.GetCurrentZuluTime()
 
-	// 1. Calculate time elapsed strictly for this discrete simulation tick frame.
-	var deltaTimeSec float64 = 10.0
-	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
-		deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
-		if deltaTimeSec <= 0 {
-			deltaTimeSec = 10.0
-		}
-	}
+    // 1. Calculate time elapsed strictly for this discrete simulation tick frame.
+    var deltaTimeSec float64 = 10.0
+    if !ac.Flight.Phase.LastUpdateTime.IsZero() {
+        deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
+        if deltaTimeSec <= 0 {
+            deltaTimeSec = 10.0
+        }
+    }
 
-	// 2. Resolve geographic endpoints based on direction
-	var startLat, startLon, endLat, endLon float64
-	var startHdg float64
+    // 2. Resolve geographic endpoints based on direction
+    var startLat, startLon, endLat, endLon float64
 
-	if isOutbound {
-		startLat = ac.Flight.AssignedParkingSpot.Lat
-		startLon = ac.Flight.AssignedParkingSpot.Lon
-		endLat = ac.Flight.DepartureAccess.Coord.Lat
-		endLon = ac.Flight.DepartureAccess.Coord.Lon
-		startHdg = ac.Flight.AssignedParkingSpot.Heading
-	} else {
-		startLat = ac.Flight.ArrivalAccess.Coord.Lat
-		startLon = ac.Flight.ArrivalAccess.Coord.Lon
-		endLat = ac.Flight.AssignedParkingSpot.Lat
-		endLon = ac.Flight.AssignedParkingSpot.Lon
-		startHdg = ac.Flight.ArrivalAccess.Bearing
-	}
+    if isOutbound {
+        startLat = ac.Flight.AssignedParkingSpot.Lat
+        startLon = ac.Flight.AssignedParkingSpot.Lon
+        endLat = ac.Flight.DepartureAccess.Coord.Lat
+        endLon = ac.Flight.DepartureAccess.Coord.Lon
+    } else {
+        startLat = ac.Flight.ArrivalAccess.Coord.Lat
+        startLon = ac.Flight.ArrivalAccess.Coord.Lon
+        endLat = ac.Flight.AssignedParkingSpot.Lat
+        endLon = ac.Flight.AssignedParkingSpot.Lon
+    }
 
-	// Define the L-shaped inflection point (the corner)
-	cornerLat, cornerLon := startLat, endLon
+    // Define the L-shaped inflection point (the corner)
+    cornerLat, cornerLon := startLat, endLon
 
-	// 3. Compute Segment and Total Physical Distances
-	leg1Dist := geometry.DistNM(startLat, startLon, cornerLat, cornerLon)
-	leg2Dist := geometry.DistNM(cornerLat, cornerLon, endLat, endLon)
-	totalPlannedDist := leg1Dist + leg2Dist
+    // 3. Compute Segment and Total Physical Distances
+    leg1Dist := geometry.DistNM(startLat, startLon, cornerLat, cornerLon)
+    leg2Dist := geometry.DistNM(cornerLat, cornerLon, endLat, endLon)
+    totalPlannedDist := leg1Dist + leg2Dist
 
-	if totalPlannedDist <= 0 {
-		ac.Flight.Phase.PositionComplete = true
-		ac.Flight.Phase.LastUpdateTime = currSimZTime
-		ac.Flight.Phase.EstimatedNextTransition = currSimZTime
-		return
-	}
+    if totalPlannedDist <= 0 {
+        ac.Flight.Phase.PositionComplete = true
+        ac.Flight.Phase.LastUpdateTime = currSimZTime
+        ac.Flight.Phase.EstimatedNextTransition = currSimZTime
+        return
+    }
 
-	// Get current distance from aircraft to its final terminal target
-	currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon)
+    // 4. Determine current routing leg and remaining distance along the path wire
+    distToCorner := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, cornerLat, cornerLon)
+    
+    // Check if the aircraft has arrived at or passed the corner milestone.
+    // We evaluate if the bearing from the aircraft to the corner has flipped away from Leg 1's heading direction.
+    initialBearingToCorner := geometry.CalculateBearing(startLat, startLon, cornerLat, cornerLon)
+    currentBearingToCorner := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, cornerLat, cornerLon)
+    
+    // A heading deviation greater than 90 degrees indicates we have overshot or matched the corner point
+    isLeg2 := math.Abs(currentBearingToCorner - initialBearingToCorner) > 90.0 && distToCorner < 0.01
 
-	// 4. Calculate step progression from size-class performance metrics
-	speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.TaxiOut)
-	if speedKts <= 0 {
-		speedKts = 15.0 // Defensive fallback
-	}
-	distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
+    var remainingPathDist float64
+    if !isLeg2 {
+        // Leg 1: Still tracking toward the inflection corner
+        remainingPathDist = distToCorner + leg2Dist
+    } else {
+        // Leg 2: Corner turned, tracking toward final access/parking target
+        remainingPathDist = geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon)
+    }
 
-	// Derive progress ratio cleanly from current physical positions
-	progRatio := 0.0
-	if currentDistToTarget > 0 && totalPlannedDist > 0 {
-		progRatio = 1.0 - (currentDistToTarget / totalPlannedDist)
-	}
-	progRatio = math.Max(0.0, math.Min(1.0, progRatio))
+    // 5. Calculate step progression from size-class performance metrics
+    speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.TaxiOut)
+    if speedKts <= 0 {
+        speedKts = 15.0 // Defensive fallback
+    }
+    distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
 
-	// Project out the next position vector along the two-leg track
-	nextProgRatio := math.Min(1.0, progRatio+(distanceMovedThisTick/totalPlannedDist))
-	leg1Ratio := leg1Dist / totalPlannedDist
+    // Derive progress ratio cleanly from real path tracking bounds
+    progRatio := 1.0 - (remainingPathDist / totalPlannedDist)
+    progRatio = math.Max(0.0, math.Min(1.0, progRatio))
 
-	if nextProgRatio <= leg1Ratio {
-		// Moving on Leg 1 (Gate/Access to Corner)
-		var subP float64
-		if leg1Ratio > 0 {
-			subP = nextProgRatio / leg1Ratio
-		} else {
-			subP = 1.0
-		}
+    // Project out the next position vector along the two-leg track
+    nextProgRatio := math.Min(1.0, progRatio+(distanceMovedThisTick/totalPlannedDist))
+    leg1Ratio := leg1Dist / totalPlannedDist
 
-		ac.Flight.Position.Lat = startLat + (subP * (cornerLat - startLat))
-		ac.Flight.Position.Long = startLon + (subP * (cornerLon - startLon))
-		ac.Flight.Position.Heading = geometry.NormalizeHeading(startHdg)
-	} else {
-		// Moving on Leg 2 (Corner to Runway/Gate Target)
-		var subP float64
-		leg2Ratio := 1.0 - leg1Ratio
-		if leg2Ratio > 0 {
-			subP = (nextProgRatio - leg1Ratio) / leg2Ratio
-		} else {
-			subP = 1.0
-		}
+    if nextProgRatio <= leg1Ratio {
+        // Moving on Leg 1 (Gate/Access to Corner)
+        var subP float64
+        if leg1Ratio > 0 {
+            subP = nextProgRatio / leg1Ratio
+        } else {
+            subP = 1.0
+        }
 
-		ac.Flight.Position.Lat = cornerLat + (subP * (endLat - cornerLat))
-		ac.Flight.Position.Long = cornerLon + (subP * (endLon - cornerLon))
-		ac.Flight.Position.Heading = geometry.CalculateBearing(cornerLat, cornerLon, endLat, endLon)
-	}
+        ac.Flight.Position.Lat = startLat + (subP * (cornerLat - startLat))
+        ac.Flight.Position.Long = startLon + (subP * (cornerLon - startLon))
+        ac.Flight.Position.Heading = geometry.CalculateBearing(startLat, startLon, cornerLat, cornerLon)
+    } else {
+        // Moving on Leg 2 (Corner to Runway/Gate Target)
+        var subP float64
+        leg2Ratio := 1.0 - leg1Ratio
+        if leg2Ratio > 0 {
+            subP = (nextProgRatio - leg1Ratio) / leg2Ratio
+        } else {
+            subP = 1.0
+        }
 
-	ac.Flight.Position.Altitude = airport.Elevation
+        ac.Flight.Position.Lat = cornerLat + (subP * (endLat - cornerLat))
+        ac.Flight.Position.Long = cornerLon + (subP * (endLon - cornerLon))
+        ac.Flight.Position.Heading = geometry.CalculateBearing(cornerLat, cornerLon, endLat, endLon)
+    }
 
-	// 5. Update the Estimated Next Transition Time
-	// Time remaining in hours = remaining distance / speed in knots
-	timeRemainingHours := currentDistToTarget / speedKts
-	timeRemainingDuration := time.Duration(timeRemainingHours * float64(time.Hour))
-	ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(timeRemainingDuration)
+    ac.Flight.Position.Altitude = airport.Elevation
 
-	// 6. Position-driven transition guard
-	if nextProgRatio >= 1.0 || geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon) < 0.005 {
-		ac.Flight.Phase.PositionComplete = true
-		ac.Flight.Phase.EstimatedNextTransition = currSimZTime
-		util.LogDebugWithLabel(ac.Registration, "position-driven: taxi progression boundary crossed")
-	}
+    // 6. Update the Estimated Next Transition Time
+    timeRemainingHours := remainingPathDist / speedKts
+    timeRemainingDuration := time.Duration(timeRemainingHours * float64(time.Hour))
+    ac.Flight.Phase.EstimatedNextTransition = currSimZTime.Add(timeRemainingDuration)
 
-	// Housekeeping tick track update
-	ac.Flight.Phase.LastUpdateTime = currSimZTime
+    // 7. Position-driven transition guard
+    if nextProgRatio >= 1.0 || geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, endLat, endLon) < 0.005 {
+        ac.Flight.Phase.PositionComplete = true
+        ac.Flight.Phase.EstimatedNextTransition = currSimZTime
+        util.LogDebugWithLabel(ac.Registration, "position-driven: taxi progression boundary crossed")
+    }
+
+    // Housekeeping tick track update
+    ac.Flight.Phase.LastUpdateTime = currSimZTime
 }
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
