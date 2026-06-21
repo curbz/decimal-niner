@@ -1396,9 +1396,6 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
                 targetPos = atc.Position{Lat: targetLat, Long: targetLon}
             }
 		} else {
-			// =====================================================================
-			// FIX B: NO-STAR TRUE ROUTE VECTOR FALLBACK
-			// =====================================================================
 			// Fetch the true origin airport to establish a real routing vector
 			originAp := e.AtcService.Airports[ac.Flight.Origin]
 			
@@ -1415,6 +1412,8 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetLat, targetLon := geometry.Project(ctxAp.Lat, ctxAp.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
 			targetPos = atc.Position{Lat: targetLat, Long: targetLon}
 		}
+		// Ensure heading is established for the static phase boundary configuration pass
+        heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Approach:
         if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
@@ -1632,7 +1631,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			ac.Flight.Position.Long = targetPos.Long
 			ac.Flight.Position.Altitude = targetAlt
 			ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-			// tranistion to next phase
+			// transition to next phase
 			ac.Flight.Phase.PositionComplete = true
 			util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
 			return
