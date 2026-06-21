@@ -180,10 +180,12 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 
 
 func (s *Service) GetMatchingSID(airport *Airport, depRwy *Runway, destAirport *Airport) *Procedure {
-    if depRwy == nil || len(depRwy.SIDs) == 0 {
+    // FIX: Guard against a nil destAirport to avoid an absolute pointer panic
+    if depRwy == nil || len(depRwy.SIDs) == 0 || destAirport == nil {
         return nil
     }
 
+    // Vector pointing from London to Milan (~140°)
     bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
 
     var bestSID *Procedure
@@ -191,6 +193,8 @@ func (s *Service) GetMatchingSID(airport *Airport, depRwy *Runway, destAirport *
 
     for i := range depRwy.SIDs {
         sid := depRwy.SIDs[i]
+        // Vector pointing from London to the SID exit fix.
+        // For a southbound exit fix, this correctly shoots Southeast (~130°), cleanly matching the target.
         sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
         
         diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
@@ -223,6 +227,7 @@ func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport 
         return nil
     }
 
+    // Vector pointing from Milan to London (~320°)
     bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
 
     var bestSTAR *Procedure
@@ -230,8 +235,10 @@ func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport 
 
     for i := range arrRwy.STARs {
         star := arrRwy.STARs[i]
-        // Compare the STAR entry bearing to the route bearing from origin
-        starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
+        
+        // FIX: Calculate bearing FROM the entry fix TO the destination airport
+        // For a southern fix, this will point North/Northwest (~340° to 360°), cleanly matching a 320° arrival vector.
+        starBearing := geometry.CalculateBearing(star.Entry.Fix.Lat, star.Entry.Fix.Lon, airport.Lat, airport.Lon)
         
         diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
         if diff < minDiff {
