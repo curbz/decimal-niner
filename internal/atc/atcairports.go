@@ -1178,7 +1178,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 			// 2. Calculate Length if missing
 			if rw.Length == 0 {
-				rw.Length = geometry.CalculateDistanceFeet(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
+				rw.Length = geometry.DistanceInMeters(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
 			}
 
 			// 3. Fallback for Elevation (if end B is 0.0, use end A)

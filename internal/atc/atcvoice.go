@@ -1025,7 +1025,7 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 		}
 	}
 
-	util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
+	util.LogDebugWithLabel(ac.Registration, "controller says altitude clearance is %d", clearance)
 
 	return clearance
 }
