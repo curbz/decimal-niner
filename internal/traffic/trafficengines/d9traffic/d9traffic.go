@@ -2825,18 +2825,18 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 		case "E", "F":
 			return 140.0
 		case "C", "D":
-			return 160.0
+			return 150.0
 		default:
 			return 120.0
 		}
 	case flightphase.Climbout, flightphase.Departure:
 		switch sizeClass {
 		case "E", "F":
-			return 220.0
+			return 155.0
 		case "C", "D":
-			return 240.0
+			return 165.0
 		default:
-			return 200.0
+			return 160.0
 		}
 	case flightphase.Cruise:
 		// Use a high nominal speed but Cruise uses its own interpolation logic elsewhere
@@ -2844,9 +2844,9 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 	case flightphase.Arrival, flightphase.Approach, flightphase.Final:
 		switch sizeClass {
 		case "E", "F":
-			return 140.0
+			return 150.0
 		case "C", "D":
-			return 130.0
+			return 140.0
 		default:
 			return 110.0
 		}
