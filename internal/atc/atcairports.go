@@ -971,8 +971,9 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 					pFix.ConstraintAlt = atOrBelow
 					pFix.ConstraintType = 2
 				}
-
-				currentProc.Legs = append(currentProc.Legs, pFix)
+				if fields[11] == "TF" || fields[11] == "DF" {
+					currentProc.Legs = append(currentProc.Legs, pFix)
+				}
 			}
 			continue
 		}

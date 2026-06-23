@@ -14,6 +14,7 @@ const (
 
 	// Vertical/altitude related (feet)
 	FeetPerFL                            = 1000
+	DefaultTakeOffExitClimboutEntryAltFt = 1200
 	DefaultClimbExitDepartureEntryAltFt  = 3000
 	DefaultDepartureExitCruiseEntryAltFt = 10000 // + safety buffer for high terrain airfields
 	DefaultCruiseExitArrivalEntryAltFt   = 10000 // + safety buffer for high terrain airfields
@@ -34,6 +35,7 @@ const (
 	DefaultCruiseExitArrivalEntryNM   = 40.0
 	DefaultArrivalExitApproachEntryNM = 15.0
 	DefaultApproachExitFinalEntryNM   = 4.0
+	DefaultArrivalEntryFromDestNM 	  = 100.0
 
 	// Intercept localizer values
 	InterceptLOCUnitFt     = 318
