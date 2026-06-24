@@ -931,7 +931,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			continue
 		}
 
-		// We determine the current/next relevant airport based on flight class
+		// We determine the current/next relevant airport based on flight phase class
 		var airport *atc.Airport
 		var targetICAO string
 		if ac.Flight.Phase.Class >= flightclass.Cruising {
@@ -941,28 +941,28 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		}
 		airport = e.AtcService.Airports[targetICAO]
 
+		//TODO: change to using a distance radius
 		// if airport is not relevant to the user's current context, skip it
-		if airport != nil {
-			isRelevant := false
-			for _, icao := range relevantICAOs {
-				if icao == airport.ICAO {
-					isRelevant = true
-					break
-				}
-			}
-			if !isRelevant {
-				util.LogWithLabel(ac.Registration, "skipping update - target icao of %s is no longer related to the user's current context: %v",
-					airport.ICAO, relevantICAOs)
-				//TODO: consider what to do -terminate tracking?
-				continue
-			}
-		} else {
-			util.LogWarnWithLabel(ac.Registration, "skipping update - target icao not found", targetICAO)
-			continue
-		}
+		// if airport != nil {
+		// 	isRelevant := false
+		// 	for _, icao := range relevantICAOs {
+		// 		if icao == airport.ICAO {
+		// 			isRelevant = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if !isRelevant {
+		// 		util.LogWithLabel(ac.Registration, "skipping update - target icao of %s is no longer related to the user's current context: %v",
+		// 			airport.ICAO, relevantICAOs)
+		// 		//TODO: consider what to do -terminate tracking?
+		// 		continue
+		// 	}
+		// } else {
+		// 	util.LogWarnWithLabel(ac.Registration, "skipping update - target icao not found", targetICAO)
+		// 	continue
+		// }
 
 		switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
-
 		case flightphase.Unknown:
 			// should never happen
 			util.LogWarnWithLabel(ac.Registration, "unexpected flight phase of unknown - cannot update status")
@@ -2043,19 +2043,24 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
         targetPos = atc.Position{Lat: startLat, Long: startLon}
     }
 
-    // --- SECTION 4: POSITION ANCHORING ---
+	// --- SECTION 4: POSITION ANCHORING ---
 
-    // Defensively process mid-air spawn overrides if position coordinates aren't caught yet
-    if ac.Flight.Position.Lat == 0 && ac.Flight.Position.Long == 0 {
-        util.LogErrWithLabel(ac.Registration, "position not initialised - possible bug")
-        ac.Flight.Position.Lat = startPos.Lat
-        ac.Flight.Position.Long = startPos.Long
-    } else {
-        if ac.Flight.Phase.InitialAltitude == 0 {
-            // Protect progressive linear slopes from math breaking on a 0 reference
-            ac.Flight.Phase.InitialAltitude = ac.Flight.Position.Altitude
-        }
-    }
+	// Defensively process mid-air spawn overrides if position coordinates aren't caught yet
+	if ac.Flight.Position.Lat == 0 && ac.Flight.Position.Long == 0 {
+		util.LogErrWithLabel(ac.Registration, "position not initialised - utilizing anchor fallback")
+		ac.Flight.Position.Lat = startPos.Lat
+		ac.Flight.Position.Long = startPos.Long
+		
+		// If the position was broken, the altitude is likely 0 or broken too.
+		// Initialize it to the calculated Cruise Entry constraint altitude.
+		if ac.Flight.Position.Altitude == 0 {
+			ac.Flight.Position.Altitude = startAlt
+		}
+	}
+
+	if ac.Flight.Phase.InitialAltitude == 0 {
+		ac.Flight.Phase.InitialAltitude = ac.Flight.Position.Altitude
+	}
 
     speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Cruise)
     if speedKts <= 0 {
@@ -2156,26 +2161,24 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
             ac.Flight.Vectoring = true
         }
     } else {
-        // --- TRACKING PHASE: CLIMB TO CRUISE OR LEVEL FLIGHT ---
-        distFromStart := geometry.DistNM(startPos.Lat, startPos.Long, ac.Flight.Position.Lat, ac.Flight.Position.Long)
-        const climbGateDistNM = 60.0
+		// If the plane is below cruise altitude, climb at a stable performance rate.
+		if ac.Flight.Position.Altitude < cruiseAlt {
+			vrateClimb := e.getPhaseVerticalRateFpm(ac.SizeClass, flightphase.Climbout)
+			
+			if vrateClimb <= 0 {
+				vrateClimb = 1500.0 // Safe fallback climb rate
+			}
 
-        if ac.Flight.Position.Altitude < cruiseAlt && distFromStart < climbGateDistNM {
-            climbProgress := distFromStart / climbGateDistNM
-            intendedAlt := startAlt + (climbProgress * (cruiseAlt - startAlt))
-            vrateClimb := e.getPhaseVerticalRateFpm(ac.SizeClass, flightphase.Climbout)
-
-            if vrateClimb == 0 {
-                calculatedAlt = intendedAlt
-            } else {
-                allowedDeltaAlt := vrateClimb * (deltaTimeSec / 60.0)
-                calculatedAlt = math.Min(intendedAlt, ac.Flight.Position.Altitude+allowedDeltaAlt)
-            }
-            util.LogDebugWithLabel(ac.Registration, "Spatial Cruise Climb: distance from start %0.2f NM, calculated altitude %0.2f", distFromStart, calculatedAlt)
-        } else {
-            calculatedAlt = cruiseAlt
-            util.LogDebugWithLabel(ac.Registration, "Spatial Cruise Level: maintaining cruise altitude %0.2f", calculatedAlt)
-        }
+			allowedDeltaAlt := vrateClimb * (deltaTimeSec / 60.0)
+			calculatedAlt = math.Min(cruiseAlt, ac.Flight.Position.Altitude + allowedDeltaAlt)
+			
+			util.LogDebugWithLabel(ac.Registration, "Performance Cruise Climb: current alt %0.2f climbing to %0.2f (%0.0f FPM)", 
+				ac.Flight.Position.Altitude, cruiseAlt, vrateClimb)
+		} else {
+			// We are at or above cruise altitude, lock it in
+			calculatedAlt = cruiseAlt
+			util.LogDebugWithLabel(ac.Registration, "Spatial Cruise Level: maintaining cruise altitude %0.2f", calculatedAlt)
+		}
     }
 
     ac.Flight.Position.Altitude = calculatedAlt

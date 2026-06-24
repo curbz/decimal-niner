@@ -120,6 +120,8 @@ type NamedNode struct {
 const (
 	DEPARTURE_CONTEXT = 0
 	ARRIVAL_CONTEXT   = 1
+	PROC_TYPE_SID 	  = 0
+	PROC_TYPE_STAR	  = 1
 )
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -1217,14 +1219,14 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 			Type: p.Type,
 		}
 
-		// Assign Entry/Exit based on sequence order
-		newProc.Entry = &p.Legs[0]
-		newProc.Exit = &p.Legs[len(p.Legs)-1]
-
 		// Attach to the appropriate Runway(s)
 		for name, rw := range runways {
 			// If the procedure is for "ALL" runways or matches the name (e.g., "09L")
 			if p.RunwayName == "ALL" || p.RunwayName == name {
+				// We must have 2 fixes
+				if len(p.Legs) == 1 {
+					p.Legs = SynthesizeProcedureLegs(rw, p.Legs[0], p.Type)
+				}
 				if p.Type == 0 { // SID
 					rw.SIDs = append(rw.SIDs, newProc)
 				} else { // STAR
@@ -1232,6 +1234,10 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 				}
 			}
 		}
+		
+		// Assign Entry/Exit based on sequence order - must be performed AFTER creating any required synthesized fixes
+		newProc.Entry = &p.Legs[0]
+		newProc.Exit = &p.Legs[len(p.Legs)-1]
 	}
 }
 
@@ -1851,4 +1857,80 @@ func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
         baseAlt = minSafeCrossingAlt
     }
     return baseAlt
+}
+
+// SynthesizeProcedureLegs evaluates a single-fix procedure and returns a complete 2-leg sequence
+func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureType int) []ProcedureFix {
+    // 1. Core math setup: Project a point off the runway threshold
+    // For a SID, we project forward along runway heading.
+    // For a STAR, we project backward (reciprocal heading) to create an approach gate.
+    var projectHeading float64
+    var distanceNM float64
+    if procedureType == PROC_TYPE_SID {
+        projectHeading = rwy.Heading
+        distanceNM = 7.0
+    } else {
+        projectHeading = math.Mod(rwy.Heading+180.0, 360.0)
+        distanceNM = 15.0
+    }
+
+    bearingRad := projectHeading * math.Pi / 180.0
+    latRad := rwy.Lat * math.Pi / 180.0
+    lonRad := rwy.Lon * math.Pi / 180.0
+    angularDist := distanceNM / geometry.EarthRadiusNM
+
+    targetLatRad := math.Asin(math.Sin(latRad)*math.Cos(angularDist) +
+        math.Cos(latRad)*math.Sin(angularDist)*math.Cos(bearingRad))
+
+    targetLonRad := lonRad + math.Atan2(
+        math.Sin(bearingRad)*math.Sin(angularDist)*math.Cos(latRad),
+        math.Cos(angularDist)-math.Sin(latRad)*math.Sin(targetLatRad),
+    )
+    targetLonRad = math.Mod(targetLonRad+3*math.Pi, 2*math.Pi) - math.Pi
+
+    // 2. Build the underlying raw Fix object
+    var ident, fullName string
+    if procedureType == PROC_TYPE_SID {
+        ident = existingFix.Fix.Ident + "-SID-ENT"
+        fullName = fmt.Sprintf("Synthetic Departure Entry RWY %s", rwy.Name)
+    } else {
+        ident = existingFix.Fix.Ident + "-STAR-EXT"
+        fullName = fmt.Sprintf("Synthetic Arrival Exit RWY %s", rwy.Name)
+    }
+
+    syntheticRawFix := Fix{
+        Ident:    ident,
+        Region:   existingFix.Fix.Region,
+        FullName: fullName,
+        Lat:      targetLatRad * 180.0 / math.Pi,
+        Lon:      targetLonRad * 180.0 / math.Pi,
+        Hold:     nil,
+    }
+
+    // 3. Wrap it into a ProcedureFix with live vertical constraints from the Runway object
+    syntheticProcFix := ProcedureFix{
+        Fix:            &syntheticRawFix,
+        ConstraintType: 1, // At or Above
+    }
+
+    if procedureType == PROC_TYPE_SID {
+        // SIDs: Standard safe climb/acceleration floor above the threshold elevation
+        syntheticProcFix.ConstraintAlt = int(rwy.ThresholdElevation) + 3000
+    } else {
+        // STARs: Target the explicit Final Approach Fix intercept platform altitude
+        if rwy.FAFalt > 0 {
+            syntheticProcFix.ConstraintAlt = rwy.FAFalt
+        } else {
+            syntheticProcFix.ConstraintAlt = int(rwy.ThresholdElevation) + 3000 // Smart fallback
+        }
+    }
+
+    // 4. Assemble the array in chronological flight order
+    if procedureType == PROC_TYPE_SID {
+        // Flight path is: Synthetic Entry -> Your Parsed Exit Waypoint
+        return []ProcedureFix{syntheticProcFix, existingFix}
+    } else {
+        // Flight path is: Your Parsed Entry Waypoint -> Synthetic Exit Gate
+        return []ProcedureFix{existingFix, syntheticProcFix}
+    }
 }
