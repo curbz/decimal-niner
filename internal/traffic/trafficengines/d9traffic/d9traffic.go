@@ -94,7 +94,7 @@ const (
 
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300 // Safety mechanism in case aircraft does not voluntarily release the lock
 
-	HOLDING_MIN_DURATION_MINS                     = 4
+	//HOLDING_MIN_DURATION_MINS                     = 4
 	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 6   // both arrivals and departure
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	GOAROUND_TO_HOLD_PROBABILITY_FACTOR           = 0.3
@@ -164,6 +164,7 @@ func (e *D9TrafficEngine) Start() {
 			// --- 2. FAST CYCLE (Every 10 Seconds) ---
 			// Existing aircraft MUST move frequently to avoid "stepping" or "teleporting"
 			e.updateActiveAircraft(relevantICAOs)
+			e.manageHoldingReleases(relevantICAOs)
 
 			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total active aircraft: %d",
 				time.Since(start), len(e.ActiveAircraft))
@@ -1065,52 +1066,75 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
             } 
 
 		case flightphase.Arrival:
-			// Position-driven Approach transition
-			if ac.Flight.Phase.PositionComplete {
-				// If there are already too many aircraft on approach for this airport,
-				// send this arrival to hold instead of commencing approach.
-				approachCount := 0
-				for _, other := range e.ActiveAircraft {
-					if other == nil || other.Flight.Schedule == nil {
-						continue
-					}
-					// Only count aircraft that are assigned to the same runway and are in the Approach phase
-					if other.Flight.AssignedRunwayName == ac.Flight.AssignedRunwayName && flightphase.FlightPhase(other.Flight.Phase.Current) == flightphase.Approach {
-						approachCount++
-					}
-				}
-				if approachCount > MAX_APPROACH_ON_APPROACH {
-					// send to hold due to approach saturation
-					e.AtcService.AssignHold(ac, airport.ICAO)
-					//TODO: should this be position based?
-					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
-					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
-				} else {
-					qKey := normalizeRunwayKey(airport.ICAO, e.AirportConfig[airport.ICAO].Arrival)
-					if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
-						// send to hold
-						e.AtcService.AssignHold(ac, airport.ICAO)
-						//TODO: should this be position based?
-						dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-						e.transitionToPhase(ac, flightphase.Holding, dur, 0)
-						e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
-					} else {
-						// start approach
-						e.transitionToPhase(ac, flightphase.Approach, 0, 0)
-						e.updateLinearPosition(ac, airport)
-					}
-				}
-			} else {
-				e.updateLinearPosition(ac, airport)
-			}
+            // Position-driven Approach transition
+            if ac.Flight.Phase.PositionComplete {
+                approachCount := 0
+                holdingCount := 0
+
+                for _, other := range e.ActiveAircraft {
+                    if other == nil || other.Flight.Schedule == nil {
+                        continue
+                    }
+                    
+                    // Match flights targeting the exact same runway asset
+                    if other.Flight.AssignedRunwayName == ac.Flight.AssignedRunwayName {
+                        otherPhase := flightphase.FlightPhase(other.Flight.Phase.Current)
+                        
+                        // Count active approaches
+                        if otherPhase == flightphase.Approach {
+                            approachCount++
+                        }
+                        
+                        // Count flights tied to a hold for this runway
+                        if otherPhase == flightphase.Holding && other.Flight.Holding != nil {
+                            holdingCount++
+                        }
+                    }
+                }
+
+                qKey := normalizeRunwayKey(airport.ICAO, ac.Flight.AssignedRunway)
+                qLength := len(e.RunwayQueues[qKey]) 
+
+                // TRIPPING CRITERIA: 
+                // 1. Approach sector is saturated OR
+                // 2. Localizer queue threshold is exceeded OR
+                // 3. New Rule: There is already a stack established for this runway!
+                if approachCount > MAX_APPROACH_ON_APPROACH || qLength >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD || holdingCount > 0 {
+                    // Send to hold due to traffic management constraints
+                    e.AtcService.AssignHold(ac, airport.ICAO)
+                    
+                    // Indefinite/position-driven holding phase transition
+                    e.transitionToPhase(ac, flightphase.Holding, 0, 0)
+                    
+                    // Seed initial sub-phase state tracker
+                    if ac.Flight.Holding != nil {
+                        ac.Flight.Holding.ArrivedAtHoldFix = false
+                        ac.Flight.Holding.ExitingHold = false
+                    }
+                    
+                    e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
+                } else {
+                    // Sector clean and empty: proceed straight to approach flow
+                    e.transitionToPhase(ac, flightphase.Approach, 0, 0)
+                    e.updateLinearPosition(ac, airport)
+                }
+            } else {
+                e.updateLinearPosition(ac, airport)
+            }
 
 		case flightphase.Holding:
-			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				e.tryExitHold(ac, airport)
-			} else {
-				e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
-			}
+            // Safety Check: Guard against unassigned or broken holding structures
+            if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil {
+                // Log the anomaly if you have a logging engine (e.g., "Holding phase active but no hold assigned for ac...")
+                
+                // Self-healing shunt: Route them straight to approach rather than freezing space-time
+                ac.Flight.Phase.PositionComplete = true
+                e.transitionToPhase(ac, flightphase.Approach, 0, 0)
+                e.updateLinearPosition(ac, airport)
+            } else {
+                // Normal operational path
+                e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
+            }
 
 		case flightphase.Approach:
 			// Position-driven Final transition
@@ -1155,12 +1179,11 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
 					// send to hold
 					e.AtcService.AssignHold(ac, airport.ICAO)
-					dur := (HOLDING_MIN_DURATION_MINS * 60) + 60
-					e.transitionToPhase(ac, flightphase.Holding, dur, 0)
+					e.transitionToPhase(ac, flightphase.Holding, 0, 0)
 					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 				} else {
-					// send back around to approach
-					e.tryExitHold(ac, airport)
+					// TODO: send back around to approach
+					//e.tryExitHold(ac, airport)
 				}
 			} else {
 				e.updateGoAroundPosition(ac, airport)
@@ -1829,99 +1852,234 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 }
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
-	// Implement a racetrack holding pattern with 1-minute legs and standard-rate turns.
-	// Leg length is derived from nominal hold speed per aircraft SizeClass.
-	currSimZTime := e.AtcService.GetCurrentZuluTime()
-	elapsed := currSimZTime.Sub(ac.Flight.Phase.Transition).Seconds()
+    holding := ac.Flight.Holding
+    if holding == nil || holding.AssignedHold == nil {
+        return
+    }
 
-	hold := ac.Flight.AssignedHold
-	if hold == nil {
-		return
-	}
+    hold := holding.AssignedHold
 
-	// Determine inbound course: prefer assigned runway vector if available,
-	// otherwise use the provided arrival runway (`rwy`) and finally fallback to
-	// bearing from hold to current aircraft position.
-	var inboundCourse float64
-	if ac.Flight.AssignedRunway != nil {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
-	} else if rwy != nil {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, rwy.Lat, rwy.Lon)
-	} else {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.Position.Lat, ac.Flight.Position.Long)
-	}
-	inboundCourse = geometry.NormalizeHeading(inboundCourse)
-	outboundCourse := geometry.NormalizeHeading(inboundCourse + 180.0)
+    // 1. Stack altitude assignment: PRESERVED EXACTLY
+    var stack []*atc.Aircraft
+    for _, other := range e.ActiveAircraft {
+        if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == hold {
+            stack = append(stack, other)
+        }
+    }
+    sort.Slice(stack, func(i, j int) bool { return stack[i].Flight.Position.Altitude < stack[j].Flight.Position.Altitude })
+    for i, a := range stack {
+        tgtAlt := float64(hold.MinAlt + (i * 1000))
+        a.Flight.Position.Altitude = tgtAlt
+    }
 
-	// Hold speed (kts) using Approach nominal as a proxy; ensure a minimum
-	holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-	if holdSpeed < 120.0 {
-		holdSpeed = 120.0
-	}
+    // 2. SUB-PHASE TRACKING GATE
+    // If the aircraft hasn't reached the hold fix yet, fly it there linearly
+    if !ac.Flight.Holding.ArrivedAtHoldFix {
+        distToFix := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
+        
+        if distToFix > 0.5 {
+            // ISSUE 2 FIXED: Fly toward the fix instead of jumping to racetrack math
+            heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
+            holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+            if holdSpeed < 120.0 {
+                holdSpeed = 120.0
+            }
+            
+            // Move aircraft linearly toward the holding fix coordinates
+            dt := 1.0 // Substitute with your loop's actual delta-time seconds
+            distStepNM := (holdSpeed / 3600.0) * dt
+            
+            nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
+            ac.Flight.Position.Lat = nextLat
+            ac.Flight.Position.Long = nextLon
+            ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+            return
+        }
+        
+        // Fix captured! Mark the positional transition point
+        ac.Flight.Holding.ArrivedAtHoldFix = true
+        ac.Flight.Holding.PatternEntryTime = e.AtcService.GetCurrentZuluTime()
+    }
 
-	// Leg timing and distances
-	legMinutes := 1.0
-	legSeconds := legMinutes * 60.0
-	// Standard-rate turn: 180deg at 3 deg/sec = 60s
-	turnSeconds := 60.0
-	cycleTime := (2 * legSeconds) + (2 * turnSeconds)
+    // If the aircraft is exiting the hold, fly it to the approach fix with vertical profiling
+    if ac.Flight.Holding.ExitingHold {
+        targetFix := ac.Flight.Holding.TargetApproachFix
+        distToApp := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+        
+        if distToApp <= 0.5 {
+            // Positional transition complete: Hand over cleanly to approach loop
+            ac.Flight.Phase.PositionComplete = true
+            ac.Flight.Holding.ArrivedAtHoldFix = false
+            ac.Flight.Holding.ExitingHold = false
+            
+            // Explicitly snap to target altitude floor at the transition gate
+            if ac.Flight.Holding.TargetApproachAlt > 0 {
+                ac.Flight.Position.Altitude = ac.Flight.Holding.TargetApproachAlt
+            }
+            
+            e.transitionToPhase(ac, flightphase.Approach, 0, 0)
+            e.updateLinearPosition(ac, e.AtcService.GetAirportByICAO(ac.Flight.Destination))
+            return
+        }
+        
+        // --- LATERAL TRACKING ---
+        heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+        holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+        if holdSpeed < 120.0 {
+            holdSpeed = 120.0
+        }
+        
+        dt := 1.0 // Your loop delta-time step in seconds
+        distStepNM := (holdSpeed / 3600.0) * dt
+        
+        nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
+        ac.Flight.Position.Lat = nextLat
+        ac.Flight.Position.Long = nextLon
+        ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+        
+        // --- VERTICAL PROFILE SMOOTHING ---
+        currentAlt := ac.Flight.Position.Altitude
+        targetAlt := ac.Flight.Holding.TargetApproachAlt
+        
+        if currentAlt > targetAlt && targetAlt > 0 {
+            timeRemainingSeconds := (distToApp / holdSpeed) * 3600.0
+            
+            if timeRemainingSeconds > dt {
+                altDeltaNeeded := currentAlt - targetAlt
+                altDropPerSecond := altDeltaNeeded / timeRemainingSeconds
+                ac.Flight.Position.Altitude -= altDropPerSecond * dt
+            } else {
+                ac.Flight.Position.Altitude = targetAlt
+            }
+        }
+        return
+    }
 
-	// Distance from fix for leg endpoints (NM)
-	legDist := holdSpeed * (legMinutes / 60.0)
+    // 3. RACETRACK MOVEMENT: PRESERVED EXACTLY
+    // ISSUE 1 FIXED: Use PatternEntryTime to anchor elapsed time safely
+    currSimZTime := e.AtcService.GetCurrentZuluTime()
+    elapsed := currSimZTime.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
 
-	// Stack altitude assignment: ensure separation of +1000ft above the hold minimum
-	// Build ordered list to assign altitudes deterministically
-	var stack []*atc.Aircraft
-	for _, other := range e.ActiveAircraft {
-		if other != nil && other.Flight.AssignedHold == hold {
-			stack = append(stack, other)
+    var inboundCourse float64
+    if ac.Flight.AssignedRunway != nil {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
+    } else if rwy != nil {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, rwy.Lat, rwy.Lon)
+    } else {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.Position.Lat, ac.Flight.Position.Long)
+    }
+    inboundCourse = geometry.NormalizeHeading(inboundCourse)
+    outboundCourse := geometry.NormalizeHeading(inboundCourse + 180.0)
+
+    holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+    if holdSpeed < 120.0 {
+        holdSpeed = 120.0
+    }
+
+    legMinutes := 1.0
+    legSeconds := legMinutes * 60.0
+    turnSeconds := 60.0
+    cycleTime := (2 * legSeconds) + (2 * turnSeconds)
+    legDist := holdSpeed * (legMinutes / 60.0)
+
+    t := math.Mod(elapsed, cycleTime)
+    var pos atc.Position
+    var heading float64
+
+    if t < legSeconds {
+        p := t / legSeconds
+        posLat, posLon := geometry.Project(hold.Lat, hold.Lon, outboundCourse, p*legDist)
+        pos = atc.Position{Lat: posLat, Long: posLon}
+        heading = outboundCourse
+    } else if t < legSeconds+turnSeconds {
+        tt := (t - legSeconds) / turnSeconds
+        bearing := geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
+        posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
+        pos = atc.Position{Lat: posLat, Long: posLon}
+        heading = geometry.NormalizeHeading(bearing + 90.0)
+    } else if t < (legSeconds + turnSeconds + legSeconds) {
+        tt := (t - (legSeconds + turnSeconds)) / legSeconds
+        dist := legDist * (1.0 - tt)
+        posLat, posLon := geometry.Project(hold.Lat, hold.Lon, inboundCourse, dist)
+        pos = atc.Position{Lat: posLat, Long: posLon}
+        heading = inboundCourse
+    } else {
+        tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
+        bearing := geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
+        posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
+        pos = atc.Position{Lat: posLat, Long: posLon}
+        heading = geometry.NormalizeHeading(bearing + 90.0)
+    }
+
+	// End of Racetrack Movement Math
+    ac.Flight.Position.Lat = pos.Lat
+    ac.Flight.Position.Long = pos.Long
+    ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+
+}
+
+func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
+	for _, icao := range relevantIcaos {
+		airport := e.AtcService.GetAirportByICAO(icao)
+		if airport == nil || len(airport.Runways) == 0 {
+			continue
+		}
+
+		// Loop through every operational runway asset at this airport
+		for _, rwy := range airport.Runways {
+			if rwy == nil {
+				continue
+			}
+
+			qKey := normalizeRunwayKey(icao, rwy)
+
+			// If this specific runway corridor is saturated, nobody can leave any stack bound for it
+			if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+				continue
+			}
+
+			// 1. Gather all aircraft currently holding in a pattern specifically for this runway
+			var candidates []*atc.Aircraft
+			for _, ac := range e.ActiveAircraft {
+				if ac == nil || ac.Flight.Holding == nil {
+					continue
+				}
+
+				// Only release planes that have physically arrived in the pattern 
+				// and are actively waiting (not inbound to it, and not already exiting)
+				if ac.Flight.Holding.AssignedHold != nil && ac.Flight.Holding.ArrivedAtHoldFix && !ac.Flight.Holding.ExitingHold {
+					// Match destination and explicit runway assignment
+					if ac.Flight.Destination == icao && ac.Flight.AssignedRunwayName == rwy.Name {
+						candidates = append(candidates, ac)
+					}
+				}
+			}
+
+			if len(candidates) == 0 {
+				continue // No one is waiting for this runway; check the next one
+			}
+
+			// 2. First-Come, First-Served Selection:
+			// Sort candidates by altitude ascending. Because your stack logic locks 
+			// new arrivals to the top, the lowest aircraft has been holding the longest.
+			sort.Slice(candidates, func(i, j int) bool {
+				return candidates[i].Flight.Position.Altitude < candidates[j].Flight.Position.Altitude
+			})
+
+			// 3. Command the oldest/lowest aircraft to break out of the hold
+			releasedAc := candidates[0]
+			releasedHold := releasedAc.Flight.Holding.AssignedHold
+
+			// Evict immediately from the stack registry so remaining planes can descend
+			releasedAc.Flight.Holding.AssignedHold = nil
+			releasedAc.Flight.Holding.ExitingHold = true
+
+			// 4. Compress the stack instantly so the next aircraft drops down 1,000ft safely
+			if releasedHold != nil {
+				e.reassignHoldStack(releasedHold)
+			}
 		}
 	}
-	// sort by current altitude ascending so lowest stays lowest in stack
-	sort.Slice(stack, func(i, j int) bool { return stack[i].Flight.Position.Altitude < stack[j].Flight.Position.Altitude })
-	// assign altitudes starting at MinAlt
-	for i, a := range stack {
-		tgtAlt := float64(hold.MinAlt + (i * 1000))
-		a.Flight.Position.Altitude = tgtAlt
-	}
-
-	// Compute position along racetrack
-	t := math.Mod(elapsed, cycleTime)
-	var pos atc.Position
-	var heading float64
-
-	if t < legSeconds {
-		// Outbound straight leg: from fix outward along outboundCourse
-		p := t / legSeconds
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, outboundCourse, p*legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = outboundCourse
-	} else if t < legSeconds+turnSeconds {
-		// Outbound -> inbound turn: sweep bearing from outboundCourse -> inboundCourse
-		tt := (t - legSeconds) / turnSeconds
-		bearing := geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = geometry.NormalizeHeading(bearing + 90.0)
-	} else if t < (legSeconds + turnSeconds + legSeconds) {
-		// Inbound straight leg: from radius point toward fix
-		tt := (t - (legSeconds + turnSeconds)) / legSeconds
-		dist := legDist * (1.0 - tt)
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, inboundCourse, dist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = inboundCourse
-	} else {
-		// Inbound -> outbound turn
-		tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
-		bearing := geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = geometry.NormalizeHeading(bearing + 90.0)
-	}
-
-	ac.Flight.Position.Lat = pos.Lat
-	ac.Flight.Position.Long = pos.Long
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
 }
 
 func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.Airport) {
@@ -2485,30 +2643,6 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(minsToSchedArr int, f *fl
 	}
 }
 
-func (e *D9TrafficEngine) tryExitHold(ac *atc.Aircraft, ap *atc.Airport) {
-	qKey := normalizeRunwayKey(ap.ICAO, e.AirportConfig[ap.ICAO].Arrival)
-	if len(e.RunwayQueues[qKey]) < TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
-		// exit hold
-		// capture hold reference so we can reassign the stack after release
-		releasedHold := ac.Flight.AssignedHold
-		ac.Flight.AssignedHold = nil
-		dur := ((AMINUS_APPROACH_MINS - AMINUS_FINAL_MINS) * 60) + 60
-		e.transitionToPhase(ac, flightphase.Approach, dur, APPROACH_JITTER_SECONDS)
-		e.updateLinearPosition(ac, ap)
-		// After releasing one aircraft from the hold, reassign altitudes for remaining aircraft in the same hold
-		if releasedHold != nil {
-			e.reassignHoldStack(releasedHold)
-		}
-	} else {
-		// continue in hold for another cycle
-		dur := HOLDING_MIN_DURATION_MINS * 60 * time.Second
-		ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(dur)
-		e.updateHoldingPosition(ac, e.AirportConfig[ap.ICAO].Arrival)
-		util.LogWithLabel(ac.Registration, "continue hold - traffic for runway %s at %s is high - estimated hold exit %v",
-			qKey, ap.ICAO, ac.Flight.Phase.EstimatedNextTransition)
-	}
-}
-
 // reassignHoldStack re-computes stack altitudes for all active aircraft assigned to the given hold.
 // Lowest aircraft receives hold.MinAlt, each subsequent aircraft is +1000ft above.
 func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
@@ -2517,7 +2651,7 @@ func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
 	}
 	var stack []*atc.Aircraft
 	for _, other := range e.ActiveAircraft {
-		if other != nil && other.Flight.AssignedHold == h {
+		if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == h {
 			stack = append(stack, other)
 		}
 	}

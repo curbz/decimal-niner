@@ -221,7 +221,9 @@ func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
     if bestSID != nil {
         ac.Flight.AssignedSID = bestSID
         util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
-    }
+    } else {
+		util.LogWithLabel(ac.Registration, "no assigned SID")
+	}
 }
 
 func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport *Airport) *Procedure {

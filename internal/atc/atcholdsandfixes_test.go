@@ -49,13 +49,20 @@ func TestAssignHold(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ac := &Aircraft{Flight: Flight{Position: Position{Lat: tc.lat, Long: tc.lon}}}
-			s.AssignHold(ac, "")
-			if ac.Flight.AssignedHold == nil {
-				t.Fatalf("expected %s, got nil", tc.expected)
+			ac := &Aircraft{
+				Flight: Flight{
+					Origin:      "EGLL",
+					Destination: "EGLL",
+					Position:    Position{Lat: tc.lat, Long: tc.lon},
+				},
 			}
-			if ac.Flight.AssignedHold.Ident != tc.expected {
-				t.Fatalf("expected %s, got %s", tc.expected, ac.Flight.AssignedHold.Ident)
+			s.AssignHold(ac, "")
+			if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil {
+				t.Fatalf("expected %s, got nil", tc.expected)
+			} else {
+				if ac.Flight.Holding.AssignedHold.Ident != tc.expected {
+					t.Fatalf("expected %s, got %s", tc.expected, ac.Flight.Holding.AssignedHold.Ident)
+				}
 			}
 		})
 	}
@@ -65,6 +72,12 @@ func TestAssignHoldPriority(t *testing.T) {
 	// Setup service with global holds
 	s := &Service{Holds: testHolds(), Airports: map[string]*Airport{}}
 
+	// Seed dummy airports for safe synthetic route calculations
+	s.Airports["EGLL"] = &Airport{ICAO: "EGLL", Lat: 51.470, Lon: -0.454, Runways: map[string]*Runway{}, Holds: []*Hold{}}
+	s.Airports["EGAA"] = &Airport{ICAO: "EGAA", Lat: 54.657, Lon: -6.215, Runways: map[string]*Runway{}, Holds: []*Hold{}}
+	s.Airports["EGKK"] = &Airport{ICAO: "EGKK", Lat: 51.148, Lon: -0.190, Runways: map[string]*Runway{}, Holds: []*Hold{}}
+	s.Airports["EMPTY"] = &Airport{ICAO: "EMPTY", Lat: 37.619, Lon: -122.374, Runways: map[string]*Runway{}, Holds: []*Hold{}}
+
 	// Helper to create airport hold
 	makeHold := func(name string, lat, lon float64) *Hold {
 		h := &Hold{Ident: name, Lat: lat, Lon: lon}
@@ -73,39 +86,70 @@ func TestAssignHoldPriority(t *testing.T) {
 	}
 
 	// 1) Airport holds preferred over global
-	ap := &Airport{ICAO: "EGAA", Name: "Test", Runways: map[string]*Runway{}, Holds: []*Hold{makeHold("LOCAL", 51.50, -0.10)}}
-	s.Airports["EGAA"] = ap
-	ac := &Aircraft{Flight: Flight{Position: Position{Lat: 51.50, Long: -0.10}}}
+	ap := s.Airports["EGAA"]
+	ap.Holds = []*Hold{makeHold("LOCAL", 51.50, -0.10)}
+	
+	ac := &Aircraft{
+		Flight: Flight{
+			Origin:      "EGLL",
+			Destination: "EGAA",
+			Position:    Position{Lat: 51.50, Long: -0.10},
+		},
+	}
 	s.AssignHold(ac, "EGAA")
-	if ac.Flight.AssignedHold == nil || ac.Flight.AssignedHold.Ident != "LOCAL" {
-		t.Fatalf("airport hold not preferred, got %v", ac.Flight.AssignedHold)
+	if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil || ac.Flight.Holding.AssignedHold.Ident != "LOCAL" {
+		t.Fatalf("airport hold not preferred, got %v", ac.Flight.Holding)
 	}
 
 	// 2) Go-around should return the runway MAFix if present
-	// Create holds: MA1 (target) and OTHER (closer)
-	ap2 := &Airport{ICAO: "EGLL", Name: "GA", Runways: map[string]*Runway{"27R": {MAFix: "MA1"}}, Holds: []*Hold{makeHold("MA1", 51.64, 0.15), makeHold("OTHER", 51.65, 0.16)}}
-	s.Airports["EGLL"] = ap2
-	ac2 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.64, Long: 0.16}, AssignedRunwayName: "27R", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
+	ap2 := s.Airports["EGLL"]
+	ap2.Runways = map[string]*Runway{"27R": {MAFix: "MA1"}}
+	ap2.Holds = []*Hold{makeHold("MA1", 51.64, 0.15), makeHold("OTHER", 51.65, 0.16)}
+
+	ac2 := &Aircraft{
+		Flight: Flight{
+			Origin:             "EGKK",
+			Destination:        "EGLL",
+			Position:           Position{Lat: 51.64, Long: 0.16},
+			AssignedRunwayName: "27R",
+			Phase:              flightphase.Phase{Current: flightphase.GoAround.Index()},
+		},
+	}
 	s.AssignHold(ac2, "EGLL")
-	if ac2.Flight.AssignedHold == nil || ac2.Flight.AssignedHold.Ident != "MA1" {
-		t.Fatalf("go-around MAFix not returned, got %v", ac.Flight.AssignedHold)
+	if ac2.Flight.Holding == nil || ac2.Flight.Holding.AssignedHold == nil || ac2.Flight.Holding.AssignedHold.Ident != "MA1" {
+		t.Fatalf("go-around MAFix not returned, got %v", ac2.Flight.Holding)
 	}
 
 	// 3) Go-around with MAFix not in airport holds should fallback to nearest airport hold
-	ap3 := &Airport{ICAO: "EGKK", Name: "NoMA", Runways: map[string]*Runway{"09": {MAFix: "MISSING"}}, Holds: []*Hold{makeHold("A1", 51.20, -0.50), makeHold("A2", 51.25, -0.55)}}
-	s.Airports["EGKK"] = ap3
-	ac3 := &Aircraft{Flight: Flight{Position: Position{Lat: 51.21, Long: -0.51}, AssignedRunwayName: "09", Phase: flightphase.Phase{Current: flightphase.GoAround.Index()}}}
+	ap3 := s.Airports["EGKK"]
+	ap3.Runways = map[string]*Runway{"09": {MAFix: "MISSING"}}
+	ap3.Holds = []*Hold{makeHold("A1", 51.20, -0.50), makeHold("A2", 51.25, -0.55)}
+
+	ac3 := &Aircraft{
+		Flight: Flight{
+			Origin:             "EGLL",
+			Destination:        "EGKK",
+			Position:           Position{Lat: 51.21, Long: -0.51},
+			AssignedRunwayName: "09",
+			Phase:              flightphase.Phase{Current: flightphase.GoAround.Index()},
+		},
+	}
 	s.AssignHold(ac3, "EGKK")
-	if ac3.Flight.AssignedHold == nil || (ac3.Flight.AssignedHold.Ident != "A1" && ac.Flight.AssignedHold.Ident != "A2") {
-		t.Fatalf("expected nearest airport hold fallback, got %v", ac.Flight.AssignedHold)
+	if ac3.Flight.Holding == nil || ac3.Flight.Holding.AssignedHold == nil || (ac3.Flight.Holding.AssignedHold.Ident != "A1" && ac3.Flight.Holding.AssignedHold.Ident != "A2") {
+		t.Fatalf("expected nearest airport hold fallback, got %v", ac3.Flight.Holding)
 	}
 
 	// 4) Airport exists but has no holds -> global fallback
-	s.Airports["EMPTY"] = &Airport{ICAO: "EMPTY", Name: "Empty", Runways: map[string]*Runway{}, Holds: []*Hold{}}
-	ac4 := &Aircraft{Flight: Flight{Position: Position{Lat: 37.60, Long: -122.40}}}
+	ac4 := &Aircraft{
+		Flight: Flight{
+			Origin:      "EGLL",
+			Destination: "EMPTY",
+			Position:    Position{Lat: 37.60, Long: -122.40},
+		},
+	}
 	s.AssignHold(ac4, "EMPTY")
-	if ac4.Flight.AssignedHold == nil || ac4.Flight.AssignedHold.Ident != "SFO" {
-		t.Fatalf("expected global fallback to SFO, got %v", ac.Flight.AssignedHold)
+	if ac4.Flight.Holding == nil || ac4.Flight.Holding.AssignedHold == nil || ac4.Flight.Holding.AssignedHold.Ident != "SFO" {
+		t.Fatalf("expected global fallback to SFO, got %v", ac4.Flight.Holding)
 	}
 }
 

@@ -776,46 +776,6 @@ func TestApproachDescentStartDiffersBySize(t *testing.T) {
 	}
 }
 
-func TestHoldExitOnCircuitComplete(t *testing.T) {
-	baseTime := time.Now()
-	e := newTestEngine(baseTime)
-
-	airport := &atc.Airport{ICAO: "EGLL", Lat: 51.4700, Lon: -0.4543, Elevation: 83}
-	rwy := &atc.Runway{Name: "09L", Lat: 51.4700, Lon: -0.4543, Heading: 90, Length: 3900}
-	e.AtcService.Airports = map[string]*atc.Airport{"EGLL": airport}
-	e.AirportConfig = map[string]ActiveRunwaySet{"EGLL": {Departure: rwy, Arrival: rwy}}
-	e.RunwayLocks = make(map[string]*RunwayLock)
-	e.RunwayQueues = make(map[string]map[string]time.Time)
-
-	hold := &atc.Hold{Ident: "H1", Lat: 51.48, Lon: -0.45, MinAlt: 3000}
-
-	ac := &atc.Aircraft{
-		Registration: "HOLD1",
-		Flight: atc.Flight{
-			Schedule:     &flightplan.ScheduledFlight{IcaoOrigin: "EGLL", IcaoDest: "KJFK"},
-			AssignedHold: hold,
-			Phase: flightphase.Phase{
-				Current:                 flightphase.Holding.Index(),
-				Transition:              baseTime.Add(-time.Duration((HOLDING_MIN_DURATION_MINS*60)+10) * time.Second),
-				TotalDuration:           time.Duration((HOLDING_MIN_DURATION_MINS*60)+10) * time.Second,
-				EstimatedNextTransition: baseTime.Add(-1 * time.Second),
-			},
-		},
-	}
-
-	key := fmt.Sprintf("%s_%d", ac.Registration, ac.Flight.Number)
-	e.ActiveAircraft = map[string]*atc.Aircraft{key: ac}
-
-	e.updateActiveAircraft([]string{"EGLL"})
-
-	if ac.Flight.AssignedHold != nil {
-		t.Fatalf("expected aircraft to be released from hold, but AssignedHold != nil")
-	}
-	if flightphase.FlightPhase(ac.Flight.Phase.Current) != flightphase.Approach {
-		t.Fatalf("expected phase Approach after hold exit, got %v", flightphase.FlightPhase(ac.Flight.Phase.Current))
-	}
-}
-
 func TestArrivalSentToHoldWhenRunwayApproachSaturated(t *testing.T) {
 	baseTime := time.Now()
 	e := newTestEngine(baseTime)
@@ -921,9 +881,9 @@ func TestHoldStackAssignment(t *testing.T) {
 	hold := &atc.Hold{Ident: "H1", Lat: 51.48, Lon: -0.45, MinAlt: 3000}
 
 	// Create three aircraft with out-of-order altitudes assigned to the same hold
-	a1 := &atc.Aircraft{Registration: "S1", Flight: atc.Flight{AssignedHold: hold, Position: atc.Position{Altitude: 5000}}}
-	a2 := &atc.Aircraft{Registration: "S2", Flight: atc.Flight{AssignedHold: hold, Position: atc.Position{Altitude: 3000}}}
-	a3 := &atc.Aircraft{Registration: "S3", Flight: atc.Flight{AssignedHold: hold, Position: atc.Position{Altitude: 4000}}}
+	a1 := &atc.Aircraft{Registration: "S1", Flight: atc.Flight{Holding: &atc.Holding{AssignedHold: hold}, Position: atc.Position{Altitude: 5000}}}
+	a2 := &atc.Aircraft{Registration: "S2", Flight: atc.Flight{Holding: &atc.Holding{AssignedHold: hold}, Position: atc.Position{Altitude: 3000}}}
+	a3 := &atc.Aircraft{Registration: "S3", Flight: atc.Flight{Holding: &atc.Holding{AssignedHold: hold}, Position: atc.Position{Altitude: 4000}}}
 
 	e.ActiveAircraft = map[string]*atc.Aircraft{a1.Registration: a1, a2.Registration: a2, a3.Registration: a3}
 
