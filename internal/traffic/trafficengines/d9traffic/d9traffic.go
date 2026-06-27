@@ -97,7 +97,6 @@ const (
 	//HOLDING_MIN_DURATION_MINS                     = 4
 	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 6   // both arrivals and departure
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
-	GOAROUND_TO_HOLD_PROBABILITY_FACTOR           = 0.3
 	// maximum number of aircraft allowed on approach for a single airport before
 	// new arrivals are sent to hold
 	MAX_APPROACH_ON_APPROACH = 4
@@ -1174,17 +1173,10 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		case flightphase.GoAround:
 			if ac.Flight.Phase.PositionComplete {
-				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
-				// Randomized hold or back into approach flow
-				if rand.Float32() < GOAROUND_TO_HOLD_PROBABILITY_FACTOR {
-					// send to hold
-					e.AtcService.AssignHold(ac, airport.ICAO)
-					e.transitionToPhase(ac, flightphase.Holding, 0, 0)
-					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
-				} else {
-					// TODO: send back around to approach
-					//e.tryExitHold(ac, airport)
-				}
+				// force phase to arrival and immediately complete - this will run the arrival exit logic
+				// and place the aircraft into a hold if needed
+				e.transitionToPhase(ac, flightphase.Arrival, 0, 0)
+				ac.Flight.Phase.PositionComplete = true
 			} else {
 				e.updateGoAroundPosition(ac, airport)
 			}
@@ -1314,7 +1306,6 @@ func (e *D9TrafficEngine) assignParking(ac *atc.Aircraft, airport *atc.Airport) 
 
 // updateLinearPosition handles the position updates for Takeoff, Climbout, Departure, Arrival, Approach, Final, and Braking phases.
 // The provided airport should be the relevant airport for the current phase (origin for departure phases, destination for arrival phases) as the logic relies on runway and procedure data from that airport.
-// updateLinearPosition handles the position updates for Takeoff, Climbout, Departure, Arrival, Approach, Final, and Braking phases.
 func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airport) {
 	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
@@ -1955,8 +1946,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
         return
     }
 
-    // 3. RACETRACK MOVEMENT: PRESERVED EXACTLY
-    // ISSUE 1 FIXED: Use PatternEntryTime to anchor elapsed time safely
+    // 3. RACETRACK MOVEMENT: Use PatternEntryTime to anchor elapsed time
     currSimZTime := e.AtcService.GetCurrentZuluTime()
     elapsed := currSimZTime.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
 
@@ -2010,8 +2000,8 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
         pos = atc.Position{Lat: posLat, Long: posLon}
         heading = geometry.NormalizeHeading(bearing + 90.0)
     }
-
 	// End of Racetrack Movement Math
+
     ac.Flight.Position.Lat = pos.Lat
     ac.Flight.Position.Long = pos.Long
     ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
@@ -2083,39 +2073,80 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 }
 
 func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.Airport) {
-    now := e.AtcService.GetCurrentZuluTime()
-    
-    // Fallback defense: if LastUpdateTime isn't set yet for some reason,
-    // default to a standard 1-second step to avoid a frozen frame.
-    deltaTimeSeconds := 1.0
-    if !ac.Flight.Phase.LastUpdateTime.IsZero() {
-        deltaTimeSeconds = now.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
-    }
-    // CRITICAL: Update the anchor right now so the next tick calculates the next correct gap
-    ac.Flight.Phase.LastUpdateTime = now 
+	now := e.AtcService.GetCurrentZuluTime()
 
-    // 1. Maintain tracking heading target (Runway heading + 10 degrees)
-    rwy := ac.Flight.AssignedRunway
-    missedApproachHeading := geometry.NormalizeHeading(rwy.Heading + 10)
-    ac.Flight.Position.Heading = missedApproachHeading
+	deltaTimeSeconds := 1.0
+	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
+		deltaTimeSeconds = now.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
+	}
+	ac.Flight.Phase.LastUpdateTime = now
 
-    // 2. Lateral Step: Project forward from the CURRENT position
-    // Distance (NM) = (Speed in Knots / 3600) * Time elapsed in seconds
-    const missedApproachKts = 150.0
-    deltaDistNM := (missedApproachKts / 3600.0) * deltaTimeSeconds
+	rwy := ac.Flight.AssignedRunway
+	if rwy == nil {
+		// Emergency fallback if runway structure is missing
+		ac.Flight.Phase.PositionComplete = true
+		return
+	}
 
-    newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, missedApproachHeading, deltaDistNM)
-    ac.Flight.Position.Lat = newLat
-    ac.Flight.Position.Long = newLon
+	// Resolve target anchors from the holding/exit structure
+	var targetFix *atc.Fix
+	targetAlt := airport.Elevation + float64(constants.DefaultClimbExitDepartureEntryAltFt)
 
-    // 3. Vertical Step: Climb steadily at an operational missed-approach rate
-    const climbRateFPM = 1500.0
-    targetCeiling := airport.Elevation + float64(constants.DefaultClimbExitDepartureEntryAltFt)
+	if ac.Flight.Holding != nil && ac.Flight.Holding.TargetApproachFix != nil {
+		targetFix = ac.Flight.Holding.TargetApproachFix
+		if ac.Flight.Holding.TargetApproachAlt > 0 {
+			targetAlt = ac.Flight.Holding.TargetApproachAlt
+		}
+	}
 
-    if ac.Flight.Position.Altitude < targetCeiling {
-        climbAmount := (climbRateFPM / 60.0) * deltaTimeSeconds
-        ac.Flight.Position.Altitude = math.Min(targetCeiling, ac.Flight.Position.Altitude+climbAmount)
-    }
+	// Safety check: If no target fix was set up during AssignHold, create a synthetic fallback centerline gate
+	if targetFix == nil {
+		projectHeading := math.Mod(rwy.Heading+180.0, 360.0)
+		targetLat, targetLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
+		targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
+	}
+
+	// --- 1. DETERMINE HEADING & LATERAL TARGET ---
+	var targetHeading float64
+	// Use 3,000 feet above airfield elevation as the safe baseline altitude to turn out of the initial climb
+	safeTurnAlt := airport.Elevation + 3000.0
+
+	if ac.Flight.Position.Altitude < safeTurnAlt {
+		// Sub-phase A: Fly straight out on standard missed approach heading for initial separation climb
+		targetHeading = geometry.NormalizeHeading(rwy.Heading + 10.0)
+	} else {
+		// Sub-phase B: Safe altitude achieved, turn direct toward the recovery transition gate fix
+		targetHeading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+
+		// Check if we have physically arrived back at the approach gate fix
+		distToFix := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+		if distToFix <= 0.5 {
+			// Loop complete! Set the flag so updateActiveAircraft hands off to Arrival on the next tick
+			ac.Flight.Phase.PositionComplete = true
+			return
+		}
+	}
+
+	ac.Flight.Position.Heading = geometry.NormalizeHeading(targetHeading)
+
+	// --- 2. LATERAL STEP PERFORMANCE ---
+	const missedApproachKts = 150.0
+	deltaDistNM := (missedApproachKts / 3600.0) * deltaTimeSeconds
+
+	newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, deltaDistNM)
+	ac.Flight.Position.Lat = newLat
+	ac.Flight.Position.Long = newLon
+
+	// --- 3. VERTICAL STEP PERFORMANCE ---
+	const climbRateFPM = 1500.0
+	if ac.Flight.Position.Altitude < targetAlt {
+		climbAmount := (climbRateFPM / 60.0) * deltaTimeSeconds
+		ac.Flight.Position.Altitude = math.Min(targetAlt, ac.Flight.Position.Altitude+climbAmount)
+	} else if ac.Flight.Position.Altitude > targetAlt {
+		// If they ended up higher than the approach constraint profile, drift down gently
+		descendAmount := (1000.0 / 60.0) * deltaTimeSeconds
+		ac.Flight.Position.Altitude = math.Max(targetAlt, ac.Flight.Position.Altitude-descendAmount)
+	}
 }
 
 func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
