@@ -262,6 +262,9 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 	}
 
 	holding.AssignedHold = bestGlobalHold
+	holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
+    holding.ArrivedAtHoldFix = false
+    holding.ExitingHold = false
 }
 
 // extract all holds from hold data file. returns two maps or an error

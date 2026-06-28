@@ -60,6 +60,7 @@ type Holding struct {
 	ExitingHold 		bool
 	TargetApproachFix   *Fix
 	TargetApproachAlt	float64
+	TargetAltitude    	float64
 	AssignedHold 		*Hold
 }
 
