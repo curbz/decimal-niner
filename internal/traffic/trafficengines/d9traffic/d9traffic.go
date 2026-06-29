@@ -94,7 +94,7 @@ const (
 
 	RUNWAY_LOCK_TIMEOUT_SECONDS = 300 // Safety mechanism in case aircraft does not voluntarily release the lock
 
-	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 1   // both arrivals and departure
+	TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD     = 2   // both arrivals and departure
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	// maximum number of aircraft allowed on approach for a single airport before
 	// new arrivals are sent to hold
@@ -1067,13 +1067,13 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
             // Position-driven Approach transition
             if ac.Flight.Phase.PositionComplete {
 
-				approachCount, holdingCount, qLength := e.getArrivalSaturationStats(ac, airport)
+				approachCount, holdingCount, _ := e.getArrivalSaturationStats(ac, airport)
 
                 // TRIPPING CRITERIA: 
                 // 1. Approach sector is saturated OR
                 // 2. Localizer queue threshold is exceeded OR
-                // 3. New Rule: There is already a stack established for this runway!
-                if approachCount > MAX_APPROACH_ON_APPROACH || qLength >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD || holdingCount > 0 {
+                // 3. There is already a stack established for this runway!
+                if approachCount > MAX_APPROACH_ON_APPROACH || holdingCount > 0 {
                     // Send to hold due to traffic management constraints
                     e.AtcService.AssignHold(ac, airport.ICAO)
                     
@@ -1099,9 +1099,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Holding:
             // Safety Check: Guard against unassigned or broken holding structures
             if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil {
-                // Log the anomaly if you have a logging engine (e.g., "Holding phase active but no hold assigned for ac...")
-                
-                // Self-healing shunt: Route them straight to approach rather than freezing space-time
+                // route straight to approach 
                 ac.Flight.Phase.PositionComplete = true
                 e.transitionToPhase(ac, flightphase.Approach, 0, 0)
                 e.updateLinearPosition(ac, airport)
@@ -1113,15 +1111,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Approach:
 			// Position-driven Final transition
 			if ac.Flight.Phase.PositionComplete {
-				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
-					// Runway is occupied - go-around
-					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
-						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
-					e.transitionToPhase(ac, flightphase.GoAround, 0, 0)
-					e.updateGoAroundPosition(ac, airport)
-				} else {
-					e.transitionToPhase(ac, flightphase.Final, 0, 0)
-				}
+				e.transitionToPhase(ac, flightphase.Final, 0, 0)
 			}
 			e.updateLinearPosition(ac, airport)
 
@@ -1148,10 +1138,8 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		case flightphase.GoAround:
 			if ac.Flight.Phase.PositionComplete {
-				// force phase to arrival and immediately complete - this will run the arrival exit logic
-				// and place the aircraft into a hold if needed
-				e.transitionToPhase(ac, flightphase.Arrival, 0, 0)
-				ac.Flight.Phase.PositionComplete = true
+				e.transitionToPhase(ac, flightphase.Approach, 0, 0)
+				e.updateLinearPosition(ac, airport)
 			} else {
 				e.updateGoAroundPosition(ac, airport)
 			}
@@ -1160,6 +1148,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if ac.Flight.Phase.PositionComplete {
 				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac)
 				e.transitionToPhase(ac, flightphase.TaxiIn, 0, 0)
+				e.updateTaxiPosition(ac, airport, false)
 			} else {
 				e.updateLinearPosition(ac, airport)
 			}
@@ -1614,7 +1603,7 @@ case flightphase.Departure:
                     progRatio = 1.0
                 }
 
-                util.LogDebugWithLabel(ac.Registration, "[TRACKING-DEEP-DIVE] Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f", 
+                util.LogDebugWithLabel(ac.Registration, "Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f", 
                 phase.String(), currentDistToTarget, totalPlannedDist, progRatio)
 
                 switch phase {
@@ -1653,7 +1642,7 @@ case flightphase.Departure:
 					if vrate < -4000.0 { vrate = -4000.0 }
 					if vrate > 3000.0  { vrate = 3000.0 }
 
-					util.LogDebugWithLabel(ac.Registration, "[ALTITUDE-DYNAMIC] TargetAlt: %0.2f | IntendedAlt: %0.2f | CalcVRate: %0.2f FPM | TimeRemaining: %0.2f Min", 
+					util.LogDebugWithLabel(ac.Registration, "TargetAlt: %0.2f | IntendedAlt: %0.2f | CalcVRate: %0.2f FPM | TimeRemaining: %0.2f Min", 
 						targetAlt, intendedAlt, vrate, timeRemainingMin)
 
 					// 4. Apply frame-based kinematic step tracking intendedAlt
@@ -1850,6 +1839,7 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
 	holding := ac.Flight.Holding
 	if holding == nil || holding.AssignedHold == nil {
+		util.LogErrWithLabel(ac.Registration, "updateHoldingPosition invoked but no hold assigned - possible bug")
 		return
 	}
 
@@ -1907,6 +1897,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		
 		// Mark the positional transition point
 		ac.Flight.Holding.ArrivedAtHoldFix = true
+		util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
 
 	}
 
@@ -2051,10 +2042,9 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 							continue
 						}
 
-						// If the localizer/approach corridor is full, skip this runway
-						approachCount, _, qLength := e.getArrivalSaturationStats(ac, airport)
-							
-						if approachCount > MAX_APPROACH_ON_APPROACH || qLength >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
+						// If the localizer/approach corridor is too busy, remain in hold
+						approachCount, _, _ := e.getArrivalSaturationStats(ac, airport)
+						if approachCount > MAX_APPROACH_ON_APPROACH {
 							continue
 						}
 
@@ -2078,8 +2068,10 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 			releasedAc.Flight.Holding.AssignedHold = nil
 			releasedAc.Flight.Holding.ExitingHold = true
+			util.LogDebugWithLabel(releasedAc.Registration, "released from hold fix %s", releasedAc.Flight.Holding.AssignedHold.Ident)
 
-			// Recalculate stack vertical positions for the remaining holding planes
+
+			// Recalculate stack vertical positions for the remaining holding aircraft
 			if releasedHold != nil {
 				e.reassignHoldStack(releasedHold)
 			}
@@ -3173,7 +3165,7 @@ func (e *D9TrafficEngine) getPhaseVerticalRateFpm(sizeClass string, phase flight
 }
 
 // getRunwayLock attempts to acquire a lock on the runway for the given aircraft.
-// returns true if the lock was successfully acquired, or false if the runway is already locked by another aircraft.
+// returns true if the lock was successfully acquired, or false if the runway is already locked by another aircraft, including the user.
 // If the runway is currently locked by the same aircraft, it will return true to allow them to maintain their lock.
 // If the runway is currently unlocked, it will be locked for the requesting aircraft with the current timestamp.
 func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *atc.Aircraft) bool {
@@ -3181,7 +3173,9 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 	rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
 
 	if e.AtcService.UserHasRunwayClearance(rwy) {
-		e.addToQueue(rwyLockKey, ac.Registration)
+		if ac.Flight.Phase.Class == flightclass.Departing {
+			e.addToQueue(rwyLockKey, ac.Registration)
+		}
 		return false
 	}
 
@@ -3203,13 +3197,17 @@ func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *at
 			OccupiedSince: e.AtcService.GetCurrentZuluTime(),
 		}
 		// we got the lock, so no longer queuing for the runway, remove queue entry
-		e.removeFromQueue(rwyLockKey, ac.Registration)
+		if ac.Flight.Phase.Class == flightclass.Departing {
+			e.removeFromQueue(rwyLockKey, ac.Registration)
+		}
 		util.LogWithLabel(ac.Registration, "acquired lock on runway %s at %s", rwy.Name, ap.ICAO)
 		return true
 	}
 
 	// did not obtain lock
-	e.addToQueue(rwyLockKey, ac.Registration)
+	if ac.Flight.Phase.Class == flightclass.Departing {
+		e.addToQueue(rwyLockKey, ac.Registration)
+	}
 	return false
 }
 

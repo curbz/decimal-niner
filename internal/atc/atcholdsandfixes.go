@@ -12,6 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
+	"github.com/curbz/decimal-niner/pkg/util"
 )
 
 type Hold struct {
@@ -144,7 +145,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
     airport := s.GetAirportByICAO(icao)
     originAp := s.GetAirportByICAO(ac.Flight.Origin)
 
-    // 1. Resolve Target Approach Constraints
+    // 1. Determine approach fix to use in preparation for hold exit
     if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit != nil {
         holding.TargetApproachFix = ac.Flight.AssignedSTAR.Exit.Fix
         holding.TargetApproachAlt = float64(ac.Flight.AssignedSTAR.Exit.ConstraintAlt)
@@ -265,6 +266,8 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 	holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
     holding.ArrivedAtHoldFix = false
     holding.ExitingHold = false
+
+	util.LogDebugWithLabel(ac.Registration, "assigned hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
 }
 
 // extract all holds from hold data file. returns two maps or an error
