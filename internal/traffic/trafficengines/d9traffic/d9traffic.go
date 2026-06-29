@@ -2068,11 +2068,10 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 			releasedAc.Flight.Holding.AssignedHold = nil
 			releasedAc.Flight.Holding.ExitingHold = true
-			util.LogDebugWithLabel(releasedAc.Registration, "released from hold fix %s", releasedAc.Flight.Holding.AssignedHold.Ident)
-
 
 			// Recalculate stack vertical positions for the remaining holding aircraft
 			if releasedHold != nil {
+				util.LogDebugWithLabel(releasedAc.Registration, "released from hold fix %s", releasedHold.Ident)
 				e.reassignHoldStack(releasedHold)
 			}
 		}
