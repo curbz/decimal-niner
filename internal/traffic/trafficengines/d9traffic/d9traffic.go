@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
+	"github.com/curbz/decimal-niner/internal/server"
 	"github.com/curbz/decimal-niner/internal/traffic"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
@@ -129,6 +131,16 @@ func (e *D9TrafficEngine) Start() {
 	ticker := time.NewTicker(10 * time.Second)
 	var lastSpawnMin int = -1 // Track the last minute we checked for spawns
 
+	radarServer := server.NewRadarServer()
+	http.Handle("/radar/stream", radarServer)
+	http.Handle("/", http.FileServer(http.Dir("./web")))
+	go func() {
+		util.LogWithLabel("D9TRAFFIC", "Starting decimal-niner server on :8096...")
+		if err := http.ListenAndServe(":8096", nil); err != nil && err != http.ErrServerClosed {
+			util.LogErrWithLabel("D9TRAFFIC", "Listen and serve failed: %v", err)
+		}
+	}()
+
 	go func() {
 		for range ticker.C {
 			start := time.Now()
@@ -163,6 +175,7 @@ func (e *D9TrafficEngine) Start() {
 			// Existing aircraft MUST move frequently to avoid "stepping" or "teleporting"
 			e.updateActiveAircraft(relevantICAOs)
 			e.manageHoldingReleases(relevantICAOs)
+			e.ServeRadarFrame(radarServer)
 
 			util.LogWithLabel("D9TRAFFIC", "update cycle duration: %v, total active aircraft: %d",
 				time.Since(start), len(e.ActiveAircraft))
@@ -3321,4 +3334,41 @@ func getReciprocalName(name string) string {
 	}
 
 	return fmt.Sprintf("%02d%s", recipNum, recipLetter)
+}
+
+func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
+	var blips []server.RadarBlip
+
+	// Lock or safely iterate through active aircraft
+	for _, ac := range e.ActiveAircraft {
+		if ac == nil {
+			continue
+		}
+		
+		typeOrClass := ac.Type
+		if typeOrClass == "" {
+			typeOrClass = ac.SizeClass
+		}
+
+		blips = append(blips, server.RadarBlip{
+			Callsign:  ac.Flight.Comms.Callsign,
+			Registration: ac.Registration, // e.g., "BAW308"
+			Aircraft:  typeOrClass,  // e.g., "A20N" or "C"
+			Lat:       ac.Flight.Position.Lat,
+			Lng:       ac.Flight.Position.Long,
+			Altitude:  ac.Flight.Position.Altitude,
+			Heading:   int(ac.Flight.Position.Heading),
+			Phase:     flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
+			Origin:	   ac.Flight.Origin,
+			Destination: ac.Flight.Destination,
+		})
+	}
+
+	snapshot := server.RadarSnapshot{
+		Timestamp: e.AtcService.GetCurrentZuluTime(),
+		Aircraft:  blips,
+	}
+
+	// Ship it to the streaming server
+	radarSrv.BroadcastSnapshot(snapshot)
 }

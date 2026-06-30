@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>decimal-niner | Radar Display</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #030a05;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #radarCanvas {
+            border: 2px solid #00441b;
+            background-color: #020703;
+            box-shadow: 0 0 30px rgba(0, 255, 102, 0.05);
+            cursor: ns-resize;
+        }
+        #status {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        
+        /* Control Box Overlay Panel */
+        #control-panel {
+            position: absolute;
+            top: 50px;
+            left: 15px;
+            width: 240px;
+            background-color: rgba(2, 7, 3, 0.9);
+            border: 1px solid #00441b;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.02);
+            z-index: 10;
+        }
+        #control-panel h3 {
+            margin: 0 0 15px 0;
+            font-size: 14px;
+            letter-spacing: 1px;
+            border-bottom: 1px dashed #00441b;
+            padding-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 11px;
+        }
+        .control-group label {
+            text-transform: uppercase;
+            cursor: pointer;
+            user-select: none;
+        }
+        .control-group input[type="checkbox"] {
+            accent-color: #00ff66;
+            cursor: pointer;
+            width: 14px;
+            height: 14px;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            font-size: 11px;
+            color: #006622;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+<div id="status">Radar Feed: Disconnected</div>
+
+<div id="control-panel">
+    <h3>Scope Controls</h3>
+    <div class="control-group">
+        <label for="toggleMap">Show Map Background</label>
+        <input type="checkbox" id="toggleMap" checked>
+    </div>
+    <div class="control-group">
+        <label for="toggleGround">Show Ground Traffic</label>
+        <input type="checkbox" id="toggleGround" checked>
+    </div>
+    <div class="control-group">
+        <label for="toggleCallsignOnly">Display Callsign Only</label>
+        <input type="checkbox" id="toggleCallsignOnly">
+    </div>
+    <div class="control-group">
+        <label for="toggleRegOnly">Display Reg Only</label>
+        <input type="checkbox" id="toggleRegOnly">
+    </div>
+</div>
+
+<canvas id="radarCanvas" width="800" height="800"></canvas>
+<div id="controls-hint">Scroll Mouse Wheel to Zoom Range</div>
+
+<script>
+    const canvas = document.getElementById('radarCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    
+    // UI Selectors
+    const toggleMapInput = document.getElementById('toggleMap');
+    const toggleGroundInput = document.getElementById('toggleGround');
+    const toggleCallsignOnlyInput = document.getElementById('toggleCallsignOnly');
+    const toggleRegOnlyInput = document.getElementById('toggleRegOnly');
+
+    // Control Configuration States
+    let showMapBackground = true;
+    let showGroundTraffic = true;
+    let displayCallsignOnly = false;
+    let displayRegOnly = false;
+
+    // UI Event Listeners
+    toggleMapInput.addEventListener('change', (e) => {
+        showMapBackground = e.target.checked;
+    });
+
+    toggleGroundInput.addEventListener('change', (e) => {
+        showGroundTraffic = e.target.checked;
+    });
+
+    toggleCallsignOnlyInput.addEventListener('change', (e) => {
+        displayCallsignOnly = e.target.checked;
+        if (displayCallsignOnly) {
+            displayRegOnly = false;
+            toggleRegOnlyInput.checked = false;
+        }
+    });
+
+    toggleRegOnlyInput.addEventListener('change', (e) => {
+        displayRegOnly = e.target.checked;
+        if (displayRegOnly) {
+            displayCallsignOnly = false;
+            toggleCallsignOnlyInput.checked = false;
+        }
+    });
+
+    // Radar Center Points (EGLL Heathrow Anchor)
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const maxRadius = canvas.width / 2 - 20;
+
+    const centerLat = 51.4700;
+    const centerLng = -0.4543;
+    
+    // Smooth trackpad settings matching 2NM scale capabilities
+    let radarRangeNM = 40;       
+    const minRangeNM = 2;        
+    const maxRangeNM = 120;      
+    const zoomStep = 2;          
+
+    let aircraftList = [];
+
+    // Geographic Airspace Layout Data
+    const mapVectors = [
+        { type: 'line', coords: [[51.4775, -0.4850], [51.4775, -0.4350]] }, // 09L/27R
+        { type: 'line', coords: [[51.4630, -0.4830], [51.4630, -0.4330]] }, // 09R/27L
+        { type: 'line', coords: [[50.81, -0.40], [50.79, -0.15], [50.78, 0.10], [50.92, 0.45], [51.10, 1.40]] }, // Southern Coastline
+        { type: 'line', coords: [[51.90, -0.90], [51.85, 0.30], [51.10, 0.50], [51.05, -0.80], [51.90, -0.90]] }  // TMA Sector Limits
+    ];
+
+    const mapFixes = [
+        { name: "BOV", lat: 51.7289, lng: -0.5517 },
+        { name: "LAM", lat: 51.6467, lng: 0.1528 },
+        { name: "BIG", lat: 51.3297, lng: 0.0347 },
+        { name: "OCK", lat: 51.3056, lng: -0.4481 }
+    ];
+
+    function coordinateToPixel(lat, lng) {
+        const latScale = maxRadius / (radarRangeNM / 60); 
+        const lngScale = latScale * Math.cos(centerLat * Math.PI / 180);
+
+        const x = centerX + (lng - centerLng) * lngScale;
+        const y = centerY - (lat - centerLat) * latScale; 
+        return { x, y };
+    }
+
+    const eventSource = new EventSource('/radar/stream');
+
+    eventSource.onopen = () => {
+        statusDiv.innerText = "Radar Feed: Live Sweep";
+        statusDiv.style.color = "#00ff66";
+    };
+
+    eventSource.onerror = () => {
+        statusDiv.innerText = "Radar Feed: Comms Failure";
+        statusDiv.style.color = "#ff3333";
+    };
+
+    eventSource.onmessage = (event) => {
+        const snapshot = JSON.parse(event.data);
+        aircraftList = snapshot.aircraft || [];
+    };
+
+    canvas.addEventListener('wheel', (event) => {
+        event.preventDefault(); 
+        const isPinch = event.ctrlKey;
+        const dampener = isPinch ? 30 : 100;
+        const zoomDelta = (event.deltaY / dampener) * zoomStep;
+        radarRangeNM = Math.min(maxRangeNM, Math.max(minRangeNM, radarRangeNM + zoomDelta));
+    });
+
+    function drawRadar() {
+        ctx.fillStyle = 'rgba(2, 7, 3, 1)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (showMapBackground) {
+            drawGeographicMap();
+        }
+
+        drawStaticOverlays();
+
+        aircraftList.forEach(ac => {
+            // Ground Traffic Filtering
+            const isOnGround = ac.alt <= 100 || ac.phase.toLowerCase() === "ground" || ac.phase.toLowerCase() === "taxi";
+            if (!showGroundTraffic && isOnGround) {
+                return;
+            }
+
+            const pos = coordinateToPixel(ac.lat, ac.lng);
+            const distFromCenter = Math.hypot(pos.x - centerX, pos.y - centerY);
+            if (distFromCenter > maxRadius) return;
+
+            // Target Blip
+            ctx.fillStyle = '#00ff66';
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Vector Leader Line
+            const vectorLength = 20; 
+            const rad = (ac.hdg - 90) * Math.PI / 180; 
+            ctx.strokeStyle = '#00ff66';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(pos.x + vectorLength * Math.cos(rad), pos.y + vectorLength * Math.sin(rad));
+            ctx.stroke();
+
+            // Render Target Data Block Text
+            ctx.fillStyle = '#00ff66';
+            ctx.font = '11px "Courier New"';
+            
+            let identityText = ac.callsign;
+            if (displayRegOnly) {
+                identityText = ac.registration || ac.reg || "NO REG";
+            }
+
+            if (displayCallsignOnly || displayRegOnly) {
+                // MINI MODE
+                ctx.fillText(identityText, pos.x + 10, pos.y + 4);
+            } else {
+                // FULL 4-ROW MODE
+                // Row 1: Flight Identity
+                ctx.fillText(identityText, pos.x + 10, pos.y - 5);
+                
+                // Row 2: Mode-C Altitude Block + Groundspeed Shorthand
+                const altText = String(Math.round(ac.alt / 100)).padStart(3, '0');
+                const speedText = Math.round(ac.gs / 10);
+                ctx.fillText(`${altText}⬿${speedText}`, pos.x + 10, pos.y + 8);
+                
+                // Row 3: Equipment Type (or Fallback Size Class) + Flight Phase
+                const typeText = ac.ac_type || ac.size_class || "UNKN";
+                ctx.fillText(`${typeText} ${ac.phase}`, pos.x + 10, pos.y + 20);
+
+                // Row 4: Route Profile Route Paths
+                const origin = ac.origin || "----";
+                const dest = ac.dest || "----";
+                ctx.fillText(`${origin} ${dest}`, pos.x + 10, pos.y + 32);
+            }
+        });
+
+        requestAnimationFrame(drawRadar);
+    }
+
+    function drawGeographicMap() {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0, 255, 102, 0.12)';
+        
+        mapVectors.forEach(vector => {
+            ctx.beginPath();
+            vector.coords.forEach((coord, index) => {
+                const pt = coordinateToPixel(coord[0], coord[1]);
+                if (index === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            });
+            ctx.stroke();
+        });
+
+        ctx.fillStyle = 'rgba(0, 255, 102, 0.25)';
+        ctx.font = '9px "Courier New"';
+        mapFixes.forEach(fix => {
+            const pt = coordinateToPixel(fix.lat, fix.lng);
+            ctx.beginPath();
+            ctx.moveTo(pt.x, pt.y - 3);
+            ctx.lineTo(pt.x + 3, pt.y + 3);
+            ctx.lineTo(pt.x - 3, pt.y + 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillText(fix.name, pt.x + 6, pt.y + 3);
+        });
+    }
+
+    function drawStaticOverlays() {
+        ctx.strokeStyle = 'rgba(0, 68, 27, 0.35)';
+        ctx.lineWidth = 1;
+        
+        const ringSpacingNM = radarRangeNM / 4;
+
+        for (let i = 1; i <= 4; i++) {
+            const radius = (maxRadius / 4) * i;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            ctx.fillStyle = 'rgba(0, 102, 34, 0.5)';
+            ctx.font = '10px "Courier New"';
+            const currentRingValue = (ringSpacingNM * i).toFixed(1);
+            ctx.fillText(`${currentRingValue}NM`, centerX + 5, centerY - radius + 12);
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(centerX, 20); ctx.lineTo(centerX, canvas.height - 20);
+        ctx.moveTo(20, centerY); ctx.lineTo(canvas.width - 20, centerY);
+        ctx.stroke();
+    }
+
+    drawRadar();
+</script>
+</body>
+</html>
