@@ -23,6 +23,8 @@ type RadarBlip struct {
 
 // RadarSnapshot is the frame package sent on every tick
 type RadarSnapshot struct {
+	CenterLat float64     `json:"center_lat"` // The coordinate the scope should center on
+	CenterLng float64     `json:"center_lng"`
 	Timestamp time.Time   `json:"timestamp"`
 	Aircraft  []RadarBlip `json:"aircraft"`
 }

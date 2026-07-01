@@ -152,8 +152,8 @@
     const centerY = canvas.height / 2;
     const maxRadius = canvas.width / 2 - 20;
 
-    const centerLat = 51.4700;
-    const centerLng = -0.4543;
+    let centerLat = 0.0;
+    let centerLng = 0.0;
     
     // Smooth trackpad settings matching 2NM scale capabilities
     let radarRangeNM = 40;       
@@ -161,22 +161,71 @@
     const maxRangeNM = 120;      
     const zoomStep = 2;          
 
-    let aircraftList = [];
+let aircraftList = [];
+    
+    // --- NEW GLOBAL MAP VECTOR STORAGE ---
+    let worldMapSegments = []; // Extracted line paths ready for rendering
 
-    // Geographic Airspace Layout Data
-    const mapVectors = [
-        { type: 'line', coords: [[51.4775, -0.4850], [51.4775, -0.4350]] }, // 09L/27R
-        { type: 'line', coords: [[51.4630, -0.4830], [51.4630, -0.4330]] }, // 09R/27L
-        { type: 'line', coords: [[50.81, -0.40], [50.79, -0.15], [50.78, 0.10], [50.92, 0.45], [51.10, 1.40]] }, // Southern Coastline
-        { type: 'line', coords: [[51.90, -0.90], [51.85, 0.30], [51.10, 0.50], [51.05, -0.80], [51.90, -0.90]] }  // TMA Sector Limits
-    ];
+    // Async loader for the Natural Earth Coastline GeoJSON
+    function loadGlobalCoastlines() {
+        statusDiv.innerText = "Loading Coastlines...";
+        
+        fetch('/ne_110m_coastline.geojson')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(geoJson => {
+                const segments = [];
+                
+                // GeoJSON streams data inside a "features" array
+                geoJson.features.forEach(feature => {
+                    const geometry = feature.geometry;
+                    if (!geometry) return;
 
-    const mapFixes = [
-        { name: "BOV", lat: 51.7289, lng: -0.5517 },
-        { name: "LAM", lat: 51.6467, lng: 0.1528 },
-        { name: "BIG", lat: 51.3297, lng: 0.0347 },
-        { name: "OCK", lat: 51.3056, lng: -0.4481 }
-    ];
+                    // Handle standard Lines (LineString)
+                    if (geometry.type === "LineString") {
+                        segments.push(processCoords(geometry.coordinates));
+                    } 
+                    // Handle broken lines / multi-islands (MultiLineString)
+                    else if (geometry.type === "MultiLineString") {
+                        geometry.coordinates.forEach(lineCoords => {
+                            segments.push(processCoords(lineCoords));
+                        });
+                    }
+                });
+
+                worldMapSegments = segments;
+                statusDiv.innerText = "Radar Feed: Live Sweep";
+                console.log(`Loaded ${worldMapSegments.length} geographic coastline segments.`);
+            })
+            .catch(err => {
+                console.error("Failed to load map file:", err);
+                statusDiv.innerText = "Radar Feed: Live (Map Error)";
+            });
+    }
+
+    // Helper to flip GeoJSON [Lng, Lat] to our canvas internal [Lat, Lng] expectation
+    // Also extracts a bounding box midpoint for high-performance screen culling
+    function processCoords(rawCoords) {
+        let sumLat = 0, sumLng = 0;
+        const converted = rawCoords.map(pt => {
+            const lng = pt[0];
+            const lat = pt[1];
+            sumLat += lat;
+            sumLng += lng;
+            return [lat, lng];
+        });
+
+        return {
+            coords: converted,
+            midLat: sumLat / rawCoords.length,
+            midLng: sumLng / rawCoords.length
+        };
+    }
+
+    // Fire the map network download instantly on boot
+    loadGlobalCoastlines();
 
     function coordinateToPixel(lat, lng) {
         const latScale = maxRadius / (radarRangeNM / 60); 
@@ -201,6 +250,13 @@
 
     eventSource.onmessage = (event) => {
         const snapshot = JSON.parse(event.data);
+        
+        if (snapshot.center_lat && snapshot.center_lng) {
+            centerLat = snapshot.center_lat;
+            centerLng = snapshot.center_lng;
+            locationInitialized = true;
+        }
+
         aircraftList = snapshot.aircraft || [];
     };
 
@@ -287,29 +343,31 @@
 
     function drawGeographicMap() {
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(0, 255, 102, 0.12)';
+        ctx.strokeStyle = 'rgba(0, 255, 102, 0.15)'; // Low-intensity phosphor tint
         
-        mapVectors.forEach(vector => {
+        // Convert your current radar range mileage into a rough degree threshold bounding box
+        // 1 Degree Latitude is approx 60 Nautical Miles. Pad by 1.5x for screen edges.
+        const degreeThreshold = (radarRangeNM / 60) * 1.5;
+
+        worldMapSegments.forEach(segment => {
+            // HIGH-PERFORMANCE CULLING GATE: 
+            // Skip the entire segment if its center point is nowhere near the aircraft's current view space
+            if (Math.abs(segment.midLat - centerLat) > degreeThreshold + 4 && 
+                Math.abs(segment.midLng - centerLng) > (degreeThreshold * 1.5) + 4) {
+                return; 
+            }
+
             ctx.beginPath();
-            vector.coords.forEach((coord, index) => {
+            segment.coords.forEach((coord, index) => {
                 const pt = coordinateToPixel(coord[0], coord[1]);
-                if (index === 0) ctx.moveTo(pt.x, pt.y);
-                else ctx.lineTo(pt.x, pt.y);
+                
+                if (index === 0) {
+                    ctx.moveTo(pt.x, pt.y);
+                } else {
+                    ctx.lineTo(pt.x, pt.y);
+                }
             });
             ctx.stroke();
-        });
-
-        ctx.fillStyle = 'rgba(0, 255, 102, 0.25)';
-        ctx.font = '9px "Courier New"';
-        mapFixes.forEach(fix => {
-            const pt = coordinateToPixel(fix.lat, fix.lng);
-            ctx.beginPath();
-            ctx.moveTo(pt.x, pt.y - 3);
-            ctx.lineTo(pt.x + 3, pt.y + 3);
-            ctx.lineTo(pt.x - 3, pt.y + 3);
-            ctx.closePath();
-            ctx.fill();
-            ctx.fillText(fix.name, pt.x + 6, pt.y + 3);
         });
     }
 

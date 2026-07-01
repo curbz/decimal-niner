@@ -3364,7 +3364,11 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 		})
 	}
 
+	userPos := e.AtcService.GetUserState().Position
+
 	snapshot := server.RadarSnapshot{
+		CenterLat: userPos.Lat,
+		CenterLng: userPos.Long,
 		Timestamp: e.AtcService.GetCurrentZuluTime(),
 		Aircraft:  blips,
 	}
