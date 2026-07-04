@@ -51,6 +51,7 @@ type Flight struct {
 	DepartureAccess     *AccessPoint
 	ClearedTOD          bool
 	Holding				*Holding
+	GroundSpeed		  	float64
 }
 
 type Holding struct {

@@ -734,7 +734,7 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	}
 	
 	e.assignPhaseInitialAltitude(newAc, initialPhaseIdx)
-
+	newAc.Flight.GroundSpeed = speedKts
 	newAc.Flight.Phase.LastUpdateTime = e.AtcService.GetCurrentZuluTime()
 
 	if initialPhaseIdx >= flightphase.Shutdown.Index() {
@@ -1526,9 +1526,7 @@ case flightphase.Departure:
     // 2. Calculate Distance Progressions Strictly from Current Positions
     totalPlannedDist := geometry.DistNM(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
     speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, phase)
-    if speedKts <= 0 {
-        speedKts = 180.0
-    }
+	ac.Flight.GroundSpeed = speedKts
 
     distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
 
@@ -1773,9 +1771,7 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 
     // 4. Calculate step progression from size-class performance metrics
     speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.TaxiOut)
-    if speedKts <= 0 {
-        speedKts = 15.0 // Defensive fallback
-    }
+	ac.Flight.GroundSpeed = speedKts
     distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
 
     // 5. Determine current progress by looking at how far the aircraft has physically progressed 
@@ -1892,10 +1888,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		if distToFix > 0.5 {
 			heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
 			holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-			if holdSpeed < 120.0 {
-				holdSpeed = 120.0
-			}
-			
+			ac.Flight.GroundSpeed = holdSpeed
 			distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
 			
 			nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
@@ -1931,10 +1924,11 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		
 		heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
 		holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-		if holdSpeed < 120.0 {
-			holdSpeed = 120.0
+		if holdSpeed < 180.0 {
+			holdSpeed = 180.0
 		}
-		
+		ac.Flight.GroundSpeed = holdSpeed
+
 		distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
 		
 		nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
@@ -1964,9 +1958,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	outboundCourse := geometry.NormalizeHeading(inboundCourse + 180.0)
 
 	holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-	if holdSpeed < 120.0 {
-		holdSpeed = 120.0
-	}
+	ac.Flight.GroundSpeed = holdSpeed
 
 	legMinutes := 1.0
 	legSeconds := legMinutes * 60.0
@@ -2271,10 +2263,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	}
 
     speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Cruise)
-    if speedKts <= 0 {
-        speedKts = 420.0
-    }
-    
+    ac.Flight.GroundSpeed = speedKts
     distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
     
     // Calculate raw distance to the target position
@@ -3071,25 +3060,43 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 	case flightphase.Takeoff:
 		switch sizeClass {
 		case "E", "F":
-			return 140.0
-		case "C", "D":
 			return 150.0
+		case "C", "D":
+			return 160.0
 		default:
-			return 120.0
+			return 155.0
 		}
 	case flightphase.Climbout, flightphase.Departure:
 		switch sizeClass {
 		case "E", "F":
-			return 155.0
-		case "C", "D":
 			return 165.0
+		case "C", "D":
+			return 175.0
 		default:
-			return 160.0
+			return 170.0
 		}
 	case flightphase.Cruise:
 		// Use a high nominal speed but Cruise uses its own interpolation logic elsewhere
 		return 420.0
-	case flightphase.Arrival, flightphase.Approach, flightphase.Final:
+	case flightphase.Arrival:
+		switch sizeClass {
+		case "E", "F":
+			return 230.0
+		case "C", "D":
+			return 230.0
+		default:
+			return 230.0
+		}
+	case flightphase.Approach:
+		switch sizeClass {
+		case "E", "F":
+			return 180.0
+		case "C", "D":
+			return 180.0
+		default:
+			return 180.0
+		}	
+	case flightphase.Final:
 		switch sizeClass {
 		case "E", "F":
 			return 150.0
@@ -3097,6 +3104,15 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 			return 140.0
 		default:
 			return 110.0
+		}
+	case flightphase.Holding:
+		switch sizeClass {
+		case "E", "F":
+			return 200.0
+		case "C", "D":
+			return 200.0
+		default:
+			return 200.0
 		}
 	case flightphase.Braking:
 		return 90.0
@@ -3361,6 +3377,7 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 			Phase:     flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
 			Origin:	   ac.Flight.Origin,
 			Destination: ac.Flight.Destination,
+			GroundSpeed: ac.Flight.GroundSpeed,
 		})
 	}
 

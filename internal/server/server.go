@@ -19,6 +19,7 @@ type RadarBlip struct {
 	Phase     string  `json:"phase"`
 	Origin	  string  `json:"origin"`
 	Destination	  string  `json:"dest"`
+	GroundSpeed float64 `json:"gs"`
 }
 
 // RadarSnapshot is the frame package sent on every tick

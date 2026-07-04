@@ -286,7 +286,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // matches what the client expects for that type (e.g., numeric arrays or
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
-	now := time.Now().Add(-2 * time.Hour)
+	now := time.Now()	//.Add(-2 * time.Hour)
 	hours, minutes, seconds := now.Clock()
 	switch name {
 	// com active datarefs
