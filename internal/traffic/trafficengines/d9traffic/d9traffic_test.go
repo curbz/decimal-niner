@@ -449,3 +449,153 @@ func setupMockEngine() *D9TrafficEngine {
 	}
 	return engine
 }
+
+
+// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors 
+// using precise test setups.
+// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors 
+// using precise test setups.
+func TestUpdateLateralApproach_Scenarios(t *testing.T) {
+	e := &D9TrafficEngine{}
+
+	tests := []struct {
+		name           string
+		rwyLat         float64
+		rwyLong        float64
+		rwyHdg         float64
+		acLat          float64
+		acLong         float64
+		initialHeading float64
+		dt             float64
+		expectedMinHdg float64
+		expectedMaxHdg float64
+	}{
+		{
+			name:           "Turn Rate Limiting - Right Turn Cap",
+			rwyLat:         0.0,
+			rwyLong:        0.0,
+			rwyHdg:         90.0,
+			acLat:          0.0,
+			acLong:         -0.125, // Point A for Rwy 09
+			initialHeading: 80.0,
+			dt:             1.0, // 3 deg/sec max change -> 83.0
+			expectedMinHdg: 82.99,
+			expectedMaxHdg: 83.01,
+		},
+		{
+			name:           "Turn Rate Limiting - Left Turn Cap",
+			rwyLat:         0.0,
+			rwyLong:        0.0,
+			rwyHdg:         90.0,
+			acLat:          0.0,
+			acLong:         -0.125,
+			initialHeading: 100.0,
+			dt:             2.0, // 3 * 2 = 6 deg max change -> 94.0
+			expectedMinHdg: 93.99,
+			expectedMaxHdg: 94.01,
+		},
+		{
+			name:           "Heading Wrap-around Crossing 360",
+			rwyLat:         0.0,
+			rwyLong:        0.0,
+			rwyHdg:         90.0,
+			acLat:          0.0,
+			acLong:         -0.125,
+			initialHeading: 359.0, // Shorter turn is right across 360 to get to 090
+			dt:             1.0,   // 3 deg turn -> 359 + 3 = 362 -> 2.0
+			expectedMinHdg: 1.99,
+			expectedMaxHdg: 2.01,
+		},
+		{
+			name:           "Heading Wrap-around Below 0",
+			rwyLat:         0.0,
+			rwyLong:        0.0,
+			rwyHdg:         270.0, // Changed to a West runway alignment
+			acLat:          0.0,
+			acLong:         0.125, // Positioned East of the runway on extended centerline
+			initialHeading: 1.0,   // Shorter turn to 270 is now left (counter-clockwise) across 0
+			dt:             1.0,   // 3 deg turn left -> 1 - 3 = -2 -> Wraps cleanly to 358.0
+			expectedMinHdg: 357.99,
+			expectedMaxHdg: 358.01,
+		},
+		{
+			name:           "Snap Directly to Target within Limiting Threshold",
+			rwyLat:         0.0,
+			rwyLong:        0.0,
+			rwyHdg:         90.0,
+			acLat:          0.0,
+			acLong:         -0.125,
+			initialHeading: 88.5,
+			dt:             1.0, // Max turn is 3.0, diff is 1.5 -> Lock to 90.0
+			expectedMinHdg: 89.99,
+			expectedMaxHdg: 90.01,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac := &atc.Aircraft{
+				Flight: atc.Flight{
+					Position: atc.Position{
+						Lat:     tt.acLat,
+						Long:    tt.acLong,
+						Heading: tt.initialHeading,
+					},
+				},
+			}
+
+			e.UpdateLateralApproach(ac, tt.rwyLat, tt.rwyLong, tt.rwyHdg, tt.dt)
+
+			actualHdg := ac.Flight.Position.Heading
+			if actualHdg < tt.expectedMinHdg || actualHdg > tt.expectedMaxHdg {
+				t.Errorf("Expected heading between %f and %f, got %f", tt.expectedMinHdg, tt.expectedMaxHdg, actualHdg)
+			}
+		})
+	}
+}
+
+// TestUpdateLateralApproach_ArcTurnPhase verifies that an aircraft on the North Intercept Circle
+// abandons the point segments and smoothly tracks the tangent vector of the tracking arc.
+// TestUpdateLateralApproach_ArcTurnPhase verifies that an aircraft on the North Intercept Circle
+// abandons the point segments and smoothly tracks the tangent vector of the tracking arc.
+func TestUpdateLateralApproach_ArcTurnPhase(t *testing.T) {
+	e := &D9TrafficEngine{}
+	
+	// Runway at (0.0, 0.0) Heading 090.0
+	// Point A is at (0.0, -0.125)
+	// North circle center (oN) is 1.5 NM North (heading 000) from Point A:
+	// Lat = 0.0 + (1.5 / 60) = 0.025, Long = -0.125
+	rwyLat := 0.0
+	rwyLong := 0.0
+	rwyHdg := 90.0
+
+	// Position aircraft exactly 1.5 NM East of the North circle center:
+	// oN Lat = 0.025, oN Long = -0.125
+	// Placing AC at Lat = 0.025, Long = -0.100 (which is exactly 1.5 NM away)
+	ac := &atc.Aircraft{
+		Flight: atc.Flight{
+			Position: atc.Position{
+				Lat:     0.025,
+				Long:    -0.100,
+				Heading: 0.0, // Tangent target heading for this radial should be 0.0 (Counter-Clockwise)
+			},
+		},
+	}
+
+	// Run with a large dt so it immediately matches the target heading if calculated correctly
+	e.UpdateLateralApproach(ac, rwyLat, rwyLong, rwyHdg, 10.0)
+
+	// Since the aircraft is directly on the East arc point of the North circle, 
+	// the bearing from center is 090. Tangent turn rules subtract 90 deg -> target is 000.0.
+	expectedHdg := 0.0
+	
+	// Compute the circular/angular difference instead of a naive scalar difference
+	diff := math.Abs(ac.Flight.Position.Heading - expectedHdg)
+	if diff > 180.0 {
+		diff = 360.0 - diff
+	}
+
+	if diff > 0.05 {
+		t.Errorf("Arc intercept phase failed. Expected tangent tracking heading near %f, got %f (angular diff: %f)", expectedHdg, ac.Flight.Position.Heading, diff)
+	}
+}

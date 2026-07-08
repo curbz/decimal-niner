@@ -1531,46 +1531,15 @@ case flightphase.Departure:
     distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
 
     if phase == flightphase.Approach {
-        // --- Specialized Distance Approach Tracking Segment ---
-        interceptPos := atc.Position{}
-        interceptPos.Lat, interceptPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.InterceptLOCProjectNM)
-        
-        distToIntercept := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, interceptPos.Lat, interceptPos.Long)
+
+		// set heading
+		e.UpdateLateralApproach(ac, rwy.Lat, rwy.Lon, rwy.Heading, deltaTimeSec)
+		if ac.Flight.Phase.PositionComplete {
+			util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long))
+			return
+		}
         distToFinalTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-
-        isAlreadyTracked := math.Abs(ac.Flight.Position.Heading - rwy.Heading) < 2.0 || math.Abs(ac.Flight.Position.Heading - rwy.Heading) > 358.0
-        isEstablished := (distToIntercept <= 0.1) || isAlreadyTracked
-
-        if !isEstablished { 
-            heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, interceptPos.Lat, interceptPos.Long)
-            frameDistNM := (speedKts / 3600.0) * deltaTimeSec
-
-            if distToIntercept <= frameDistNM {
-                ac.Flight.Position.Lat = interceptPos.Lat
-                ac.Flight.Position.Long = interceptPos.Long
-                heading = rwy.Heading
-                isEstablished = true
-                util.LogWithLabel(ac.Registration, "Intercept point crossed. Snapping to localizer track.")
-            } else {
-                ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distanceMovedThisTick)
-            }
-        } else {
-            heading = rwy.Heading
-            ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distanceMovedThisTick)
-            
-            frameDistNM := (speedKts / 3600.0) * deltaTimeSec
-
-            if distToFinalTarget <= frameDistNM || distToFinalTarget < 0.1 {
-                util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", distToFinalTarget)
-                ac.Flight.Position.Lat = targetPos.Lat
-                ac.Flight.Position.Long = targetPos.Long
-                ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-                ac.Flight.Phase.PositionComplete = true
-                return
-            }
-        }
-        
-        ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 
         if distToFinalTarget > 0 {
             altitudeToLose := ac.Flight.Position.Altitude - targetAlt
@@ -1586,11 +1555,6 @@ case flightphase.Departure:
 
         airportElev := atc.GetElevation(ctxAp, rwy)
         segmentFloor := airportElev + 1000.0 
-        
-        if isEstablished {
-            segmentFloor = targetAlt
-        }
-
         if segmentFloor < airportElev {
             segmentFloor = airportElev
         }
@@ -3081,9 +3045,9 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 	case flightphase.Arrival:
 		switch sizeClass {
 		case "E", "F":
-			return 230.0
+			return 240.0
 		case "C", "D":
-			return 230.0
+			return 240.0
 		default:
 			return 230.0
 		}
@@ -3094,7 +3058,7 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 		case "C", "D":
 			return 180.0
 		default:
-			return 180.0
+			return 170.0
 		}	
 	case flightphase.Final:
 		switch sizeClass {
@@ -3103,19 +3067,19 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 		case "C", "D":
 			return 140.0
 		default:
-			return 110.0
+			return 130.0
 		}
 	case flightphase.Holding:
 		switch sizeClass {
 		case "E", "F":
-			return 200.0
+			return 220.0
 		case "C", "D":
-			return 200.0
+			return 220.0
 		default:
 			return 200.0
 		}
 	case flightphase.Braking:
-		return 90.0
+		return 100.0
 	default:
 		return 120.0
 	}
@@ -3392,4 +3356,149 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 
 	// Ship it to the streaming server
 	radarSrv.BroadcastSnapshot(snapshot)
+}
+
+// UpdateLateralApproach handles pure lateral localizer tracking based on geometric segments.
+// It modifies only the heading of the aircraft, completely safeguarding altitude profiles.
+func (e *D9TrafficEngine) UpdateLateralApproach(ac *atc.Aircraft, rwyLat, rwyLong, rwyHdg float64, dt float64) {
+
+	// Constants for flat-earth coordinate conversions over short distances
+	const nmToDegLat = 1.0 / 60.0
+	cosLat := math.Cos(rwyLat * math.Pi / 180.0)
+
+	// 1. Calculate Point A (7.5 NM out on the reciprocal runway heading)
+	recipHdgRad := (rwyHdg + 180.0) * math.Pi / 180.0
+	pA_Lat := rwyLat + (7.5 * nmToDegLat) * math.Cos(recipHdgRad)
+	pA_Long := rwyLong + (7.5 * nmToDegLat / cosLat) * math.Sin(recipHdgRad)
+
+	// 2. Calculate Circle Centers (Diameter 3NM -> Radius = 1.5 NM)
+	northHdgRad := (rwyHdg - 90.0) * math.Pi / 180.0
+	oN_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(northHdgRad)
+	oN_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(northHdgRad)
+
+	southHdgRad := (rwyHdg + 90.0) * math.Pi / 180.0
+	oS_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(southHdgRad)
+	oS_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(southHdgRad)
+
+	// Current Aircraft Position (Matching your exact .Long struct naming)
+	acLat := ac.Flight.Position.Lat
+	acLong := ac.Flight.Position.Long
+
+	// Local self-contained geometry helpers to eliminate compiler dependencies
+	calcDist := func(lat1, lon1, lat2, lon2 float64) float64 {
+		dLat := (lat2 - lat1) * 60.0
+		dLon := (lon2 - lon1) * 60.0 * math.Cos(lat1*math.Pi/180.0)
+		return math.Sqrt(dLat*dLat + dLon*dLon)
+	}
+
+	calcBearing := func(lat1, lon1, lat2, lon2 float64) float64 {
+		dLat := lat2 - lat1
+		dLon := lon2 - lon1
+		brg := math.Atan2(dLon*math.Cos(lat1*math.Pi/180.0), dLat) * 180.0 / math.Pi
+		for brg < 0 {
+			brg += 360.0
+		}
+		for brg >= 360.0 {
+			brg -= 360.0
+		}
+		return brg
+	}
+
+	normDiff := func(target, current float64) float64 {
+		diff := target - current
+		for diff < -180.0 {
+			diff += 360.0
+		}
+		for diff > 180.0 {
+			diff -= 360.0
+		}
+		return diff
+	}
+
+	distToON := calcDist(acLat, acLong, oN_Lat, oN_Long)
+	distToOS := calcDist(acLat, acLong, oS_Lat, oS_Long)
+
+	// Determine if aircraft is North or South of the extended centerline
+	brgFromA := calcBearing(pA_Lat, pA_Long, acLat, acLong)
+	relBrgFromA := normDiff(brgFromA, rwyHdg)
+	isNorthSide := relBrgFromA < 0
+
+	var targetLat, targetLong float64
+	var targetHeading float64
+	isOnArc := false
+
+	// Check if aircraft has arrived at its intercept circle (Radius 1.5 NM + small entry threshold)
+	if isNorthSide && distToON <= 1.55 {
+		isOnArc = true
+	} else if !isNorthSide && distToOS <= 1.55 {
+		isOnArc = true
+	}
+
+	if isOnArc {
+		// SMOOTH TURN PHASE: Ditch the points and guide along the circle's tangent vector to Point A
+		if isNorthSide {
+			radialBrg := calcBearing(oN_Lat, oN_Long, acLat, acLong)
+			targetHeading = radialBrg - 90.0 // Counter-clockwise turn flow
+		} else {
+			radialBrg := calcBearing(oS_Lat, oS_Long, acLat, acLong)
+			targetHeading = radialBrg + 90.0 // Clockwise turn flow
+		}
+	} else {
+		// STRAIGHT TRAJECTORY PHASE: Match current segment to target point
+		hdgDiff := math.Abs(normDiff(ac.Flight.Position.Heading, rwyHdg))
+
+		if isNorthSide {
+			if hdgDiff > 65.0 {
+				// Segment U -> Target Point C (West edge of North circle)
+				cBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
+				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(cBrgRad)
+				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(cBrgRad)
+			} else if hdgDiff > 30.0 {
+				// Segment V -> Target Point B (South-West edge of North circle)
+				bBrgRad := (rwyHdg + 225.0) * math.Pi / 180.0
+				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(bBrgRad)
+				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(bBrgRad)
+			} else {
+				// Segment W -> Target Point A
+				targetLat, targetLong = pA_Lat, pA_Long
+			}
+		} else {
+			if hdgDiff > 65.0 {
+				// Segment Z -> Target Point E (West edge of South circle)
+				eBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
+				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(eBrgRad)
+				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(eBrgRad)
+			} else if hdgDiff > 30.0 {
+				// Segment X -> Target Point D (North-West edge of South circle)
+				dBrgRad := (rwyHdg + 135.0) * math.Pi / 180.0
+				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(dBrgRad)
+				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(dBrgRad)
+			} else {
+				// Segment Y -> Target Point A
+				targetLat, targetLong = pA_Lat, pA_Long
+			}
+		}
+		targetHeading = calcBearing(acLat, acLong, targetLat, targetLong)
+	}
+
+	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
+	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
+		targetHeading = rwyHdg
+		ac.Flight.Phase.PositionComplete = true
+	}
+
+	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
+	maxTurnChange := 3.0 * dt
+	turnDiff := normDiff(targetHeading, ac.Flight.Position.Heading)
+	if math.Abs(turnDiff) <= maxTurnChange {
+		ac.Flight.Position.Heading = targetHeading
+	} else {
+		if turnDiff > 0 {
+			ac.Flight.Position.Heading += maxTurnChange
+		} else {
+			ac.Flight.Position.Heading -= maxTurnChange
+		}
+	}
+
+	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading)
 }
