@@ -50,6 +50,7 @@ type Runway struct {
 	Width                    float64 // Width in meters
 	ThresholdElevation       float64 // feet
 	FAFalt                   int     // Final approach fix altitude
+	FAFdistNM				 float64 // Final approach fix distance from threshold
 	MAalt                    int     // highest missed approach altitude
 	MAHeading                int     // initial MA course (degrees)
 	MAFix                    string
@@ -119,6 +120,8 @@ type NamedNode struct {
 const (
 	DEPARTURE_CONTEXT = 0
 	ARRIVAL_CONTEXT   = 1
+	PROC_TYPE_SID 	  = 0
+	PROC_TYPE_STAR	  = 1
 )
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -177,92 +180,101 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 	return spot
 }
 
+
+func (s *Service) GetMatchingSID(airport *Airport, depRwy *Runway, destAirport *Airport) *Procedure {
+    // FIX: Guard against a nil destAirport to avoid an absolute pointer panic
+    if depRwy == nil || len(depRwy.SIDs) == 0 || destAirport == nil {
+        return nil
+    }
+
+    // Vector pointing from London to Milan (~140°)
+    bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+
+    var bestSID *Procedure
+    minDiff := 360.0
+
+    for i := range depRwy.SIDs {
+        sid := depRwy.SIDs[i]
+        // Vector pointing from London to the SID exit fix.
+        // For a southbound exit fix, this correctly shoots Southeast (~130°), cleanly matching the target.
+        sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+        
+        diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
+        if diff < minDiff {
+            minDiff = diff
+            bestSID = sid
+        }
+    }
+    
+    return bestSID
+}
+
 func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
+    destAirport := s.GetAirportByICAO(ac.Flight.Destination)
+    if destAirport == nil {
+        util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
+        return
+    }
 
-	if depRwy == nil {
-		util.LogErrWithLabel(ac.Registration, "unable to assign SID as no runway provided (nil)")
-		return
+    bestSID := s.GetMatchingSID(airport, depRwy, destAirport)
+
+    if bestSID != nil {
+        ac.Flight.AssignedSID = bestSID
+        util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
+    } else {
+		util.LogWithLabel(ac.Registration, "no assigned SID")
 	}
+}
 
-	//SID assignment
-	destAirport := s.GetAirportByICAO(ac.Flight.Destination)
-	if destAirport == nil {
-		util.LogWarnWithLabel(ac.Registration, "destination airport %s not found - unable to assign SID", ac.Flight.Destination)
-		return
-	}
+func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport *Airport) *Procedure {
+    if arrRwy == nil || len(arrRwy.STARs) == 0 || origAirport == nil {
+        return nil
+    }
 
-	// Calculate the bearing from the airport to the destination
-	bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
+    // Vector pointing from Milan to London (~320°)
+    bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
 
-	var bestSID *Procedure
-	minDiff := 360.0
+    var bestSTAR *Procedure
+    minDiff := 360.0
 
-	for i := range depRwy.SIDs {
-		sid := depRwy.SIDs[i]
-		// For a SID, we look at the EXIT fix (where the plane enters the enroute structure)
-		sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
-
-		diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
-		if diff < minDiff {
-			minDiff = diff
-			bestSID = sid
-		}
-	}
-
-	if bestSID != nil {
-		ac.Flight.AssignedSID = bestSID
-		util.LogWithLabel(ac.Registration, "assigned %s SID", bestSID.Name)
-		return
-	}
-
+    for i := range arrRwy.STARs {
+        star := arrRwy.STARs[i]
+        
+        // FIX: Calculate bearing FROM the entry fix TO the destination airport
+        // For a southern fix, this will point North/Northwest (~340° to 360°), cleanly matching a 320° arrival vector.
+        starBearing := geometry.CalculateBearing(star.Entry.Fix.Lat, star.Entry.Fix.Lon, airport.Lat, airport.Lon)
+        
+        diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
+        if diff < minDiff {
+            minDiff = diff
+            bestSTAR = star
+        }
+    }
+    
+    return bestSTAR
 }
 
 func (s *Service) AssignSTAR(ac *Aircraft, airport *Airport, arrRwy *Runway) {
+    if arrRwy == nil {
+        util.LogErrWithLabel(ac.Registration, "unable to assign STAR: nil runway")
+        return
+    }
 
-	if arrRwy == nil {
-		util.LogErrWithLabel(ac.Registration, "unable to assign STAR as no runway provided (nil)")
-		return
-	}
+    // STAR assignment probability check
+    if rand.Float32() < constants.STARProbabilityFactor {
+        origAirport := s.GetAirportByICAO(ac.Flight.Schedule.IcaoOrigin)
+        bestSTAR := s.GetMatchingSTAR(airport, arrRwy, origAirport)
 
-	// 30% probability of STAR assignment to allow for vectoring as alternative
-	if rand.Float32() < constants.STARProbabilityFactor && len(arrRwy.STARs) > 0 {
-		var bestSTAR *Procedure
-		minDiff := 360.0
+        if bestSTAR != nil {
+            ac.Flight.AssignedSTAR = bestSTAR
+            util.LogWithLabel(ac.Registration, "assigned STAR %s", bestSTAR.Name)
+            return
+        }
+    }
 
-		origAirport := s.GetAirportByICAO(ac.Flight.Origin)
-		if origAirport == nil {
-			util.LogWarnWithLabel(ac.Registration, "origin airport %s not found - unable to assign STAR", ac.Flight.Origin)
-			ac.Flight.Vectoring = true
-			util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
-			return
-		}
-
-		// Calculate the bearing from the origin to the destination
-		bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
-
-		for i := range arrRwy.STARs {
-			star := arrRwy.STARs[i]
-			// For a STAR, we look at the ENTRY fix (where the plane starts the arrival)
-			starBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
-
-			diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
-			if diff < minDiff {
-				minDiff = diff
-				bestSTAR = star
-			}
-		}
-
-		if bestSTAR != nil {
-			ac.Flight.AssignedSTAR = bestSTAR
-			util.LogWithLabel(ac.Registration, "assigned STAR %s", bestSTAR.Name)
-			return
-		}
-	} else {
-		ac.Flight.Vectoring = true
-		util.LogWithLabel(ac.Registration, "no arrival procedure assigned - aircraft will be vectored to runway by ATC")
-		return
-	}
-
+    // Fallback to vectoring
+    ac.Flight.Vectoring = true
+    util.LogWithLabel(ac.Registration, "no arrival procedure assigned - vectoring to runway")
 }
 
 // assignRunwayAccessPoint assigns the runway access or exit point depending on whether the arrOrDep flag
@@ -856,6 +868,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 	var rw Runway // keep as value - not pointer
 	var inApproach bool
 	var currentAppType string
+	FAFdistNM := 0.0
 
 	saveApproach := func() {
 		if !inApproach || currentRunway == "" {
@@ -962,8 +975,9 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 					pFix.ConstraintAlt = atOrBelow
 					pFix.ConstraintType = 2
 				}
-
-				currentProc.Legs = append(currentProc.Legs, pFix)
+				if fields[11] == "TF" || fields[11] == "DF" {
+					currentProc.Legs = append(currentProc.Legs, pFix)
+				}
 			}
 			continue
 		}
@@ -1038,7 +1052,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 		// Route/segment type: A, I, L, etc.
 		routeType := strings.TrimSpace(fields[1])
-		isFinal := routeType == "I" || routeType == "L" || routeType == "R" || routeType == "N"
+		isFinalAppch := routeType == "I" || routeType == "L" || routeType == "R" || routeType == "N"
 
 		// Start of a new approach
 		if strings.HasPrefix(fields[0], "APPCH:010") {
@@ -1049,7 +1063,8 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 			inApproach = true
 			currentRunway = ""
 			rw = Runway{}
-			currentAppType = ""
+			currentAppType = ""	
+			FAFdistNM = 0.0
 			sawRunwayLeg = false
 
 			// Extract approach type from approach name
@@ -1096,15 +1111,8 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 		atOrBelow := strings.TrimSpace(fields[25])
 		alt := lowestAltitudeOf(atAlt, atOrAbove, atOrBelow)
 
-		// FAF detection (FFxx or FIxx)
-		if (strings.HasPrefix(fix, "FF") || strings.HasPrefix(fix, "FI")) && alt >= 0 {
-			if rw.FAFalt == 0 || alt < rw.FAFalt {
-				rw.FAFalt = alt
-			}
-		}
-
 		// Missed-approach detection (final segment only)
-		isMA := isFinal && (strings.HasPrefix(fix, "MA") ||
+		isMA := isFinalAppch && (strings.HasPrefix(fix, "MA") ||
 			strings.HasPrefix(fix, "RW") ||
 			strings.HasPrefix(fix, "FD") ||
 			strings.HasPrefix(fix, "CI") ||
@@ -1118,9 +1126,30 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 			rw.MAalt = alt
 		}
 
+		// accumulate distances to determine FAF distance from runway threshold
+		if fix != "" && isFinalAppch && rw.FAFalt > 0 {
+			distStr := strings.TrimSpace(fields[21])
+			if dist, err := strconv.Atoi(distStr); err == nil {
+				FAFdistNM = FAFdistNM + (float64(dist) / 10.0)
+			}
+		}
+
+		// FAF detection (FFxx or FIxx)
+		if (strings.HasPrefix(fix, "FF") || strings.HasPrefix(fix, "FI")) && alt >= 0 {
+			if rw.FAFalt == 0 || alt < rw.FAFalt {
+				rw.FAFalt = alt
+			}
+			// set FAFdist to zero as we calculate from here onwards
+			FAFdistNM = 0.0
+		}
+
 		// Detect RW leg
 		if strings.HasPrefix(fix, "RW") {
 			sawRunwayLeg = true
+			if FAFdistNM > 0 {
+				rw.FAFdistNM = FAFdistNM
+				FAFdistNM = 0.0
+			}
 		}
 
 		// Capture missed-approach heading
@@ -1154,7 +1183,7 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 
 			// 2. Calculate Length if missing
 			if rw.Length == 0 {
-				rw.Length = geometry.CalculateDistanceFeet(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
+				rw.Length = geometry.DistanceInMeters(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
 			}
 
 			// 3. Fallback for Elevation (if end B is 0.0, use end A)
@@ -1192,14 +1221,14 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 			Type: p.Type,
 		}
 
-		// Assign Entry/Exit based on sequence order
-		newProc.Entry = &p.Legs[0]
-		newProc.Exit = &p.Legs[len(p.Legs)-1]
-
 		// Attach to the appropriate Runway(s)
 		for name, rw := range runways {
 			// If the procedure is for "ALL" runways or matches the name (e.g., "09L")
 			if p.RunwayName == "ALL" || p.RunwayName == name {
+				// We must have 2 fixes
+				if len(p.Legs) == 1 {
+					p.Legs = SynthesizeProcedureLegs(rw, p.Legs[0], p.Type)
+				}
 				if p.Type == 0 { // SID
 					rw.SIDs = append(rw.SIDs, newProc)
 				} else { // STAR
@@ -1207,6 +1236,10 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 				}
 			}
 		}
+		
+		// Assign Entry/Exit based on sequence order - must be performed AFTER creating any required synthesized fixes
+		newProc.Entry = &p.Legs[0]
+		newProc.Exit = &p.Legs[len(p.Legs)-1]
 	}
 }
 
@@ -1368,6 +1401,11 @@ func mergeRunway(existing *Runway, incoming Runway, appType string) {
 		existing.FAFalt = incoming.FAFalt
 	}
 
+	// FAFdistNM: keep smallest non-zero
+	if incoming.FAFdistNM > 0 && (existing.FAFdistNM == 0 || incoming.FAFdistNM < existing.FAFdistNM) {
+		existing.FAFdistNM = incoming.FAFdistNM
+	}
+
 	// MAalt: keep highest
 	if incoming.MAalt > existing.MAalt {
 		existing.MAalt = incoming.MAalt
@@ -1473,12 +1511,8 @@ func getAirportICAObyPhaseClass(ac *Aircraft) string {
 	switch ac.Flight.Phase.Class {
 	case flightclass.PreflightParked, flightclass.Departing:
 		return ac.Flight.Origin
-	case flightclass.Cruising:
-		return ""
-	case flightclass.Arriving, flightclass.PostflightParked:
-		return ac.Flight.Destination
 	default:
-		return ""
+		return ac.Flight.Destination
 	}
 }
 
@@ -1812,13 +1846,92 @@ func GetElevation(ap *Airport, rwy *Runway) float64 {
 
 func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
 
-	// Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
-	minSafeCrossingAlt := ap.Elevation + constants.MinSafeCrossingAltFt
-
-	if baseAlt < minSafeCrossingAlt {
-		// Elevate the transition crossing point to match the high terrain profile
-		// and round it cleanly to a standard aviation flight level block
-		baseAlt = math.Ceil(minSafeCrossingAlt / 1000.0) * 1000.0
+    // Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
+    minSafeCrossingAlt := float64(constants.MinSafeCrossingAltFt)
+	if ap != nil {
+		minSafeCrossingAlt = minSafeCrossingAlt + ap.Elevation
 	}
-	return baseAlt
+
+    if baseAlt < minSafeCrossingAlt {
+        // Smoothly hold the aircraft right at the minimum safety floor limit
+        // instead of bouncing it back up to the next flight level ceiling block.
+        baseAlt = minSafeCrossingAlt
+    }
+    return baseAlt
+}
+
+// SynthesizeProcedureLegs evaluates a single-fix procedure and returns a complete 2-leg sequence
+func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureType int) []ProcedureFix {
+    // 1. Core math setup: Project a point off the runway threshold
+    // For a SID, we project forward along runway heading.
+    // For a STAR, we project backward (reciprocal heading) to create an approach gate.
+    var projectHeading float64
+    var distanceNM float64
+    if procedureType == PROC_TYPE_SID {
+        projectHeading = rwy.Heading
+        distanceNM = 7.0
+    } else {
+        projectHeading = math.Mod(rwy.Heading+180.0, 360.0)
+        distanceNM = 15.0
+    }
+
+    bearingRad := projectHeading * math.Pi / 180.0
+    latRad := rwy.Lat * math.Pi / 180.0
+    lonRad := rwy.Lon * math.Pi / 180.0
+    angularDist := distanceNM / geometry.EarthRadiusNM
+
+    targetLatRad := math.Asin(math.Sin(latRad)*math.Cos(angularDist) +
+        math.Cos(latRad)*math.Sin(angularDist)*math.Cos(bearingRad))
+
+    targetLonRad := lonRad + math.Atan2(
+        math.Sin(bearingRad)*math.Sin(angularDist)*math.Cos(latRad),
+        math.Cos(angularDist)-math.Sin(latRad)*math.Sin(targetLatRad),
+    )
+    targetLonRad = math.Mod(targetLonRad+3*math.Pi, 2*math.Pi) - math.Pi
+
+    // 2. Build the underlying raw Fix object
+    var ident, fullName string
+    if procedureType == PROC_TYPE_SID {
+        ident = existingFix.Fix.Ident + "-SID-ENT"
+        fullName = fmt.Sprintf("Synthetic Departure Entry RWY %s", rwy.Name)
+    } else {
+        ident = existingFix.Fix.Ident + "-STAR-EXT"
+        fullName = fmt.Sprintf("Synthetic Arrival Exit RWY %s", rwy.Name)
+    }
+
+    syntheticRawFix := Fix{
+        Ident:    ident,
+        Region:   existingFix.Fix.Region,
+        FullName: fullName,
+        Lat:      targetLatRad * 180.0 / math.Pi,
+        Lon:      targetLonRad * 180.0 / math.Pi,
+        Hold:     nil,
+    }
+
+    // 3. Wrap it into a ProcedureFix with live vertical constraints from the Runway object
+    syntheticProcFix := ProcedureFix{
+        Fix:            &syntheticRawFix,
+        ConstraintType: 1, // At or Above
+    }
+
+    if procedureType == PROC_TYPE_SID {
+        // SIDs: Standard safe climb/acceleration floor above the threshold elevation
+        syntheticProcFix.ConstraintAlt = int(rwy.ThresholdElevation) + 3000
+    } else {
+        // STARs: Target the explicit Final Approach Fix intercept platform altitude
+        if rwy.FAFalt > 0 {
+            syntheticProcFix.ConstraintAlt = rwy.FAFalt
+        } else {
+            syntheticProcFix.ConstraintAlt = int(rwy.ThresholdElevation) + 3000 // Smart fallback
+        }
+    }
+
+    // 4. Assemble the array in chronological flight order
+    if procedureType == PROC_TYPE_SID {
+        // Flight path is: Synthetic Entry -> Your Parsed Exit Waypoint
+        return []ProcedureFix{syntheticProcFix, existingFix}
+    } else {
+        // Flight path is: Your Parsed Entry Waypoint -> Synthetic Exit Gate
+        return []ProcedureFix{existingFix, syntheticProcFix}
+    }
 }

@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/curbz/decimal-niner/internal/constants"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/pkg/geometry"
+	"github.com/curbz/decimal-niner/pkg/util"
 )
 
 type Hold struct {
@@ -137,7 +139,66 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 // is a defined hold, this will be the assigned hold.
 // For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
 func (s *Service) AssignHold(ac *Aircraft, icao string) {
+    holding := &Holding{}
+    ac.Flight.Holding = holding
 
+    airport := s.GetAirportByICAO(icao)
+    originAp := s.GetAirportByICAO(ac.Flight.Origin)
+
+    // 1. Determine approach fix to use in preparation for hold exit
+    if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit != nil {
+        holding.TargetApproachFix = ac.Flight.AssignedSTAR.Exit.Fix
+        holding.TargetApproachAlt = float64(ac.Flight.AssignedSTAR.Exit.ConstraintAlt)
+    }
+
+    if holding.TargetApproachFix == nil {
+        var star *Procedure
+        // Only look for a STAR if the destination airport object actually exists
+        if airport != nil {
+            star = s.GetMatchingSTAR(airport, ac.Flight.AssignedRunway, originAp)
+        }
+        
+        if star != nil && star.Exit != nil {
+            holding.TargetApproachFix = star.Exit.Fix
+            holding.TargetApproachAlt = float64(star.Exit.ConstraintAlt)
+        } else {
+			// Reciprocal runway heading projection straight down the extended centerline
+			var projectHeading float64
+			if ac.Flight.AssignedRunway != nil {
+				projectHeading = math.Mod(ac.Flight.AssignedRunway.Heading+180.0, 360.0)
+			} else if originAp != nil && airport != nil {
+				routeBearing := geometry.CalculateBearing(originAp.Lat, originAp.Lon, airport.Lat, airport.Lon)
+				projectHeading = geometry.NormalizeHeading(routeBearing + 180.0)
+			} else {
+				projectHeading = 0.0 // absolute fallback if completely blind
+			}
+
+			// Establish a safe anchor reference coordinate block
+			refLat, refLon := 51.470, -0.454 // Default to global center baseline if missing
+			if airport != nil {
+				refLat, refLon = airport.Lat, airport.Lon
+			}
+
+			targetLat, targetLon := geometry.Project(refLat, refLon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
+			holding.TargetApproachFix = &Fix{
+				Lat:      targetLat,
+				Lon:      targetLon,
+				Ident:    "SYN-APPR",
+				FullName: "Synthetic Approach Transition Gate",
+			}
+		}
+	}
+
+	// Safety fallback for vertical profiling floor
+	if holding.TargetApproachAlt == 0.0 {
+		var airportElev float64
+		if airport != nil {
+			airportElev = GetElevation(airport, ac.Flight.AssignedRunway)
+		}
+		holding.TargetApproachAlt = airportElev + float64(constants.DefaultArrivalExitApproachEntryAltFt)
+	}
+
+	// 2. Resolve Active Hold Spatial Point Location
 	lat := ac.Flight.Position.Lat
 	lng := ac.Flight.Position.Long
 	runway := ac.Flight.AssignedRunwayName
@@ -147,44 +208,34 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 	lonRad := geometry.DegToRad(lng)
 	ux, uy, uz := toUnit(latRad, lonRad)
 
-	// 1. Get the Airport from the Service
-	airport, airportExists := s.Airports[icao]
-
-	// 2. Handle Prioritization Logic
-	if airportExists && len(airport.Holds) > 0 {
-
+	// DEFENSIVE GUARD: Verify the airport pointer isn't nil before checking its local holds
+	if airport != nil && len(airport.Holds) > 0 {
 		// A. GO-AROUND: Specifically look for the MAFix
 		if phase == flightphase.GoAround.Index() {
-			// Find the MAFix name for the specific runway
-			// runway is normalized (e.g., "27R")
 			var targetFix string
 			if r, ok := airport.Runways[runway]; ok {
 				targetFix = r.MAFix
 			}
 
 			if targetFix != "" {
-				// Search the airport's local holds for this name
 				for _, h := range airport.Holds {
 					if h.Ident == targetFix {
-						ac.Flight.AssignedHold = h
+						holding.AssignedHold = h
 						return
 					}
 				}
 			}
-			// If no MAFix match found, fall back to nearest airport hold
 		}
 
-		// B. Arrival phase - if STAR is assigned return exit fix if this is a defined holding point
+		// B. Arrival phase - check if defined STAR holding point exists
 		if phase == flightphase.Arrival.Index() {
-			if ac.Flight.AssignedSTAR != nil {
-				if ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
-					ac.Flight.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
-					return
-				}
+			if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
+				holding.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
+				return
 			}
 		}
 
-		// C. OTHER PHASES (or fallback): Find nearest hold in Airport.Holds
+		// C. FALLBACK: Nearest airport terminal hold
 		var bestAirportHold *Hold
 		bestDot := -2.0
 		for _, h := range airport.Holds {
@@ -195,12 +246,12 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 			}
 		}
 		if bestAirportHold != nil {
-			ac.Flight.AssignedHold = bestAirportHold
+			holding.AssignedHold = bestAirportHold
 			return
 		}
 	}
 
-	// 3. GLOBAL FALLBACK: Find nearest in Service.Holds - will always find a result as long as s.Holds is not empty
+	// 3. GLOBAL FALLBACK: Find nearest regional en-route fix structure hold
 	var bestGlobalHold *Hold
 	bestDotGlobal := -2.0
 	for _, h := range s.Holds {
@@ -211,7 +262,12 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 		}
 	}
 
-	ac.Flight.AssignedHold = bestGlobalHold
+	holding.AssignedHold = bestGlobalHold
+	holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
+    holding.ArrivedAtHoldFix = false
+    holding.ExitingHold = false
+
+	util.LogDebugWithLabel(ac.Registration, "assigned hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
 }
 
 // extract all holds from hold data file. returns two maps or an error

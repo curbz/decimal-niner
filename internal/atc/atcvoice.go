@@ -368,7 +368,11 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_NAME": func(args ...string) interface{} {
-			holdfix := ac.Flight.AssignedHold
+			holding := ac.Flight.Holding
+			if holding == nil {
+				return ""
+			}
+			holdfix := holding.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -377,7 +381,11 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 		},
 		"$HOLD_FIX_IDENT": func(args ...string) interface{} {
-			holdfix := ac.Flight.AssignedHold
+			holding := ac.Flight.Holding
+			if holding == nil {
+				return ""
+			}
+			holdfix := holding.AssignedHold
 			if holdfix == nil {
 				return ""
 			} else {
@@ -553,12 +561,17 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if ac.Flight.Comms.Controller == nil {
 				r = "published hold"
 			} else {
-				holdfix := ac.Flight.AssignedHold
-				if holdfix != nil && holdfix.FullName != "" {
-					r = holdfix.FullName
-					util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)
-				} else {
+				holding := ac.Flight.Holding
+				if holding == nil {
 					r = "published hold"
+				} else {
+					holdfix := holding.AssignedHold
+					if holdfix != nil && holdfix.FullName != "" {
+						r = holdfix.FullName
+						util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)
+					} else {
+						r = "published hold"
+					}
 				}
 			}
 			return r
@@ -989,10 +1002,13 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 			clearance = ac.Flight.AssignedSTAR.Exit.ConstraintAlt
 		}
 	case flightphase.Holding.Index():
-		if ac.Flight.AssignedHold != nil {
-			clearance = ac.Flight.AssignedHold.MinAlt
-			if clearance == 0 {
-				clearance = ac.Flight.AssignedHold.MaxAlt
+		holding := ac.Flight.Holding
+		if holding != nil {
+			if holding.AssignedHold != nil {
+				clearance = ac.Flight.Holding.AssignedHold.MinAlt
+				if clearance == 0 {
+					clearance = ac.Flight.Holding.AssignedHold.MaxAlt
+				}
 			}
 		}
 		if clearance == 0 {
@@ -1025,7 +1041,7 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 		}
 	}
 
-	util.LogDebugWithLabel(ac.Registration, "controller says final approach clearance is %d", clearance)
+	util.LogDebugWithLabel(ac.Registration, "controller says altitude clearance is %d", clearance)
 
 	return clearance
 }

@@ -42,7 +42,6 @@ type Flight struct {
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
 	Vectoring           bool
-	AssignedHold        *Hold
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo
@@ -51,7 +50,21 @@ type Flight struct {
 	ArrivalAccess       *AccessPoint
 	DepartureAccess     *AccessPoint
 	ClearedTOD          bool
+	Holding				*Holding
+	GroundSpeed		  	float64
 }
+
+type Holding struct {
+	SubState     		HoldingSubState 
+    ArrivedAtHoldFix 	bool
+    PatternEntryTime 	time.Time
+	ExitingHold 		bool
+	TargetApproachFix   *Fix
+	TargetApproachAlt	float64
+	TargetAltitude    	float64
+	AssignedHold 		*Hold
+}
+
 
 type Position struct {
 	Lat      float64
@@ -67,6 +80,14 @@ type AirlineInfo struct {
 	CountryCode string `json:"icao_country_code"`
 	Tier        string `json:"tier"`
 }
+
+type HoldingSubState int
+
+const (
+	HoldTransitToFix HoldingSubState = iota
+	HoldInPattern
+	HoldTransitToApproach
+)
 
 func (s *Service) NotifyFlightPhaseChange(ac *Aircraft) {
 
@@ -461,4 +482,3 @@ func (s *Service) GetCountryFromRegistration(reg string) string {
 func CalculateDistance(pos1, pos2 Position) float64 {
 	return geometry.DistNM(pos1.Lat, pos1.Long, pos2.Lat, pos2.Long)
 }
-
