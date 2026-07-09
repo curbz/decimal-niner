@@ -1678,10 +1678,8 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 }
 
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
+	
 	var deltaTimeSec float64 = 10.0
-
-	// If this is the very first tick of a newly transitioned phase,
-	// or if the plane has been blocked/queued, clamp the delta time to prevent warping.
 	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
 		deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
 
@@ -3500,12 +3498,6 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 		targetHeading = calcBearing(acLat, acLong, targetLat, targetLong)
 	}
 
-	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
-	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
-		targetHeading = rwyHdg
-		ac.Flight.Phase.PositionComplete = true
-	}
-
 	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
 	maxTurnChange := 3.0 * dt
 	turnDiff := normDiff(targetHeading, ac.Flight.Position.Heading)
@@ -3518,6 +3510,13 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			ac.Flight.Position.Heading -= maxTurnChange
 		}
 	}
-
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading)
+
+	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
+	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
+		ac.Flight.Position.Heading = rwyHdg
+		ac.Flight.Position.Lat = pA_Lat
+		ac.Flight.Position.Long = pA_Long
+		ac.Flight.Phase.PositionComplete = true
+	}
 }

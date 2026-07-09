@@ -123,7 +123,7 @@ func TestGetAirportICAObyPhaseClass(t *testing.T) {
 	}{
 		{"preflight", flightclass.PreflightParked, "AAA", "BBB", "AAA"},
 		{"departing", flightclass.Departing, "AAA", "BBB", "AAA"},
-		{"cruising", flightclass.Cruising, "AAA", "BBB", ""},
+		{"cruising", flightclass.Cruising, "AAA", "BBB", "BBB"},
 		{"arriving", flightclass.Arriving, "AAA", "BBB", "BBB"},
 		{"postflight", flightclass.PostflightParked, "AAA", "BBB", "BBB"},
 	}

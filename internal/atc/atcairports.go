@@ -1511,12 +1511,8 @@ func getAirportICAObyPhaseClass(ac *Aircraft) string {
 	switch ac.Flight.Phase.Class {
 	case flightclass.PreflightParked, flightclass.Departing:
 		return ac.Flight.Origin
-	case flightclass.Cruising:
-		return ""
-	case flightclass.Arriving, flightclass.PostflightParked:
-		return ac.Flight.Destination
 	default:
-		return ""
+		return ac.Flight.Destination
 	}
 }
 
@@ -1851,7 +1847,10 @@ func GetElevation(ap *Airport, rwy *Runway) float64 {
 func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
 
     // Ensure the boundary is ALWAYS at least a safe margin above the airfield floor
-    minSafeCrossingAlt := ap.Elevation + constants.MinSafeCrossingAltFt
+    minSafeCrossingAlt := float64(constants.MinSafeCrossingAltFt)
+	if ap != nil {
+		minSafeCrossingAlt = minSafeCrossingAlt + ap.Elevation
+	}
 
     if baseAlt < minSafeCrossingAlt {
         // Smoothly hold the aircraft right at the minimum safety floor limit
