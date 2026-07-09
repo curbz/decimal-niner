@@ -236,7 +236,6 @@ func TestPositionDrivenTaxiSetsEstimatedNextTransition(t *testing.T) {
 	}
 }
 
-
 func TestPositionDrivenCruiseSetsEstimatedNextTransition(t *testing.T) {
 	baseTime := time.Now()
 	e := newTestEngine(baseTime)
@@ -450,10 +449,9 @@ func setupMockEngine() *D9TrafficEngine {
 	return engine
 }
 
-
-// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors 
+// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors
 // using precise test setups.
-// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors 
+// TestUpdateLateralApproach_Scenarios checks deterministic geometric behaviors
 // using precise test setups.
 func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 	e := &D9TrafficEngine{}
@@ -544,7 +542,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 				},
 			}
 
-			e.UpdateLateralApproach(ac, tt.rwyLat, tt.rwyLong, tt.rwyHdg, tt.dt)
+			e.SetLocalizerInterceptHeading(ac, tt.rwyLat, tt.rwyLong, tt.rwyHdg, tt.dt)
 
 			actualHdg := ac.Flight.Position.Heading
 			if actualHdg < tt.expectedMinHdg || actualHdg > tt.expectedMaxHdg {
@@ -560,7 +558,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 // abandons the point segments and smoothly tracks the tangent vector of the tracking arc.
 func TestUpdateLateralApproach_ArcTurnPhase(t *testing.T) {
 	e := &D9TrafficEngine{}
-	
+
 	// Runway at (0.0, 0.0) Heading 090.0
 	// Point A is at (0.0, -0.125)
 	// North circle center (oN) is 1.5 NM North (heading 000) from Point A:
@@ -583,12 +581,12 @@ func TestUpdateLateralApproach_ArcTurnPhase(t *testing.T) {
 	}
 
 	// Run with a large dt so it immediately matches the target heading if calculated correctly
-	e.UpdateLateralApproach(ac, rwyLat, rwyLong, rwyHdg, 10.0)
+	e.SetLocalizerInterceptHeading(ac, rwyLat, rwyLong, rwyHdg, 10.0)
 
-	// Since the aircraft is directly on the East arc point of the North circle, 
+	// Since the aircraft is directly on the East arc point of the North circle,
 	// the bearing from center is 090. Tangent turn rules subtract 90 deg -> target is 000.0.
 	expectedHdg := 0.0
-	
+
 	// Compute the circular/angular difference instead of a naive scalar difference
 	diff := math.Abs(ac.Flight.Position.Heading - expectedHdg)
 	if diff > 180.0 {
