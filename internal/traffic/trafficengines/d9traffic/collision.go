@@ -65,8 +65,8 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 		if !isWithinFunnel(ac, other) {
 			continue
 		}
-		if ac.Flight.Phase.Current == flightphase.Climbout.Index() {
-			ac.Flight.Position.Altitude = ac.Flight.Position.Altitude + 500.0
+		if ac.Flight.Phase.Current == flightphase.Climbout.Index() && ac.Flight.Position.Altitude >= other.Flight.Position.Altitude {
+			ac.Flight.Position.Altitude = other.Flight.Position.Altitude + collisionMaxVerticalSeparation
 			util.LogDebugWithLabel(ac.Registration, "entering avoidance climb")
 			continue
 		}

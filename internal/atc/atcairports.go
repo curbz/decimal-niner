@@ -1874,6 +1874,31 @@ func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureTyp
 		distanceNM = 15.0
 	}
 
+	// Calculate the bearing from the runway threshold to the parsed waypoint
+	bearingToFix := geometry.CalculateBearing(rwy.Lat, rwy.Lon, existingFix.Fix.Lat, existingFix.Fix.Lon)
+
+	// Determine the shortest angular distance (-180 to 180) to check left/right bias
+	diff := bearingToFix - projectHeading
+	for diff < -180 {
+		diff += 360
+	}
+	for diff > 180 {
+		diff -= 360
+	}
+
+	// Offset the baseline heading by 45 degrees in the direction of the parsed waypoint
+	if diff >= 0 {
+		projectHeading += 45.0
+	} else {
+		projectHeading -= 45.0
+	}
+
+	// Normalize the modified heading back into standard 0-359 bounds
+	projectHeading = math.Mod(projectHeading, 360.0)
+	if projectHeading < 0 {
+		projectHeading += 360.0
+	}
+
 	bearingRad := projectHeading * math.Pi / 180.0
 	latRad := rwy.Lat * math.Pi / 180.0
 	lonRad := rwy.Lon * math.Pi / 180.0
@@ -1927,10 +1952,10 @@ func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureTyp
 
 	// 4. Assemble the array in chronological flight order
 	if procedureType == PROC_TYPE_SID {
-		// Flight path is: Synthetic Entry -> Your Parsed Exit Waypoint
+		// Flight path is: Synthetic Entry -> Parsed Exit Waypoint
 		return []ProcedureFix{syntheticProcFix, existingFix}
 	} else {
-		// Flight path is: Your Parsed Entry Waypoint -> Synthetic Exit Gate
+		// Flight path is: Parsed Entry Waypoint -> Synthetic Exit Gate
 		return []ProcedureFix{existingFix, syntheticProcFix}
 	}
 }
