@@ -88,7 +88,7 @@ func TestAssignHoldPriority(t *testing.T) {
 	// 1) Airport holds preferred over global
 	ap := s.Airports["EGAA"]
 	ap.Holds = []*Hold{makeHold("LOCAL", 51.50, -0.10)}
-	
+
 	ac := &Aircraft{
 		Flight: Flight{
 			Origin:      "EGLL",

@@ -945,6 +945,20 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			continue
 		}
 
+		// --- D9 Collision Avoidance: pre-movement detection & maneuver advancement ---
+		// If aircraft already executing a maneuver, advance it and skip other updates for this tick.
+		if ac.Flight.ActiveManeuver != nil {
+			// advance maneuver using current sim time; heading will be used in normal position update below
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		} else if threat := e.detectCollisionThreat(ac); threat != nil {
+			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
+			util.LogDebugWithLabel(ac.Registration, "collision threat detected - taking avoidance action")
+			e.startCollisionManeuver(ac)
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		}
+
 		// We determine the current/next relevant airport based on flight phase class
 		var airport *atc.Airport
 		var targetICAO string
@@ -1678,7 +1692,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 }
 
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
-	
+
 	var deltaTimeSec float64 = 10.0
 	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
 		deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
@@ -2079,31 +2093,31 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 
 	// Safety check: If no target fix was set up during AssignHold, create a synthetic fallback gate
 	rwy := ac.Flight.AssignedRunway
-    if targetFix == nil {
-        projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
-        baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
+	if targetFix == nil {
+		projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
+		baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
 
-        // 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
-        lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
-        lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
+		// 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
+		lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
+		lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
 
-        // 2. Fetch aircraft positions and compute distance vectors
-        acLat := ac.Flight.Position.Lat
-        acLon := ac.Flight.Position.Long
+		// 2. Fetch aircraft positions and compute distance vectors
+		acLat := ac.Flight.Position.Lat
+		acLon := ac.Flight.Position.Long
 
-        dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
-        dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
+		dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
+		dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
 
-        // 3. Find the absolute closest point among the choices
+		// 3. Find the absolute closest point among the choices
 		var targetLat, targetLon float64
-        if dist90L < dist90R {
-            targetLat, targetLon = lat90L, lon90L
-        } else {
-            targetLat, targetLon = lat90R, lon90R
-        }
+		if dist90L < dist90R {
+			targetLat, targetLon = lat90L, lon90L
+		} else {
+			targetLat, targetLon = lat90R, lon90R
+		}
 
-        targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
-    }
+		targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
+	}
 
 	// --- 1. DETERMINE HEADING & LATERAL TARGET ---
 	var targetHeading float64
@@ -3385,17 +3399,17 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 
 	// 1. Calculate Point A (7.5 NM out on the reciprocal runway heading)
 	recipHdgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-	pA_Lat := rwyLat + (7.5 * nmToDegLat) * math.Cos(recipHdgRad)
-	pA_Long := rwyLong + (7.5 * nmToDegLat / cosLat) * math.Sin(recipHdgRad)
+	pA_Lat := rwyLat + (7.5*nmToDegLat)*math.Cos(recipHdgRad)
+	pA_Long := rwyLong + (7.5*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
 
 	// 2. Calculate Circle Centers (Diameter 3NM -> Radius = 1.5 NM)
 	northHdgRad := (rwyHdg - 90.0) * math.Pi / 180.0
-	oN_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(northHdgRad)
-	oN_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(northHdgRad)
+	oN_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(northHdgRad)
+	oN_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(northHdgRad)
 
 	southHdgRad := (rwyHdg + 90.0) * math.Pi / 180.0
-	oS_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(southHdgRad)
-	oS_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(southHdgRad)
+	oS_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(southHdgRad)
+	oS_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(southHdgRad)
 
 	// Current Aircraft Position (Matching your exact .Long struct naming)
 	acLat := ac.Flight.Position.Lat
@@ -3468,13 +3482,13 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			if hdgDiff > 65.0 {
 				// Segment U -> Target Point C (West edge of North circle)
 				cBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(cBrgRad)
-				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(cBrgRad)
+				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(cBrgRad)
+				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(cBrgRad)
 			} else if hdgDiff > 30.0 {
 				// Segment V -> Target Point B (South-West edge of North circle)
 				bBrgRad := (rwyHdg + 225.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(bBrgRad)
-				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(bBrgRad)
+				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(bBrgRad)
+				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(bBrgRad)
 			} else {
 				// Segment W -> Target Point A
 				targetLat, targetLong = pA_Lat, pA_Long
@@ -3483,13 +3497,13 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			if hdgDiff > 65.0 {
 				// Segment Z -> Target Point E (West edge of South circle)
 				eBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(eBrgRad)
-				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(eBrgRad)
+				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(eBrgRad)
+				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(eBrgRad)
 			} else if hdgDiff > 30.0 {
 				// Segment X -> Target Point D (North-West edge of South circle)
 				dBrgRad := (rwyHdg + 135.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(dBrgRad)
-				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(dBrgRad)
+				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(dBrgRad)
+				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(dBrgRad)
 			} else {
 				// Segment Y -> Target Point A
 				targetLat, targetLong = pA_Lat, pA_Long

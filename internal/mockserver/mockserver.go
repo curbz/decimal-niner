@@ -286,7 +286,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 // matches what the client expects for that type (e.g., numeric arrays or
 // base64-encoded binary strings).
 func samplePayloadForName(name, vt string, iter int) interface{} {
-	now := time.Now()	//.Add(-2 * time.Hour)
+	now := time.Now() //.Add(-2 * time.Hour)
 	hours, minutes, seconds := now.Clock()
 	switch name {
 	// com active datarefs
@@ -318,26 +318,26 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		return -1 //2 // Ground
 
 	// // --- User Position (Denver International - KDEN Center) ---
-    // case simdata.DRSimFlightmodelPositionLatitude:
-    //     return 39.861667 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
-    // case simdata.DRSimFlightmodelPositionLongitude:
-    //     return -104.673167 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
-    // case simdata.DRSimFlightmodelPositionElevation:
-    //     return 1656.2 // KDEN Field Elevation is ~5,434 feet / 1,656.2 meters
-    // case simdata.DRSimFlightmodelPositionPsi:
-    //     return 173.0 // Facing South towards Runway 17R/35L complex
-    // case simdata.DRSimFlightModelIsOnGround:
-    //     return int(1) // on ground
+	// case simdata.DRSimFlightmodelPositionLatitude:
+	//     return 39.861667 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
+	// case simdata.DRSimFlightmodelPositionLongitude:
+	//     return -104.673167 //+ (float64(iter) * 0.0003) // <-- uncommment to simulate user position changing
+	// case simdata.DRSimFlightmodelPositionElevation:
+	//     return 1656.2 // KDEN Field Elevation is ~5,434 feet / 1,656.2 meters
+	// case simdata.DRSimFlightmodelPositionPsi:
+	//     return 173.0 // Facing South towards Runway 17R/35L complex
+	// case simdata.DRSimFlightModelIsOnGround:
+	//     return int(1) // on ground
 
-    // //--- User Radios (Denver Frequencies) ---
-    // case simdata.DRSimCockpitRadiosCom1FreqHz:
-    //     return int(13235) // KDEN Tower (Primary / East)
-    // case simdata.DRSimCockpitRadiosCom2FreqHz:
-    //     return int(12185) // KDEN Ground (Primary / East)
-    // case simdata.DRSimATCCom1TunedFacility:
-    //     return -1 //3 // Tower
-    // case simdata.DRSimATCCom2TunedFacility:
-    //     return -1 //2 // Ground
+	// //--- User Radios (Denver Frequencies) ---
+	// case simdata.DRSimCockpitRadiosCom1FreqHz:
+	//     return int(13235) // KDEN Tower (Primary / East)
+	// case simdata.DRSimCockpitRadiosCom2FreqHz:
+	//     return int(12185) // KDEN Ground (Primary / East)
+	// case simdata.DRSimATCCom1TunedFacility:
+	//     return -1 //3 // Tower
+	// case simdata.DRSimATCCom2TunedFacility:
+	//     return -1 //2 // Ground
 
 	// --- Sim Time ---
 	case simdata.DRSimTimeLocalDateDays:

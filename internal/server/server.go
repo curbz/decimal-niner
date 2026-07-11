@@ -9,17 +9,17 @@ import (
 
 // RadarBlip represents the minimal telemetry data needed by the browser canvas
 type RadarBlip struct {
-	Callsign  string  `json:"callsign"`
-	Registration string `json:"registration"`
-	Aircraft  string  `json:"ac_type"` 
-	Lat       float64 `json:"lat"`
-	Lng       float64 `json:"lng"`
-	Altitude  float64 `json:"alt"`
-	Heading   int     `json:"hdg"`
-	Phase     string  `json:"phase"`
-	Origin	  string  `json:"origin"`
-	Destination	  string  `json:"dest"`
-	GroundSpeed float64 `json:"gs"`
+	Callsign     string  `json:"callsign"`
+	Registration string  `json:"registration"`
+	Aircraft     string  `json:"ac_type"`
+	Lat          float64 `json:"lat"`
+	Lng          float64 `json:"lng"`
+	Altitude     float64 `json:"alt"`
+	Heading      int     `json:"hdg"`
+	Phase        string  `json:"phase"`
+	Origin       string  `json:"origin"`
+	Destination  string  `json:"dest"`
+	GroundSpeed  float64 `json:"gs"`
 }
 
 // RadarSnapshot is the frame package sent on every tick
@@ -37,7 +37,7 @@ type RadarServer struct {
 
 func NewRadarServer() *RadarServer {
 	return &RadarServer{
-		clients: make(map[chan RadarSnapshot] bool),
+		clients: make(map[chan RadarSnapshot]bool),
 	}
 }
 
@@ -51,7 +51,7 @@ func (rs *RadarServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Create a channel for this specific browser session
 	messageChan := make(chan RadarSnapshot, 10)
-	
+
 	rs.Lock()
 	rs.clients[messageChan] = true
 	rs.Unlock()
@@ -75,7 +75,7 @@ func (rs *RadarServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// SSE format requires data: prefix followed by double newlines
 			_, _ = w.Write([]byte("data: " + string(jsonData) + "\n\n"))
 			w.(http.Flusher).Flush() // Push the data down the wire immediately
-			
+
 		case <-r.Context().Done():
 			return
 		}
@@ -95,4 +95,3 @@ func (rs *RadarServer) BroadcastSnapshot(snapshot RadarSnapshot) {
 		}
 	}
 }
-

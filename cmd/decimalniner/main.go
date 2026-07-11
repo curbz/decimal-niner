@@ -130,7 +130,7 @@ func main() {
 	}
 
 	xpc.Start()
-	
+
 	// Wait for interrupt signal to gracefully shutdown
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)

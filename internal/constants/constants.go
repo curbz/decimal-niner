@@ -35,7 +35,7 @@ const (
 	DefaultCruiseExitArrivalEntryNM   = 40.0
 	DefaultArrivalExitApproachEntryNM = 15.0
 	DefaultApproachExitFinalEntryNM   = 4.0
-	DefaultArrivalEntryFromDestNM 	  = 100.0
+	DefaultArrivalEntryFromDestNM     = 100.0
 
 	// Intercept localizer values
 	InterceptLOCUnitFt     = 318
