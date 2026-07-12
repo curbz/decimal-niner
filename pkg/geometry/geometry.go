@@ -314,3 +314,14 @@ func CalculateKinematicDuration(distNM float64, groundSpeedKnots float64) time.D
 
 	return time.Duration(secondsRequired) * time.Second
 }
+
+func NormalizeDiffDegrees(target, current float64) float64 {
+	diff := target - current
+	for diff < -180.0 {
+		diff += 360.0
+	}
+	for diff > 180.0 {
+		diff -= 360.0
+	}
+	return diff
+}
