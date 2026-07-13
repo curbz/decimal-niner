@@ -285,32 +285,43 @@ func DistNM(lat1, lon1, lat2, lon2 float64) float64 {
 
 // Interpolate calculates a point along a linear track between two coordinates based on a ratio (0.0 to 1.0)
 func InterpolateCoords(startLat, startLon, targetLat, targetLon, ratio float64) (float64, float64) {
-    if ratio <= 0.0 {
-        return startLat, startLon
-    }
-    if ratio >= 1.0 {
-        return targetLat, targetLon
-    }
-    
-    lat := startLat + (targetLat-startLat)*ratio
-    lon := startLon + (targetLon-startLon)*ratio
-    return lat, lon
+	if ratio <= 0.0 {
+		return startLat, startLon
+	}
+	if ratio >= 1.0 {
+		return targetLat, targetLon
+	}
+
+	lat := startLat + (targetLat-startLat)*ratio
+	lon := startLon + (targetLon-startLon)*ratio
+	return lat, lon
 }
 
 // CalculateKinematicDuration estimates how long it will take an aircraft to travel
 // a given distance in NM based on its current groundspeed in knots.
 func CalculateKinematicDuration(distNM float64, groundSpeedKnots float64) time.Duration {
-    // Safety floor: If groundspeed is zero or invalid, fall back to a reasonable default
-    // to avoid an infinite time duration or a divide-by-zero crash.
-    if groundSpeedKnots <= 10.0 {
-        return 5 * time.Minute 
-    }
+	// Safety floor: If groundspeed is zero or invalid, fall back to a reasonable default
+	// to avoid an infinite time duration or a divide-by-zero crash.
+	if groundSpeedKnots <= 10.0 {
+		return 5 * time.Minute
+	}
 
-    // Ground speed in NM per second
-    nmPerSecond := groundSpeedKnots / 3600.0
+	// Ground speed in NM per second
+	nmPerSecond := groundSpeedKnots / 3600.0
 
-    // Total seconds required to close the spatial gap
-    secondsRequired := distNM / nmPerSecond
+	// Total seconds required to close the spatial gap
+	secondsRequired := distNM / nmPerSecond
 
-    return time.Duration(secondsRequired) * time.Second
+	return time.Duration(secondsRequired) * time.Second
+}
+
+func NormalizeDiffDegrees(target, current float64) float64 {
+	diff := target - current
+	for diff < -180.0 {
+		diff += 360.0
+	}
+	for diff > 180.0 {
+		diff -= 360.0
+	}
+	return diff
 }

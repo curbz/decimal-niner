@@ -50,21 +50,36 @@ type Flight struct {
 	ArrivalAccess       *AccessPoint
 	DepartureAccess     *AccessPoint
 	ClearedTOD          bool
-	Holding				*Holding
-	GroundSpeed		  	float64
+	Holding             *Holding
+	GroundSpeed         float64
+	ActiveManeuver      *ManeuverState
 }
 
 type Holding struct {
-	SubState     		HoldingSubState 
-    ArrivedAtHoldFix 	bool
-    PatternEntryTime 	time.Time
-	ExitingHold 		bool
-	TargetApproachFix   *Fix
-	TargetApproachAlt	float64
-	TargetAltitude    	float64
-	AssignedHold 		*Hold
+	SubState          HoldingSubState
+	ArrivedAtHoldFix  bool
+	PatternEntryTime  time.Time
+	ExitingHold       bool
+	TargetApproachFix *Fix
+	TargetApproachAlt float64
+	TargetAltitude    float64
+	AssignedHold      *Hold
 }
 
+// ManeuverDirection describes the direction of an avoidance turn.
+type ManeuverDirection int
+
+const (
+	ManeuverDirectionLeft ManeuverDirection = iota
+	ManeuverDirectionRight
+)
+
+// ManeuverState tracks an in-progress collision avoidance turn.
+type ManeuverState struct {
+	Direction         ManeuverDirection
+	RemainingDegrees  float64
+	TurnRateDegPerSec float64
+}
 
 type Position struct {
 	Lat      float64

@@ -100,7 +100,7 @@ const (
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	// maximum number of aircraft allowed on approach for a single airport before
 	// new arrivals are sent to hold
-	MAX_APPROACH_ON_APPROACH = 4
+	MAX_APPROACH_ON_APPROACH = 3
 )
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -945,6 +945,20 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			continue
 		}
 
+		// --- D9 Collision Avoidance: pre-movement detection & maneuver advancement ---
+		// If aircraft already executing a maneuver, advance it and skip other updates for this tick.
+		if ac.Flight.ActiveManeuver != nil {
+			// advance maneuver using current sim time; heading will be used in normal position update below
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		} else if threat := e.detectCollisionThreat(ac); threat != nil {
+			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
+			util.LogDebugWithLabel(ac.Registration, "collision threat detected - taking avoidance action")
+			e.startCollisionManeuver(ac)
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		}
+
 		// We determine the current/next relevant airport based on flight phase class
 		var airport *atc.Airport
 		var targetICAO string
@@ -1321,18 +1335,6 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	// Establish default frame slice
 	deltaTimeSec := getLastUpdateDeltaTimeSec(ac, currSimZTime)
 
-	// Prevent immediate phase skipping on first initialization pass ---
-	if ac.Flight.Phase.Previous != ac.Flight.Phase.Current {
-		util.LogDebugWithLabel(ac.Registration, "Phase transition detected in loop tracker (%v -> %v). Swallowing transition frame.", ac.Flight.Phase.Previous, ac.Flight.Phase.Current)
-
-		// CRITICAL: Clear this flag so the new phase doesn't inherit
-		// the completion status of the phase we just finished!
-		ac.Flight.Phase.PositionComplete = false
-
-		ac.Flight.Phase.LastUpdateTime = currSimZTime
-		return // Let the state settle; start tracking distance movement on the next frame tick
-	}
-
 	ac.Flight.Phase.LastUpdateTime = currSimZTime
 
 	phase := flightphase.FlightPhase(ac.Flight.Phase.Current)
@@ -1514,7 +1516,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	}
 
 	// 2. Calculate Distance Progressions Strictly from Current Positions
-	totalPlannedDist := geometry.DistNM(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+	phaseTotalDist := geometry.DistNM(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 	speedKts := e.getPhaseGroundSpeedKts(ac.SizeClass, phase)
 	ac.Flight.GroundSpeed = speedKts
 
@@ -1556,12 +1558,16 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
 		if currentDistToTarget > distanceMovedThisTick {
-			heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-			ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distanceMovedThisTick)
-			ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
 
-			if totalPlannedDist > 0 {
-				progRatio := 1.0 - (currentDistToTarget / totalPlannedDist)
+			heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+			
+			// Smoothly track heading changes 
+			applySmoothTurnHeading(ac, heading, 1.0, deltaTimeSec)
+			// use the current heading to project the next position
+			ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
+			// calculate progress ratio for altitude tracking
+			if phaseTotalDist > 0 {
+				progRatio := 1.0 - (currentDistToTarget / phaseTotalDist)
 				if progRatio < 0.0 {
 					progRatio = 0.0
 				} else if progRatio > 1.0 {
@@ -1569,7 +1575,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 				}
 
 				util.LogDebugWithLabel(ac.Registration, "Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f",
-					phase.String(), currentDistToTarget, totalPlannedDist, progRatio)
+					phase.String(), currentDistToTarget, phaseTotalDist, progRatio)
 
 				switch phase {
 				case flightphase.Takeoff:
@@ -1632,11 +1638,10 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 				}
 			}
 		} else {
+			ac.Flight.Position.Altitude = targetAlt
+			applySmoothTurnHeading(ac, heading, 3.0, deltaTimeSec)
 			ac.Flight.Position.Lat = targetPos.Lat
 			ac.Flight.Position.Long = targetPos.Long
-			ac.Flight.Position.Altitude = targetAlt
-			ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-
 			ac.Flight.Phase.PositionComplete = true
 			util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
 			return
@@ -1678,7 +1683,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 }
 
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
-	
+
 	var deltaTimeSec float64 = 10.0
 	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
 		deltaTimeSec = currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
@@ -1820,161 +1825,149 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 }
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
-	holding := ac.Flight.Holding
-	if holding == nil || holding.AssignedHold == nil {
-		util.LogErrWithLabel(ac.Registration, "updateHoldingPosition invoked but no hold assigned - possible bug")
-		return
-	}
+    holding := ac.Flight.Holding
+    if holding == nil || holding.AssignedHold == nil {
+        util.LogErrWithLabel(ac.Registration, "updateHoldingPosition invoked but no hold assigned - possible bug")
+        return
+    }
 
-	hold := holding.AssignedHold
-	now := e.AtcService.GetCurrentZuluTime()
+    hold := holding.AssignedHold
+    now := e.AtcService.GetCurrentZuluTime()
 
-	// --- 1. DYNAMIC DELTA TIME CALCULATION ---
-	deltaTimeSeconds := 1.0
-	if !ac.Flight.Phase.LastUpdateTime.IsZero() {
-		deltaTimeSeconds = now.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
-	}
-	ac.Flight.Phase.LastUpdateTime = now
+    // --- 1. DYNAMIC DELTA TIME CALCULATION ---
+    deltaTimeSeconds := 1.0
+    if !ac.Flight.Phase.LastUpdateTime.IsZero() {
+        deltaTimeSeconds = now.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
+    }
+    ac.Flight.Phase.LastUpdateTime = now
 
-	// --- 2. DETERMINISTIC STACK ALTITUDE LOGIC ---
-	var stack []*atc.Aircraft
-	for _, other := range e.ActiveAircraft {
-		if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == hold {
-			stack = append(stack, other)
-		}
-	}
+    // --- 2. DETERMINISTIC STACK ALTITUDE LOGIC ---
+    var stack []*atc.Aircraft
+    for _, other := range e.ActiveAircraft {
+        if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == hold {
+            stack = append(stack, other)
+        }
+    }
 
-	// FIX 1: Sort by PatternEntryTime (FIFO) instead of Altitude to prevent loop jitter.
-	// For aircraft that haven't captured the fix yet, they will naturally sort to the top.
-	sort.Slice(stack, func(i, j int) bool {
-		return stack[i].Flight.Holding.PatternEntryTime.Before(stack[j].Flight.Holding.PatternEntryTime)
-	})
+    sort.Slice(stack, func(i, j int) bool {
+        return stack[i].Flight.Holding.PatternEntryTime.Before(stack[j].Flight.Holding.PatternEntryTime)
+    })
 
-	// Assign and lock the target altitude for this specific frame context
-	for i, a := range stack {
-		a.Flight.Holding.TargetAltitude = float64(hold.MinAlt + (i * 1000))
-	}
+    for i, a := range stack {
+        a.Flight.Holding.TargetAltitude = float64(hold.MinAlt + (i * 1000))
+    }
 
-	// --- 3. SUB-PHASE TRACKING GATE (INBOUND TO FIX) ---
-	if !ac.Flight.Holding.ArrivedAtHoldFix {
-		distToFix := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
+    // --- 3. SUB-PHASE TRACKING GATE (INBOUND TO FIX) ---
+    if !ac.Flight.Holding.ArrivedAtHoldFix {
+        distToFix := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
 
-		if distToFix > 0.5 {
-			heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
-			holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-			ac.Flight.GroundSpeed = holdSpeed
-			distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
+        if distToFix > 0.5 {
+            heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, hold.Lat, hold.Lon)
+            applySmoothTurnHeading(ac, heading, 3.0, deltaTimeSeconds)
+            holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+            ac.Flight.GroundSpeed = holdSpeed
+            distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
+            nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distStepNM)
+            ac.Flight.Position.Lat = nextLat
+            ac.Flight.Position.Long = nextLon
 
-			nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
-			ac.Flight.Position.Lat = nextLat
-			ac.Flight.Position.Long = nextLon
-			ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+            e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetAltitude, deltaTimeSeconds)
+            return
+        }
 
-			// Execute smooth vertical updates towards stack assignment while transiting
-			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetAltitude, deltaTimeSeconds)
-			return
-		}
+        // CRITICAL FIX: Initialize PatternEntryTime to now to synchronize the t=0 clock cycle
+        ac.Flight.Holding.ArrivedAtHoldFix = true
+        ac.Flight.Holding.PatternEntryTime = now 
+        util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
+    }
 
-		// Mark the positional transition point
-		ac.Flight.Holding.ArrivedAtHoldFix = true
-		util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
+    // --- 4. EXIT PHASE LOGIC ---
+    if ac.Flight.Holding.ExitingHold {
+        targetFix := ac.Flight.Holding.TargetApproachFix
+        distToApp := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+        elapsedSinceEntry := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
 
-	}
+        if distToApp <= 0.5 && elapsedSinceEntry > 10.0 {
+            ac.Flight.Phase.PositionComplete = true
+            ac.Flight.Holding.ArrivedAtHoldFix = false
+            ac.Flight.Holding.ExitingHold = false
 
-	// --- 4. EXIT PHASE LOGIC ---
-	if ac.Flight.Holding.ExitingHold {
-		targetFix := ac.Flight.Holding.TargetApproachFix
-		distToApp := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
-		elapsedSinceEntry := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
+            e.transitionToPhase(ac, flightphase.Approach, 0, 0)
+            return
+        }
 
-		if distToApp <= 0.5 && elapsedSinceEntry > 10.0 {
-			ac.Flight.Phase.PositionComplete = true
-			ac.Flight.Holding.ArrivedAtHoldFix = false
-			ac.Flight.Holding.ExitingHold = false
+        heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
+        applySmoothTurnHeading(ac, heading, 3.0, deltaTimeSeconds)
+        holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+        if holdSpeed < 180.0 {
+            holdSpeed = 180.0
+        }
+        ac.Flight.GroundSpeed = holdSpeed
+        distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
+        nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distStepNM)
+        ac.Flight.Position.Lat = nextLat
+        ac.Flight.Position.Long = nextLon
 
-			e.transitionToPhase(ac, flightphase.Approach, 0, 0)
-			return
-		}
+        if ac.Flight.Holding.TargetApproachAlt > 0 {
+            e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetApproachAlt, deltaTimeSeconds)
+        }
+        return
+    }
 
-		heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
-		holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-		if holdSpeed < 180.0 {
-			holdSpeed = 180.0
-		}
-		ac.Flight.GroundSpeed = holdSpeed
+    // --- 5. RACETRACK MOVEMENT ---
+    elapsed := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
 
-		distStepNM := (holdSpeed / 3600.0) * deltaTimeSeconds
+    var inboundCourse float64
+    if ac.Flight.AssignedRunway != nil {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
+    } else if rwy != nil {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, rwy.Lat, rwy.Lon)
+    } else {
+        inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.Position.Lat, ac.Flight.Position.Long)
+    }
+    inboundCourse = geometry.NormalizeHeading(inboundCourse)
+    outboundCourse := geometry.NormalizeHeading(inboundCourse + 180.0)
 
-		nextLat, nextLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, heading, distStepNM)
-		ac.Flight.Position.Lat = nextLat
-		ac.Flight.Position.Long = nextLon
-		ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
+    holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
+    ac.Flight.GroundSpeed = holdSpeed
 
-		// Profile down toward approach target platform altitude
-		if ac.Flight.Holding.TargetApproachAlt > 0 {
-			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetApproachAlt, deltaTimeSeconds)
-		}
-		return
-	}
+    legMinutes := 1.0
+    legSeconds := legMinutes * 60.0
+    turnSeconds := 60.0 // 180 degrees at a standard rate 3 deg/sec takes exactly 60 seconds
+    cycleTime := (2 * legSeconds) + (2 * turnSeconds)
 
-	// --- 5. RACETRACK MOVEMENT ---
-	elapsed := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
+    t := math.Mod(elapsed, cycleTime)
+    var targetHeading float64
 
-	var inboundCourse float64
-	if ac.Flight.AssignedRunway != nil {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
-	} else if rwy != nil {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, rwy.Lat, rwy.Lon)
-	} else {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.Position.Lat, ac.Flight.Position.Long)
-	}
-	inboundCourse = geometry.NormalizeHeading(inboundCourse)
-	outboundCourse := geometry.NormalizeHeading(inboundCourse + 180.0)
+    // Use time-slicing purely to determine the instantaneous TARGET track heading
+    if t < legSeconds {
+        // Outbound straight leg
+        targetHeading = outboundCourse
+    } else if t < legSeconds+turnSeconds {
+        // Outbound turn to inbound course (Standard Right-Hand Turn)
+        tt := (t - legSeconds) / turnSeconds
+        targetHeading = geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
+    } else if t < (legSeconds + turnSeconds + legSeconds) {
+        // Inbound straight leg
+        targetHeading = inboundCourse
+    } else {
+        // Inbound turn back to outbound course (Standard Right-Hand Turn back to fix)
+        tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
+        targetHeading = geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
+    }
 
-	holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
-	ac.Flight.GroundSpeed = holdSpeed
+    // 1. Update the aircraft's actual current heading smoothly toward the target heading
+    applySmoothTurnHeading(ac, targetHeading, 3.0, deltaTimeSeconds)
 
-	legMinutes := 1.0
-	legSeconds := legMinutes * 60.0
-	turnSeconds := 60.0
-	cycleTime := (2 * legSeconds) + (2 * turnSeconds)
-	legDist := holdSpeed * (legMinutes / 60.0)
+    // 2. Project spatial position incrementally from CURRENT position along ACTUAL current heading
+    distanceMovedThisTick := (holdSpeed / 3600.0) * deltaTimeSeconds
+    posLat, posLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
+    
+    ac.Flight.Position.Lat = posLat
+    ac.Flight.Position.Long = posLon
 
-	t := math.Mod(elapsed, cycleTime)
-	var pos atc.Position
-	var heading float64
-
-	if t < legSeconds {
-		p := t / legSeconds
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, outboundCourse, p*legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = outboundCourse
-	} else if t < legSeconds+turnSeconds {
-		tt := (t - legSeconds) / turnSeconds
-		bearing := geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = geometry.NormalizeHeading(bearing + 90.0)
-	} else if t < (legSeconds + turnSeconds + legSeconds) {
-		tt := (t - (legSeconds + turnSeconds)) / legSeconds
-		dist := legDist * (1.0 - tt)
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, inboundCourse, dist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = inboundCourse
-	} else {
-		tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
-		bearing := geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
-		posLat, posLon := geometry.Project(hold.Lat, hold.Lon, bearing, legDist)
-		pos = atc.Position{Lat: posLat, Long: posLon}
-		heading = geometry.NormalizeHeading(bearing + 90.0)
-	}
-
-	ac.Flight.Position.Lat = pos.Lat
-	ac.Flight.Position.Long = pos.Long
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-
-	// Execute steady climb/descent matching the stack layer limits while executing the racetrack curves
-	e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetAltitude, deltaTimeSeconds)
+    // Execute steady climb/descent matching the stack layer limits while executing the racetrack curves
+    e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetAltitude, deltaTimeSeconds)
 }
 
 // Helper method to process aerodynamic changes cleanly over frame gaps
@@ -2079,31 +2072,31 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 
 	// Safety check: If no target fix was set up during AssignHold, create a synthetic fallback gate
 	rwy := ac.Flight.AssignedRunway
-    if targetFix == nil {
-        projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
-        baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
+	if targetFix == nil {
+		projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
+		baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
 
-        // 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
-        lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
-        lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
+		// 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
+		lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
+		lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
 
-        // 2. Fetch aircraft positions and compute distance vectors
-        acLat := ac.Flight.Position.Lat
-        acLon := ac.Flight.Position.Long
+		// 2. Fetch aircraft positions and compute distance vectors
+		acLat := ac.Flight.Position.Lat
+		acLon := ac.Flight.Position.Long
 
-        dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
-        dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
+		dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
+		dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
 
-        // 3. Find the absolute closest point among the choices
+		// 3. Find the absolute closest point among the choices
 		var targetLat, targetLon float64
-        if dist90L < dist90R {
-            targetLat, targetLon = lat90L, lon90L
-        } else {
-            targetLat, targetLon = lat90R, lon90R
-        }
+		if dist90L < dist90R {
+			targetLat, targetLon = lat90L, lon90L
+		} else {
+			targetLat, targetLon = lat90R, lon90R
+		}
 
-        targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
-    }
+		targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
+	}
 
 	// --- 1. DETERMINE HEADING & LATERAL TARGET ---
 	var targetHeading float64
@@ -2125,12 +2118,10 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 		}
 	}
 
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(targetHeading)
-
 	// --- 2. LATERAL STEP PERFORMANCE ---
+	applySmoothTurnHeading(ac, targetHeading, 1.5, deltaTimeSeconds)
 	const missedApproachKts = 150.0
 	deltaDistNM := (missedApproachKts / 3600.0) * deltaTimeSeconds
-
 	newLat, newLon := geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, deltaDistNM)
 	ac.Flight.Position.Lat = newLat
 	ac.Flight.Position.Long = newLon
@@ -2261,14 +2252,16 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	}
 
 	// Update Lat/Long Coordinates along the tracking path
-	var hd float64
+	var targetHeading float64
 	if distToTarget > distanceMovedThisTick {
-		hd = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, hd, distanceMovedThisTick)
+		targetHeading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+		applySmoothTurnHeading(ac, targetHeading, 1.5, deltaTimeSec)
+		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 	} else {
+		targetHeading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+		applySmoothTurnHeading(ac, targetHeading, 1.5, deltaTimeSec)
 		ac.Flight.Position.Lat = targetPos.Lat
 		ac.Flight.Position.Long = targetPos.Long
-		hd = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 	}
 
 	// Recalculate live tracking distance after position update step
@@ -3047,14 +3040,23 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 		default:
 			return 155.0
 		}
-	case flightphase.Climbout, flightphase.Departure:
+	case flightphase.Climbout:
 		switch sizeClass {
 		case "E", "F":
-			return 165.0
+			return 190.0
 		case "C", "D":
-			return 175.0
+			return 190.0
 		default:
-			return 170.0
+			return 190.0
+		}
+	case flightphase.Departure:
+		switch sizeClass {
+		case "E", "F":
+			return 220.0
+		case "C", "D":
+			return 220.0
+		default:
+			return 220.0
 		}
 	case flightphase.Cruise:
 		// Use a high nominal speed but Cruise uses its own interpolation logic elsewhere
@@ -3075,16 +3077,16 @@ func (e *D9TrafficEngine) getPhaseGroundSpeedKts(sizeClass string, phase flightp
 		case "C", "D":
 			return 180.0
 		default:
-			return 170.0
+			return 180.0
 		}
 	case flightphase.Final:
 		switch sizeClass {
 		case "E", "F":
-			return 150.0
+			return 140.0
 		case "C", "D":
 			return 140.0
 		default:
-			return 130.0
+			return 140.0
 		}
 	case flightphase.Holding:
 		switch sizeClass {
@@ -3385,17 +3387,17 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 
 	// 1. Calculate Point A (7.5 NM out on the reciprocal runway heading)
 	recipHdgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-	pA_Lat := rwyLat + (7.5 * nmToDegLat) * math.Cos(recipHdgRad)
-	pA_Long := rwyLong + (7.5 * nmToDegLat / cosLat) * math.Sin(recipHdgRad)
+	pA_Lat := rwyLat + (7.5*nmToDegLat)*math.Cos(recipHdgRad)
+	pA_Long := rwyLong + (7.5*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
 
 	// 2. Calculate Circle Centers (Diameter 3NM -> Radius = 1.5 NM)
 	northHdgRad := (rwyHdg - 90.0) * math.Pi / 180.0
-	oN_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(northHdgRad)
-	oN_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(northHdgRad)
+	oN_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(northHdgRad)
+	oN_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(northHdgRad)
 
 	southHdgRad := (rwyHdg + 90.0) * math.Pi / 180.0
-	oS_Lat := pA_Lat + (1.5 * nmToDegLat) * math.Cos(southHdgRad)
-	oS_Long := pA_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(southHdgRad)
+	oS_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(southHdgRad)
+	oS_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(southHdgRad)
 
 	// Current Aircraft Position (Matching your exact .Long struct naming)
 	acLat := ac.Flight.Position.Lat
@@ -3421,23 +3423,12 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 		return brg
 	}
 
-	normDiff := func(target, current float64) float64 {
-		diff := target - current
-		for diff < -180.0 {
-			diff += 360.0
-		}
-		for diff > 180.0 {
-			diff -= 360.0
-		}
-		return diff
-	}
-
 	distToON := calcDist(acLat, acLong, oN_Lat, oN_Long)
 	distToOS := calcDist(acLat, acLong, oS_Lat, oS_Long)
 
 	// Determine if aircraft is North or South of the extended centerline
 	brgFromA := calcBearing(pA_Lat, pA_Long, acLat, acLong)
-	relBrgFromA := normDiff(brgFromA, rwyHdg)
+	relBrgFromA := geometry.NormalizeDiffDegrees(brgFromA, rwyHdg)
 	isNorthSide := relBrgFromA < 0
 
 	var targetLat, targetLong float64
@@ -3462,19 +3453,19 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 		}
 	} else {
 		// STRAIGHT TRAJECTORY PHASE: Match current segment to target point
-		hdgDiff := math.Abs(normDiff(ac.Flight.Position.Heading, rwyHdg))
+		hdgDiff := math.Abs(geometry.NormalizeDiffDegrees(ac.Flight.Position.Heading, rwyHdg))
 
 		if isNorthSide {
 			if hdgDiff > 65.0 {
 				// Segment U -> Target Point C (West edge of North circle)
 				cBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(cBrgRad)
-				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(cBrgRad)
+				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(cBrgRad)
+				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(cBrgRad)
 			} else if hdgDiff > 30.0 {
 				// Segment V -> Target Point B (South-West edge of North circle)
 				bBrgRad := (rwyHdg + 225.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5 * nmToDegLat) * math.Cos(bBrgRad)
-				targetLong = oN_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(bBrgRad)
+				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(bBrgRad)
+				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(bBrgRad)
 			} else {
 				// Segment W -> Target Point A
 				targetLat, targetLong = pA_Lat, pA_Long
@@ -3483,13 +3474,13 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			if hdgDiff > 65.0 {
 				// Segment Z -> Target Point E (West edge of South circle)
 				eBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(eBrgRad)
-				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(eBrgRad)
+				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(eBrgRad)
+				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(eBrgRad)
 			} else if hdgDiff > 30.0 {
 				// Segment X -> Target Point D (North-West edge of South circle)
 				dBrgRad := (rwyHdg + 135.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5 * nmToDegLat) * math.Cos(dBrgRad)
-				targetLong = oS_Long + (1.5 * nmToDegLat / cosLat) * math.Sin(dBrgRad)
+				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(dBrgRad)
+				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(dBrgRad)
 			} else {
 				// Segment Y -> Target Point A
 				targetLat, targetLong = pA_Lat, pA_Long
@@ -3499,8 +3490,20 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	}
 
 	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
-	maxTurnChange := 3.0 * dt
-	turnDiff := normDiff(targetHeading, ac.Flight.Position.Heading)
+	applySmoothTurnHeading(ac, targetHeading, 3.0, dt)
+
+	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
+	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
+		ac.Flight.Position.Heading = rwyHdg
+		ac.Flight.Position.Lat = pA_Lat
+		ac.Flight.Position.Long = pA_Long
+		ac.Flight.Phase.PositionComplete = true
+	}
+}
+
+func applySmoothTurnHeading(ac *atc.Aircraft, targetHeading, rate, deltaTimeSec float64 ) {
+	maxTurnChange := rate * deltaTimeSec
+	turnDiff := geometry.NormalizeDiffDegrees(targetHeading, ac.Flight.Position.Heading)
 	if math.Abs(turnDiff) <= maxTurnChange {
 		ac.Flight.Position.Heading = targetHeading
 	} else {
@@ -3511,12 +3514,5 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 		}
 	}
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading)
-
-	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
-	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
-		ac.Flight.Position.Heading = rwyHdg
-		ac.Flight.Position.Lat = pA_Lat
-		ac.Flight.Position.Long = pA_Long
-		ac.Flight.Phase.PositionComplete = true
-	}
 }
+

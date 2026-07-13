@@ -139,29 +139,29 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 // is a defined hold, this will be the assigned hold.
 // For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
 func (s *Service) AssignHold(ac *Aircraft, icao string) {
-    holding := &Holding{}
-    ac.Flight.Holding = holding
+	holding := &Holding{}
+	ac.Flight.Holding = holding
 
-    airport := s.GetAirportByICAO(icao)
-    originAp := s.GetAirportByICAO(ac.Flight.Origin)
+	airport := s.GetAirportByICAO(icao)
+	originAp := s.GetAirportByICAO(ac.Flight.Origin)
 
-    // 1. Determine approach fix to use in preparation for hold exit
-    if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit != nil {
-        holding.TargetApproachFix = ac.Flight.AssignedSTAR.Exit.Fix
-        holding.TargetApproachAlt = float64(ac.Flight.AssignedSTAR.Exit.ConstraintAlt)
-    }
+	// 1. Determine approach fix to use in preparation for hold exit
+	if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit != nil {
+		holding.TargetApproachFix = ac.Flight.AssignedSTAR.Exit.Fix
+		holding.TargetApproachAlt = float64(ac.Flight.AssignedSTAR.Exit.ConstraintAlt)
+	}
 
-    if holding.TargetApproachFix == nil {
-        var star *Procedure
-        // Only look for a STAR if the destination airport object actually exists
-        if airport != nil {
-            star = s.GetMatchingSTAR(airport, ac.Flight.AssignedRunway, originAp)
-        }
-        
-        if star != nil && star.Exit != nil {
-            holding.TargetApproachFix = star.Exit.Fix
-            holding.TargetApproachAlt = float64(star.Exit.ConstraintAlt)
-        } else {
+	if holding.TargetApproachFix == nil {
+		var star *Procedure
+		// Only look for a STAR if the destination airport object actually exists
+		if airport != nil {
+			star = s.GetMatchingSTAR(airport, ac.Flight.AssignedRunway, originAp)
+		}
+
+		if star != nil && star.Exit != nil {
+			holding.TargetApproachFix = star.Exit.Fix
+			holding.TargetApproachAlt = float64(star.Exit.ConstraintAlt)
+		} else {
 			// Reciprocal runway heading projection straight down the extended centerline
 			var projectHeading float64
 			if ac.Flight.AssignedRunway != nil {
@@ -264,8 +264,8 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 
 	holding.AssignedHold = bestGlobalHold
 	holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
-    holding.ArrivedAtHoldFix = false
-    holding.ExitingHold = false
+	holding.ArrivedAtHoldFix = false
+	holding.ExitingHold = false
 
 	util.LogDebugWithLabel(ac.Registration, "assigned hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
 }

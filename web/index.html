@@ -372,7 +372,7 @@
     }
 
     function drawStaticOverlays() {
-        ctx.strokeStyle = 'rgba(0, 68, 27, 0.5)';
+        ctx.strokeStyle = 'rgba(0, 68, 27, 0.9)';
         ctx.lineWidth = 1;
         
         const ringSpacingNM = radarRangeNM / 4;
@@ -383,7 +383,7 @@
             ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
             ctx.stroke();
             
-            ctx.fillStyle = 'rgba(0, 102, 34, 0.5)';
+            ctx.fillStyle = 'rgba(0, 102, 34, 0.9)';
             ctx.font = '10px "Courier New"';
             const currentRingValue = (ringSpacingNM * i).toFixed(1);
             ctx.fillText(`${currentRingValue}NM`, centerX + 5, centerY - radius + 12);
