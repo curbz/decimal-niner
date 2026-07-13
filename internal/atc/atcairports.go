@@ -1854,7 +1854,7 @@ func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
 	if baseAlt < minSafeCrossingAlt {
 		// Smoothly hold the aircraft right at the minimum safety floor limit
 		// instead of bouncing it back up to the next flight level ceiling block.
-		baseAlt = minSafeCrossingAlt
+		baseAlt = float64(util.RoundUp(int(minSafeCrossingAlt), 1000))
 	}
 	return baseAlt
 }

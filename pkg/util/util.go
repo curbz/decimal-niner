@@ -192,6 +192,21 @@ func Max(a, b int) int {
 	return b
 }
 
+// RoundUp returns the next multiple of the given 'multiple' that is 
+// greater than or equal to 'val'. It handles positive integers.
+func RoundUp(val, multiple int) int {
+	if multiple <= 0 {
+		return val // Avoid division by zero or invalid negative multiples
+	}
+
+	remainder := val % multiple
+	if remainder == 0 {
+		return val
+	}
+
+	return val + (multiple - remainder)
+}
+
 // logs as debug
 func LogDebugWithLabel(label string, msg string, args ...interface{}) {
 	LogWithLabelAndLevel(label, logrus.InfoLevel, msg, args...)
