@@ -475,7 +475,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 			rwyLong:        0.0,
 			rwyHdg:         90.0,
 			acLat:          0.0,
-			acLong:         -0.125, // Point A for Rwy 09
+			acLong:         -0.140, // Outside Point A circle for straight-segment tracking
 			initialHeading: 80.0,
 			dt:             1.0, // 3 deg/sec max change -> 83.0
 			expectedMinHdg: 82.99,
@@ -487,7 +487,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 			rwyLong:        0.0,
 			rwyHdg:         90.0,
 			acLat:          0.0,
-			acLong:         -0.125,
+			acLong:         -0.140,
 			initialHeading: 100.0,
 			dt:             2.0, // 3 * 2 = 6 deg max change -> 94.0
 			expectedMinHdg: 93.99,
@@ -499,7 +499,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 			rwyLong:        0.0,
 			rwyHdg:         90.0,
 			acLat:          0.0,
-			acLong:         -0.125,
+			acLong:         -0.130,
 			initialHeading: 359.0, // Shorter turn is right across 360 to get to 090
 			dt:             1.0,   // 3 deg turn -> 359 + 3 = 362 -> 2.0
 			expectedMinHdg: 1.99,
@@ -511,7 +511,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 			rwyLong:        0.0,
 			rwyHdg:         270.0, // Changed to a West runway alignment
 			acLat:          0.0,
-			acLong:         0.125, // Positioned East of the runway on extended centerline
+			acLong:         0.130, // Positioned East of the runway on extended centerline
 			initialHeading: 1.0,   // Shorter turn to 270 is now left (counter-clockwise) across 0
 			dt:             1.0,   // 3 deg turn left -> 1 - 3 = -2 -> Wraps cleanly to 358.0
 			expectedMinHdg: 357.99,

@@ -323,5 +323,10 @@ func NormalizeDiffDegrees(target, current float64) float64 {
 	for diff > 180.0 {
 		diff -= 360.0
 	}
+	// Normalize ambiguous 180° values consistently as positive 180°
+	// to avoid sign-dependent branch behavior on the exact opposite heading.
+	if math.Abs(diff+180.0) < 1e-9 {
+		return 180.0
+	}
 	return diff
 }

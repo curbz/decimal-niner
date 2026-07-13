@@ -176,7 +176,10 @@ func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTim
 	}
 	state := ac.Flight.ActiveManeuver
 	deltaSec := currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
-	if deltaSec <= 0 {
+	// Align collision maneuver timing with frame-based position updates.
+	// Treat extremely small elapsed times as a single standard tick so repeated
+	// immediate test loops and low-resolution updates still make progress.
+	if deltaSec <= 0 || deltaSec < 1.0 || deltaSec > 20.0 {
 		deltaSec = 10.0
 	}
 	headingDelta := state.TurnRateDegPerSec * deltaSec

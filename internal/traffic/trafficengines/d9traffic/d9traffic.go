@@ -3493,7 +3493,8 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	applySmoothTurnHeading(ac, targetHeading, 3.0, dt)
 
 	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
-	if calcDist(acLat, acLong, pA_Lat, pA_Long) < 0.15 {
+	distToPointA := calcDist(acLat, acLong, pA_Lat, pA_Long)
+	if distToPointA < 0.15 {
 		ac.Flight.Position.Heading = rwyHdg
 		ac.Flight.Position.Lat = pA_Lat
 		ac.Flight.Position.Long = pA_Long
