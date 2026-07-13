@@ -1638,11 +1638,10 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 				}
 			}
 		} else {
+			ac.Flight.Position.Altitude = targetAlt
+			applySmoothTurnHeading(ac, heading, 3.0, deltaTimeSec)
 			ac.Flight.Position.Lat = targetPos.Lat
 			ac.Flight.Position.Long = targetPos.Long
-			ac.Flight.Position.Altitude = targetAlt
-			ac.Flight.Position.Heading = geometry.NormalizeHeading(heading)
-
 			ac.Flight.Phase.PositionComplete = true
 			util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
 			return
