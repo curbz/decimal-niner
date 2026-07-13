@@ -316,17 +316,21 @@ func CalculateKinematicDuration(distNM float64, groundSpeedKnots float64) time.D
 }
 
 func NormalizeDiffDegrees(target, current float64) float64 {
-	diff := target - current
-	for diff < -180.0 {
+	// 1. Map difference to (-360.0, 360.0)
+	diff := math.Mod(target-current, 360.0)
+
+	// 2. Bring into (-180.0, 180.0]
+	if diff <= -180.0 {
 		diff += 360.0
-	}
-	for diff > 180.0 {
+	} else if diff > 180.0 {
 		diff -= 360.0
 	}
-	// Normalize ambiguous 180° values consistently as positive 180°
-	// to avoid sign-dependent branch behavior on the exact opposite heading.
-	if math.Abs(diff+180.0) < 1e-9 {
+
+	// 3. Symmetrically capture floating-point jitter on both sides of the 180 boundary
+	// and force a deterministic positive 180.0 (Right-hand turn commitment)
+	if math.Abs(diff-180.0) < 1e-9 || math.Abs(diff+180.0) < 1e-9 {
 		return 180.0
 	}
+
 	return diff
 }
