@@ -1031,6 +1031,12 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 						ac.Flight.AssignedRunwayName, airport.ICAO)
 					continue
 				}
+				// runway config protection: if there are any aircraft in approach, final or braking phases for the reciprocal runway, hold this aircraft in taxiout until the approach/final aircraft have cleared the runway
+				if e.isRunwayPendingArrivals(airport, getReciprocalName(ac.Flight.AssignedRunway.Name)) {
+					util.LogWithLabel(ac.Registration, "active departure runway %s has pending traffic at %s - remaining in TaxiOut phase",
+						ac.Flight.AssignedRunwayName, airport.ICAO)
+					continue
+				}
 				e.transitionToPhase(ac, flightphase.Takeoff, 0, 0)
 				rwy := ac.Flight.AssignedRunway
 				if rwy != nil {
@@ -1097,10 +1103,14 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Arrival:
 			// Position-driven Approach transition
 			if ac.Flight.Phase.PositionComplete {
+				// assign active runway
+				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival
+				ac.Flight.AssignedRunwayName = ac.Flight.AssignedRunway.Name
 
+				// Check for arrival saturation conditions
 				approachCount, holdingCount, _ := e.getArrivalSaturationStats(ac, airport)
 
-				// TRIPPING CRITERIA:
+				// Hold Criteria
 				// 1. Approach sector is saturated OR
 				// 2. Localizer queue threshold is exceeded OR
 				// 3. There is already a stack established for this runway!
@@ -1136,6 +1146,9 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				e.updateLinearPosition(ac, airport)
 			} else {
 				// Normal operational path
+				// assign active runway
+				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival
+				ac.Flight.AssignedRunwayName = ac.Flight.AssignedRunway.Name
 				e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 			}
 
@@ -2007,7 +2020,7 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 				// The aircraft must have arrived at the fix and cannot already be exiting
 				if ac.Flight.Holding.AssignedHold != nil && ac.Flight.Holding.ArrivedAtHoldFix && !ac.Flight.Holding.ExitingHold {
-					if ac.Flight.Destination == icao && ac.Flight.AssignedRunwayName == rwy.Name {
+					if ac.Flight.Destination == icao && ac.Flight.AssignedRunway.Name == rwy.Name {
 
 						// --- THE GUARD STEP ---
 						// Ensure they fly the racetrack for at least 60 seconds before becoming eligible for release
@@ -2790,9 +2803,6 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 			activeOrientation, ap.ICAO, primaryRwy.Name)
 	}
 
-	currArrRwy := e.AirportConfig[ap.ICAO].Arrival
-	currDepRwy := e.AirportConfig[ap.ICAO].Departure
-
 	// 3. Pair Identification (Outboard/Inboard Logic)
 	if len(candidates) >= 2 {
 
@@ -2820,17 +2830,6 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 		util.LogWithLabel("D9TRAFFIC", "%s runway config update: aircraft arriving and departing %s",
 			ap.ICAO, primaryRwy.Name)
 	}
-
-	// 4. Runway Queue Cleanup: If the active runway(s) have changed, we need clear the queues.
-	if currArrRwy != nil && currArrRwy.Name != e.AirportConfig[ap.ICAO].Arrival.Name {
-		currLockKey := normalizeRunwayKey(ap.ICAO, currArrRwy)
-		delete(e.RunwayQueues, currLockKey)
-	}
-	if currDepRwy != nil && currDepRwy.Name != e.AirportConfig[ap.ICAO].Departure.Name {
-		currLockKey := normalizeRunwayKey(ap.ICAO, currDepRwy)
-		delete(e.RunwayQueues, currLockKey)
-	}
-
 }
 
 func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
@@ -3175,6 +3174,18 @@ func (e *D9TrafficEngine) getPhaseVerticalRateFpm(sizeClass string, phase flight
 	default:
 		return 0.0
 	}
+}
+
+func (e *D9TrafficEngine) isRunwayPendingArrivals(ap *atc.Airport, rwyName string) bool {
+	// loop through all active aircraft and check if any are in the Approach, final or braking phase and assigned to this runway
+	for _, ac := range e.ActiveAircraft {
+		if ap.ICAO == ac.Flight.Destination && ac.Flight.AssignedRunway.Name == rwyName && (flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Approach || 
+				flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Final || 
+				flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Braking) {
+			return true
+		}
+	}
+	return false
 }
 
 // getRunwayLock attempts to acquire a lock on the runway for the given aircraft.
