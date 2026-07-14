@@ -505,8 +505,9 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	}
 
 	// assign departure runway
-	newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-	newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
+	newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure
+	newAc.Flight.AssignedRunwayName = newAc.Flight.AssignedRunway.Name
+
 	// assign SID for departure
 	e.AtcService.AssignSID(newAc, airport, newAc.Flight.AssignedRunway)
 
@@ -525,10 +526,10 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	if ip >= flightphase.Climbout.Index() {
 		// If Cruise, flip to destination (arrival) runway BEFORE initializing
 		if ip == flightphase.Cruise.Index() {
-			rwy := e.getFallbackRunway(f.IcaoDest, atc.ARRIVAL_CONTEXT)
+			rwy := e.getActiveRunway(f.IcaoDest, atc.ARRIVAL_CONTEXT)
 			destApt := e.AtcService.Airports[f.IcaoDest]
+			newAc.Flight.AssignedRunway = rwy
 			newAc.Flight.AssignedRunwayName = rwy.Name
-			newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(destApt, newAc.Flight.AssignedRunwayName)
 			// assign destination procedure
 			e.AtcService.AssignSTAR(newAc, destApt, rwy)
 		}
@@ -715,8 +716,8 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	e.AtcService.SetFlightPhaseClass(newAc)
 	// arrival runway must be assigned BEFORE assigning runway access point
 	if initialPhaseIdx <= flightphase.TaxiIn.Index() {
-		newAc.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Arrival.Name
-		newAc.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, newAc.Flight.AssignedRunwayName)
+		newAc.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival
+		newAc.Flight.AssignedRunwayName = newAc.Flight.AssignedRunway.Name
 	}
 	if initialPhaseIdx >= flightphase.Braking.Index() && initialPhaseIdx <= flightphase.Shutdown.Index()+1 {
 		// assign parking BEFORE runway exit point as this may influence the selected exit
@@ -753,9 +754,9 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 		newAc.Flight.Phase.EstimatedNextTransition.Format(time.RFC3339))
 }
 
-// getFallbackRunway tries to get the active runway for the given flight context, if not set/available, fallsback to any runway.
+// getActiveRunway returns the active runway for the given flight context, if not set/available, fallsback to any runway.
 // Returns nil if the fallback fails.
-func (e *D9TrafficEngine) getFallbackRunway(icao string, arrOrDep int) *atc.Runway {
+func (e *D9TrafficEngine) getActiveRunway(icao string, arrOrDep int) *atc.Runway {
 	// 1. Try your specific airport config first
 	if config, found := e.AirportConfig[icao]; found {
 		if arrOrDep == atc.ARRIVAL_CONTEXT {
@@ -783,11 +784,12 @@ func (e *D9TrafficEngine) assignPhaseInitialAltitude(ac *atc.Aircraft, phase int
 
 	ap, flightContext := e.getActiveAirport(ac)
 	icao := ap.ICAO
-	rwy := e.AtcService.GetAirportRunway(ap, ac.Flight.AssignedRunwayName)
+	rwy := ac.Flight.AssignedRunway
 	if rwy == nil {
-		rwy = e.getFallbackRunway(icao, flightContext)
+		rwy = e.getActiveRunway(icao, flightContext)
 	}
 	ac.Flight.AssignedRunway = rwy
+	ac.Flight.AssignedRunwayName = rwy.Name
 
 	p := flightphase.FlightPhase(phase)
 
@@ -1011,8 +1013,8 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Startup:
 			// Check for TaxiOut transition
 			if currSimZTime.After(ac.Flight.Phase.EstimatedNextTransition) {
-				ac.Flight.AssignedRunwayName = e.AirportConfig[airport.ICAO].Departure.Name
-				ac.Flight.AssignedRunway = e.AtcService.GetAirportRunway(airport, ac.Flight.AssignedRunwayName)
+				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Departure
+				ac.Flight.AssignedRunwayName = ac.Flight.AssignedRunway.Name
 				e.AtcService.AssignSID(ac, airport, ac.Flight.AssignedRunway)
 				e.AtcService.AssignRunwayAccessPoint(ac, airport, atc.DEPARTURE_CONTEXT)
 				if ac.Flight.AssignedParkingSpot != nil {
@@ -1024,9 +1026,9 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.TaxiOut:
 			// Position-driven Takeoff transition: only transition when position indicates arrival at runway
 			if ac.Flight.Phase.PositionComplete {
-				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac) {
+				if !e.getRunwayLock(airport, ac.Flight.AssignedRunway, ac) {
 					util.LogWithLabel(ac.Registration, "active departure runway %s is occupied at %s - remaining in TaxiOut phase",
-						e.AirportConfig[airport.ICAO].Departure.Name, airport.ICAO)
+						ac.Flight.AssignedRunwayName, airport.ICAO)
 					continue
 				}
 				e.transitionToPhase(ac, flightphase.Takeoff, 0, 0)
@@ -1049,7 +1051,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Takeoff:
 			// Position-driven Climbout transition
 			if ac.Flight.Phase.PositionComplete {
-				e.releaseRunwayLock(airport, e.AirportConfig[airport.ICAO].Departure, ac)
+				e.releaseRunwayLock(airport, ac.Flight.AssignedRunway, ac)
 				e.transitionToPhase(ac, flightphase.Climbout, 0, 0)
 			}
 			e.updateLinearPosition(ac, airport)
@@ -1147,10 +1149,10 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 		case flightphase.Final:
 			// Position-driven Braking transition
 			if ac.Flight.Phase.PositionComplete {
-				if !e.getRunwayLock(airport, e.AirportConfig[airport.ICAO].Arrival, ac) {
+				if !e.getRunwayLock(airport, ac.Flight.AssignedRunway, ac) {
 					// go-around
 					util.LogWithLabel(ac.Registration, "on final: active arrival runway %s is occupied at %s - initiating go-around",
-						e.AirportConfig[airport.ICAO].Arrival.Name, airport.ICAO)
+						ac.Flight.AssignedRunwayName, airport.ICAO)
 					e.transitionToPhase(ac, flightphase.GoAround, 0, 0)
 					e.updateGoAroundPosition(ac, airport)
 				} else {
@@ -1876,7 +1878,6 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
             return
         }
 
-        // CRITICAL FIX: Initialize PatternEntryTime to now to synchronize the t=0 clock cycle
         ac.Flight.Holding.ArrivedAtHoldFix = true
         ac.Flight.Holding.PatternEntryTime = now 
         util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
@@ -2492,7 +2493,7 @@ func (e *D9TrafficEngine) determineInitialDeparturePhase(minsToSchedDep int, f *
 			if len(e.RunwayQueues[qKey]) >= TRAFFIC_MANAGEMENT_RUNWAY_QUEUE_THRESHOLD {
 				delay = len(e.RunwayQueues[qKey]) * TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS
 				util.LogWithLabel(f.AircraftRegistration, "initial departure delay of %d seconds applied based on current traffic queue of %d for runway %s at %s",
-					delay, len(e.RunwayQueues[qKey]), e.AirportConfig[f.IcaoOrigin].Departure.Name, f.IcaoOrigin)
+					delay, len(e.RunwayQueues[qKey]), flow.Departure.Name, f.IcaoOrigin)
 			}
 		} else {
 			util.LogWarnWithLabel(f.AircraftRegistration, "unable to determine initial departure phase due to missing airport flow for %s", f.IcaoOrigin)
