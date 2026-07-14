@@ -323,3 +323,4 @@ func isNorthAmerica(icao string) bool {
 	}
 	return false
 }
+

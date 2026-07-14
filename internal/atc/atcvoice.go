@@ -1012,24 +1012,24 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 			}
 		}
 		if clearance == 0 {
-			clearance = calculateAdjustedAltitude(constants.DefaultHoldingAltFt, ap, rwy, 100)
+			clearance = int(GetElevationAdjustedAltitude(constants.DefaultHoldingAltFt, ap, rwy, 100))
 		}
 
 	case flightphase.GoAround.Index():
 		if rwy.MAalt > 0 {
 			clearance = rwy.MAalt
 		} else {
-			clearance = calculateAdjustedAltitude(constants.DefaultMissedApproachAltFt, ap, rwy, 100)
+			clearance = int(GetElevationAdjustedAltitude(constants.DefaultMissedApproachAltFt, ap, rwy, 100))
 		}
 
 	case flightphase.Approach.Index():
 		if rwy.FAFalt > 0 {
 			clearance = rwy.FAFalt
 		} else {
-			clearance = calculateAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ap, rwy, 100)
+			clearance = int(GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ap, rwy, 100))
 		}
 	case flightphase.Final.Index(), flightphase.Braking.Index(), flightphase.TaxiIn.Index(), flightphase.Shutdown.Index():
-		clearance = calculateAdjustedAltitude(0, ap, rwy, 100)
+		clearance = int(GetElevationAdjustedAltitude(0, ap, rwy, 100))
 	}
 
 	// fallback
@@ -1037,7 +1037,7 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 		if ac.Flight.Phase.Class == flightclass.Departing {
 			clearance = ac.Flight.CruiseAlt
 		} else {
-			clearance = calculateAdjustedAltitude(0, ap, rwy, 100)
+			clearance = int(GetElevationAdjustedAltitude(0, ap, rwy, 100))
 		}
 	}
 
@@ -1407,6 +1407,3 @@ func (s *Service) formatTurbulence(role string) string {
 	return phrase
 }
 
-func calculateAdjustedAltitude(baseAlt int, ap *Airport, rwy *Runway, roundTo int) int {
-	return baseAlt + int(math.Ceil(GetElevation(ap, rwy)/float64(roundTo))*float64(roundTo))
-}
