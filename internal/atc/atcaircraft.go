@@ -53,6 +53,8 @@ type Flight struct {
 	Holding             *Holding
 	GroundSpeed         float64
 	ActiveManeuver      *ManeuverState
+	TargetAltitude	   float64
+	TargetHeading	   float64
 }
 
 type Holding struct {
@@ -62,7 +64,7 @@ type Holding struct {
 	ExitingHold       bool
 	TargetApproachFix *Fix
 	TargetApproachAlt float64
-	TargetAltitude    float64
+	TargetHoldAlt     float64
 	AssignedHold      *Hold
 }
 
