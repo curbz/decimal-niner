@@ -30,7 +30,7 @@
   ],
   "climb_out": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Departure, {$CALLSIGN}, passing {@ALTITUDE}.", "atc": "{$CALLSIGN}, {$FACILITY} Departure,[ radar contact,] {@ALT_CLEARANCE}." },
-    { "initiator": "atc", "pilot": "Heading {$HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, fly heading {$HEADING}" },
+    { "initiator": "atc", "pilot": "{@ATC_HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, {@ATC_HEADING}" },
     { "initiator": "atc", "pilot": "{@ALT_CLEARANCE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@SID(true)}." }
   ],
   "departure": [
@@ -57,10 +57,10 @@
     { "initiator": "atc", "pilot": "cleared to {@HOLD_FIX}, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to {@HOLD_FIX}, {@ALTITUDE}." }
   ],
   "approach": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}." },
+    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, turn heading {$ATC_HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}." },
     { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {@APPROACH_TYPE}, runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {@APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
-    { "initiator": "atc", "pilot": "Heading {$HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, turn heading {$HEADING}, descend {@ALTITUDE}, cleared for the {@APPROACH_TYPE}." }
+    { "initiator": "atc", "pilot": "{$ATC_HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, turn heading {$ATC_HEADING}, descend {@ALTITUDE}, cleared for the {@APPROACH_TYPE}." }
   ],
   "final": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared to land[, wind {@WIND}]." },

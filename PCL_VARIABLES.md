@@ -1,245 +1,161 @@
 # PCL Variables and Macros
 
 This document lists the PCL variables and macros available in Decimal Niner phrase processing.
-It is focused on the values and formatted outputs produced by the engine, with real phrase examples from `resources/phrases.json`.
 
 ## Raw Variables (`$`)
 
 ### `$ALTITUDE`
-- Source: `ac.Flight.Position.Altitude`
-- Output: raw rounded altitude value as an integer.
+- Data Type: Number
+- Output: raw rounded current altitude value as an integer.
 - Example phrase:
   - Template: `{$FACILITY} Departure, {$CALLSIGN}, passing {@ALTITUDE} for assigned altitude.`
   - Interpolated: `Heathrow Departure, speedbird123, passing 5 thousand for assigned altitude.`
 
-### `$CALLSIGN`
-- Source: `ac.Flight.Comms.Callsign`
-- Output: callsign converted to lowercase.
-- Example phrase:
-  - Template: `{$FACILITY} Clearance, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.`
-  - Interpolated: `Heathrow Clearance, speedbird123, at gate bravo 12, requesting IFR to John F Kennedy.`
-
-### `$FACILITY`
-- Source: current controller name from `ac.Flight.Comms.Controller.Name`
-- Output: ATC facility name, or empty string if no controller is assigned.
-- Example phrase:
-  - Template: `{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting engine start.`
-  - Interpolated: `Heathrow Ground, speedbird123, at gate bravo 12, requesting engine start.`
-
-### `$SQUAWK`
-- Source: `ac.Flight.Squawk`
-- Output: transponder code string.
-- Example phrase:
-  - Template: `{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident.`
-  - Interpolated: `speedbird123, radar contact, reset transponder, squawk 1234 and ident.`
-
-### `$HEADING`
-- Source: `ac.Flight.Position.Heading`
-- Output: heading normalized and rounded to 3 digits with leading zeros, e.g. `090`, `270`.
-- Example phrase:
-  - Template: `Heading {$HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.`
-  - Interpolated: `Heading 270, descend to 10 thousand, speedbird123.`
-
-### `$RUNWAY`
-- Source: `ac.Flight.AssignedRunway`
-- Output: raw runway string.
-- Example phrase:
-  - Template: `{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.`
-  - Interpolated: `Heathrow Tower, speedbird123, holding short runway 27left, ready for departure.`
-
-### `$DESTINATION`
-- Source: `ac.Flight.Destination`
-- Output: destination ICAO code string.
-- Example phrase:
-  - Template: `{$FACILITY} Delivery, {$CALLSIGN}, IFR to {@DESTINATION}, ready to copy.`
-  - Interpolated: `Heathrow Delivery, speedbird123, IFR to KJFK, ready to copy.`
-
-### `$BARO_SEALEVEL`
-- Source: `s.Weather.Baro.Sealevel`
-- Output: sea-level pressure rounded to integer Pascals.
-- Example phrase:
-  - Template: `{$CALLSIGN}, start approved, {@BARO}, report ready for taxi.`
-  - Interpolated: `speedbird123, start approved, QNH 1013, report ready for taxi.`
-
-### `$BARO_AIRCRAFT`
-- Source: `s.Weather.Baro.Flight`
-- Output: aircraft pressure setting rounded to integer Pascals.
-- Example phrase:
-  - This variable is defined for raw access though not shown in example phrases.
-
-### `$WIND_SPEED`
-- Source: `s.Weather.Wind.Speed`
-- Output: wind speed in meters per second.
-- Example phrase:
-  - This raw variable is available but typically wrapped by `{@WIND}` in phrases.
-
-### `$WIND_SHEAR`
-- Source: `s.Weather.Wind.Shear`
-- Output: wind shear in meters per second.
-- Example phrase:
-  - Used indirectly via `{@SHEAR}`.
-
-### `$TURBULENCE`
-- Source: `s.Weather.Turbulence`
-- Output: turbulence magnitude.
-- Example phrase:
-  - Template: `{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {@TURBULENCE}`
-  - Interpolated: `Heathrow Center, speedbird123, level at current altitude. experiencing moderate turbulence.`
-
-### `$PARKING`
-- Source: `ac.Flight.AssignedParkingName`
-- Output: raw parking designation string.
-- Example phrase:
-  - Template: `{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting taxi.`
-  - Interpolated: `Heathrow Ground, speedbird123, at gate bravo 12, requesting taxi.`
-
 ### `$APPROACH_TYPE`
-- Source: runway highest precision approach string.
+- Data Type: String
 - Output: raw approach type value, e.g. `ILS`, `VOR`, or empty if no runway available.
 - Example phrase:
   - Template: `{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.`
   - Interpolated: `Heathrow Approach, speedbird123, requesting vectors for the approach to runway 27left.`
 
-### `$HOLD_FIX_NAME`
-- Source: `ac.Flight.AssignedHold.FullName`
-- Output: hold fix full name or empty string if unset.
+### `$ATC_HEADING`
+- Data Type: String
+- Output: ATC instructed heading normalized and rounded to 3 digits with leading zeros, e.g. `090`, `270`.
 - Example phrase:
-  - Used for internal logic and available for direct phrase insertion.
+  - Template: `Fly heading {$ATC_HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.`
+  - Interpolated: `Fly heading 270, descend to 10 thousand, speedbird123.`
+
+### `$BARO_AIRCRAFT`
+- Data Type: Number
+- Output: aircraft pressure setting rounded to integer Pascals.
+- Example phrase:
+  - This variable is defined for raw access though not shown in example phrases.
+
+### `$BARO_SEALEVEL`
+- Data Type: Number
+- Output: sea-level pressure rounded to integer Pascals.
+- Example phrase:
+  - Template: `{$CALLSIGN}, start approved, {@BARO}, report ready for taxi.`
+  - Interpolated: `speedbird123, start approved, QNH 1013, report ready for taxi.`
+
+### `$CALLSIGN`
+- Data Type: String
+- Output: callsign converted to lowercase.
+- Example phrase:
+  - Template: `{$FACILITY} Clearance, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.`
+  - Interpolated: `Heathrow Clearance, speedbird123, at gate bravo 12, requesting IFR to John F Kennedy.`
+
+### `$DESTINATION`
+- Data Type: String
+- Output: destination ICAO code string.
+- Example phrase:
+  - Template: `{$FACILITY} Delivery, {$CALLSIGN}, IFR to {@DESTINATION}, ready to copy.`
+  - Interpolated: `Heathrow Delivery, speedbird123, IFR to KJFK, ready to copy.`
+
+### `$FACILITY`
+- Data Type: String
+- Output: ATC facility name, or empty string if no controller is assigned.
+- Example phrase:
+  - Template: `{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting engine start.`
+  - Interpolated: `Heathrow Ground, speedbird123, at gate bravo 12, requesting engine start.`
+
+### `$FA_ALTITUDE`
+- Data Type: Number
+- Output: final approach fix altitude integer or `0` if no runway.
+- Example phrase:
+  - Used indirectly in `@ALT_CLEARANCE` for arriving flights.
+
+### `$HEADING`
+- Data Type: String
+- Output: current heading normalized and rounded to 3 digits with leading zeros, e.g. `090`, `270`.
+- Example phrase:
+  - Template: `Heading {$HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.`
+  - Interpolated: `Heading 270, descend to 10 thousand, speedbird123.`
 
 ### `$HOLD_FIX_IDENT`
-- Source: `ac.Flight.AssignedHold.Ident`
+- Data Type: String
 - Output: hold fix identifier or empty string if unset.
 - Example phrase:
   - Used for internal logic and available for direct phrase insertion.
 
-### `$MA_HEADING`
-- Source: `rwy.MAHeading`
-- Output: missed approach heading integer or `0` if no runway.
+### `$HOLD_FIX_NAME`
+- Data Type: String
+- Output: hold fix full name or empty string if unset.
 - Example phrase:
-  - Template: `{$CALLSIGN}, Roger, fly {@MA_HEADING}, climb and maintain {@MA_ALTITUDE}.`
-  - Interpolated: `speedbird123, Roger, fly heading 180, climb and maintain 3 thousand.`
+  - Used for internal logic and available for direct phrase insertion.
 
 ### `$MA_ALTITUDE`
-- Source: `rwy.MAalt`
+- Data Type: Number
 - Output: missed approach altitude integer or `0` if no runway.
 - Example phrase:
   - Template: `{$CALLSIGN}, climb and maintain {@MA_ALTITUDE}, proceed to {@MA_FIX}.`
   - Interpolated: `speedbird123, climb and maintain 3 thousand, proceed to VOR HOLD.`
 
 ### `$MA_FIX`
-- Source: `rwy.MAFix`
+- Data Type: String
 - Output: missed approach fix string or empty string if no runway.
 - Example phrase:
   - Template: `{$CALLSIGN}, climb {@MA_ALTITUDE} fly {@MA_HEADING} to {@MA_FIX}`
   - Interpolated: `speedbird123, climb 3 thousand fly heading 180 to VOR HOLD`
 
-### `$FA_ALTITUDE`
-- Source: `rwy.FAFalt`
-- Output: final approach fix altitude integer or `0` if no runway.
-- Example phrase:
-  - Used indirectly in `@ALT_CLEARANCE` for arriving flights.
-
-### `$VECTORING`
-- Source: `ac.Flight.IsVectoring`
-- Output: true/false
-- Example phrase:
-  - Not intended to used directly in phrase output but can be used in pcl `WHEN` statements
-
-## Formatted Macros (`@`)
-
-### `@RUNWAY`
-- Function: `translateRunway`
-- Output: runway with `L`/`R` converted to `left`/`right`.
-- Example: runway `27L` becomes `27left` in the current implementation.
-- Example phrase:
-  - Template: `{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading[, wind {@WIND}].`
-  - Interpolated: `speedbird123, runway 27left, cleared for takeoff, fly runway heading,`.
-
-### `@PARKING`
-- Function: `formatParking`
-- Output: natural speech parking phrase.
-  - If the value contains `RAMP` or `APRON`, it preserves words and phoneticizes single letters.
-  - If it starts with digits, output becomes `gate N` or `stand N` depending on region.
-  - If it starts with letter+digits, output becomes `gate <phonetic> <number>`.
-- Example phrase:
-  - Template: `{$CALLSIGN}, taxi to {@PARKING}.`
-  - Interpolated: `speedbird123, taxi to gate bravo 12.`
-
-### `@RUNWAY_HOLD`
-- Function: `formatRunwayHold`
-- Output: formats the runway access point and prefixes with `hold at`. If no access point has been assigned then the string `hold short` is output.
-- Example phrase:
-  - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAY_HOLD}.`
-  - Interpolated: `speedbird123, taxi via Charlie and hold at Alpha 13.`
-
-### `@RUNWAY_EXIT`
-- Function: `formatRunwayExit`
-- Output: formats the runway exit point and prefixes with either `exit at` or `vacate runway at` on an equal random basis. The prefix will be further extened to include `high speed` if the assigned exit is classed as high speed. If no exit point has been assigned then the string `exit when able` is output.
-- Example phrase:
-  - Template: `{$CALLSIGN}, {@RUNWAY_HOLD}.`
-  - Interpolated: `speedbird123, vacate runway at high speed exit November 6.`
-
-### `@TAXIPATH`
-- Function: `collateTaxipath`
-- Output: composes arrival or departure taxi routing using available taxiway access and parking segments.
-  - Taxiway names are phoneticized when they start with a letter, e.g. `A` → `Alpha` and `B12` → `Bravo 12`.
-  - If no taxi path data exists, returns `taxiway`.
-- Example phrase:
-  - Template: `{$CALLSIGN}, taxi {@TAXIPATH}.`
-  - Interpolated: `speedbird123, taxi via Alpha,Bravo 12.`
-
-### `@DESTINATION`
-- Function: `formatAirportName`
-- Output: airport name with common suffixes removed (`Intl`, `Arpt`, `Airport`, `Regional`, `Municipal`).
-- Example phrase:
-  - Template: `{$FACILITY} Delivery, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.`
-  - Interpolated: `Heathrow Delivery, speedbird123, at gate bravo 12, requesting IFR to John F Kennedy.`
-
-
-### `@SID`
-- Function: `formatSID`
-- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted. If no assigned SID, defaults to `assigned departure`.
-- Example phrase:
-  - Template: `{$CALLSIGN}, cleared via the {@SID(true)}.`
-  - Interpolated: `speedbird123, cleared via the BNN 5A deaprture, climb to 7 thousand.`
-
-### `@STAR`
-- Function: `formatSTAR`
-- Output: Standard Terminal Arrival Route (STAR) name, optionally including descent altitude. If an argument is provided and is `false`, the descent altitude is omitted. If no assigned STAR, defaults to `assigned arrival`.
-- Example phrase:
-  - Template: `{$CALLSIGN}, expect the {@STAR(true)}.`
-  - Interpolated: `speedbird123, expect the BIG 2B arrival, descend to 3 thousand.`
-
-### `@APPROACH_TYPE`
-Function: formatted from runway highest precision approach.
-Output: appended with the word `approach`, e.g. `ILS approach`.
-Example phrase:
-  - Template: `{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}.`
-  - Interpolated: `speedbird123, Heathrow Approach, fly heading 270 for ILS approach, climb to 12 thousand.`
-
-### `@MA_HEADING`
-- Function: missed approach heading phrase.
-- Output: `heading <N>` if runway data exists, otherwise `runway heading`.
+### `$MA_HEADING`
+- Data Type: Number
+- Output: missed approach heading integer or `0` if no runway.
 - Example phrase:
   - Template: `{$CALLSIGN}, Roger, fly {@MA_HEADING}, climb and maintain {@MA_ALTITUDE}.`
   - Interpolated: `speedbird123, Roger, fly heading 180, climb and maintain 3 thousand.`
 
-### `@MA_ALTITUDE`
-- Function: `formatAltitude` with missed approach altitude.
-- Output: formatted altitude text such as `2 thousand` or `flight level 330`.
+### `$PARKING`
+- Data Type: String
+- Output: raw parking designation string.
 - Example phrase:
-  - Template: `{$CALLSIGN}, climb and maintain {@MA_ALTITUDE}, proceed to {@MA_FIX}.`
-  - Interpolated: `speedbird123, climb and maintain 3 thousand, proceed to VOR HOLD.`
+  - Template: `{$FACILITY} Ground, {$CALLSIGN}, at {@PARKING}, requesting taxi.`
+  - Interpolated: `Heathrow Ground, speedbird123, at gate bravo 12, requesting taxi.`
 
-### `@MA_FIX`
-- Function: missed approach fix phrase.
-- Output: runway missed approach fix name or `published hold`.
+### `$RUNWAY`
+- Data Type: String
+- Output: raw runway string.
 - Example phrase:
-  - Template: `{$CALLSIGN}, climb {@MA_ALTITUDE} fly {@MA_HEADING} to {@MA_FIX}`
-  - Interpolated: `speedbird123, climb 3 thousand fly heading 180 to VOR HOLD`
+  - Template: `{$FACILITY} Tower, {$CALLSIGN}, holding short runway {@RUNWAY}, ready for departure.`
+  - Interpolated: `Heathrow Tower, speedbird123, holding short runway 27left, ready for departure.`
+
+### `$SQUAWK`
+- Data Type: String
+- Output: transponder code string.
+- Example phrase:
+  - Template: `{$CALLSIGN}, radar contact, reset transponder, squawk {$SQUAWK} and ident.`
+  - Interpolated: `speedbird123, radar contact, reset transponder, squawk 1234 and ident.`
+
+### `$TURBULENCE`
+- Data Type: Number
+- Output: turbulence magnitude.
+- Example phrase:
+  - Template: `{$FACILITY} Center, {$CALLSIGN}, level at current altitude. {@TURBULENCE}`
+  - Interpolated: `Heathrow Center, speedbird123, level at current altitude. experiencing moderate turbulence.`
+
+### `$VECTORING`
+- Data Type: Boolean
+- Output: true/false
+- Example phrase:
+  - Not intended to used directly in phrase output but can be used in pcl `WHEN` statements
+
+### `$WIND_SHEAR`
+- Data Type: Number
+- Output: wind shear in meters per second.
+- Example phrase:
+  - Used indirectly via `{@SHEAR}`.
+
+### `$WIND_SPEED`
+- Data Type: Number
+- Output: wind speed in meters per second.
+- Example phrase:
+  - This raw variable is available but typically wrapped by `{@WIND}` in phrases.
+
+---
+
+## Formatted Macros (`@`)
 
 ### `@ALTITUDE`
-- Function: `formatAltitude`
 - Output:
   - below transition level: `X thousand` or `X thousand Y hundred`
   - at/above transition level: `flight level NN`
@@ -248,14 +164,24 @@ Example phrase:
   - Interpolated: `Heathrow Center, speedbird123, with you at 5 thousand. experiencing moderate turbulence.`
 
 ### `@ALT_CLEARANCE`
-- Function: `generateAltClearance`
 - Output: one of `descend to ...`, `maintain ...`, or `climb to ...`, based on current altitude and cleared altitude.
 - Example phrase:
   - Template: `{$CALLSIGN}, {@ALT_CLEARANCE}, fly heading {$HEADING}`
   - Interpolated: `speedbird123, climb to 12 thousand, fly heading 270`
 
+### `@APPROACH_TYPE`
+- Output: formatted from runway highest precision approach and appended with the word `approach`, e.g. `ILS approach`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, {$FACILITY} Approach, fly heading {$HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}.`
+  - Interpolated: `speedbird123, Heathrow Approach, fly heading 270 for ILS approach, climb to 12 thousand.`
+
+### `@ATC_HEADING`
+- Output: ATC instructed heading normalized and rounded to 3 digits with leading zeros, e.g. `090`, `270` predicated with turn direction.
+- Example phrase:
+  - Template: `{@ATC_HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.`
+  - Interpolated: `turn right heading 270, descend to 10 thousand, speedbird123.`
+
 ### `@BARO`
-- Function: `formatBaro`
 - Output:
   - North America: `altimeter ####` with inches of mercury digits
   - Elsewhere: `QNH ####` with hPa digits
@@ -263,24 +189,96 @@ Example phrase:
   - Template: `{$CALLSIGN}, start approved, {@BARO}, report ready for taxi.`
   - Interpolated: `speedbird123, start approved, QNH 1013, report ready for taxi.`
 
-### `@WIND`
-- Function: `formatWind`
-- Output:
-  - `calm` if speed is low
-  - otherwise `<direction> at <knots>`, with optional gusting if turbulence is high
+### `@DESTINATION`
+- Output: airport name with common suffixes removed (`Intl`, `Arpt`, `Airport`, `Regional`, `Municipal`).
+- Example phrase:
+  - Template: `{$FACILITY} Delivery, {$CALLSIGN}, at {@PARKING}, requesting IFR to {@DESTINATION}.`
+  - Interpolated: `Heathrow Delivery, speedbird123, at gate bravo 12, requesting IFR to John F Kennedy.`
+
+### `@HANDOFF`
+- Output: controller handoff phrase including next facility/role and frequency.
+- Example phrase:
+  - Template: `{$CALLSIGN}, clear runway {@RUNWAY} [when able], {@HANDOFF}`
+  - Interpolated: `speedbird123, clear runway 27left, [contact] Center Approach on 123 decimal 45 [good day]`
+
+### `@HOLD_FIX`
+- Output: returns assigned hold fix name or `published hold`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, affirm, at {@HOLD_FIX}. {NOREADBACK}`
+  - Interpolated: `speedbird123, affirm, at VOR HOLD.`
+
+### `@MA_ALTITUDE`
+- Output: formatted altitude text such as `2 thousand` or `flight level 330`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, climb and maintain {@MA_ALTITUDE}, proceed to {@MA_FIX}.`
+  - Interpolated: `speedbird123, climb and maintain 3 thousand, proceed to VOR HOLD.`
+
+### `@MA_FIX`
+- Output: runway missed approach fix name or `published hold`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, climb {@MA_ALTITUDE} fly {@MA_HEADING} to {@MA_FIX}`
+  - Interpolated: `speedbird123, climb 3 thousand fly heading 180 to VOR HOLD`
+
+### `@MA_HEADING`
+- Output: `heading <N>` if runway data exists, otherwise `runway heading`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, Roger, fly {@MA_HEADING}, climb and maintain {@MA_ALTITUDE}.`
+  - Interpolated: `speedbird123, Roger, fly heading 180, climb and maintain 3 thousand.`
+
+### `@PARKING`
+- Output: natural speech parking phrase.
+  - If the value contains `RAMP` or `APRON`, it preserves words and phoneticizes single letters.
+  - If it starts with digits, output becomes `gate N` or `stand N` depending on region.
+  - If it starts with letter+digits, output becomes `gate <phonetic> <number>`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, taxi to {@PARKING}.`
+  - Interpolated: `speedbird123, taxi to gate bravo 12.`
+
+### `@RUNWAY`
+- Output: runway with `L`/`R` converted to `left`/`right`.
 - Example phrase:
   - Template: `{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading[, wind {@WIND}].`
-  - Interpolated: `speedbird123, runway 27left, cleared for takeoff, fly runway heading, wind 270 at 9 knots.`
+  - Interpolated: `speedbird123, runway 27left, cleared for takeoff, fly runway heading,`.
+
+### `@RUNWAY_EXIT`
+- Output: formats the runway exit point and prefixes with either `exit at` or `vacate runway at` on an equal random basis. The prefix will be further extended to include `high speed` if the assigned exit is classed as high speed. If no exit point has been assigned then the string `exit when able` is output.
+- Example phrase:
+  - Template: `{$CALLSIGN}, {@RUNWAY_HOLD}.`
+  - Interpolated: `speedbird123, vacate runway at high speed exit November 6.`
+
+### `@RUNWAY_HOLD`
+- Output: formats the runway access point and prefixes with `hold at`. If no access point has been assigned then the string `hold short` is output.
+- Example phrase:
+  - Template: `{$CALLSIGN}, taxi via {@TAXIPATH} and {@RUNWAY_HOLD}.`
+  - Interpolated: `speedbird123, taxi via Charlie and hold at Alpha 13.`
 
 ### `@SHEAR`
-- Function: `formatWindShear`
 - Output: if shear ≥ 15 kt, returns a caution phrase like `[caution] wind shear [alert, loss or gain of] <N> knots`.
 - Example phrase:
   - Template: `{$CALLSIGN}, cleared for take off runway {@RUNWAY}, {@SHEAR}`
   - Interpolated: `speedbird123, cleared for take off runway 27left, [caution] wind shear [alert, loss or gain of] 20 knots`
 
+### `@SID`
+- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted. If no assigned SID, defaults to `assigned departure`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, cleared via the {@SID(true)}.`
+  - Interpolated: `speedbird123, cleared via the BNN 5A deaprture, climb to 7 thousand.`
+
+### `@STAR`
+- Output: Standard Terminal Arrival Route (STAR) name, optionally including descent altitude. If an argument is provided and is `false`, the descent altitude is omitted. If no assigned STAR, defaults to `assigned arrival`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, expect the {@STAR(true)}.`
+  - Interpolated: `speedbird123, expect the BIG 2B arrival, descend to 3 thousand.`
+
+### `@TAXIPATH`
+- Output: composes arrival or departure taxi routing using available taxiway access and parking segments.
+  - Taxiway names are phoneticized when they start with a letter, e.g. `A` → `Alpha` and `B12` → `Bravo 12`.
+  - If no taxi path data exists, returns `taxiway`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, taxi {@TAXIPATH}.`
+  - Interpolated: `speedbird123, taxi via Alpha,Bravo 12.`
+
 ### `@TURBULENCE`
-- Function: `formatTurbulence`
 - Output:
   - `experiencing moderate turbulence` or `experiencing severe turbulence` for pilot role
   - `<class> turbulence [reported]` for ATC role
@@ -288,15 +286,7 @@ Example phrase:
   - Template: `{$CALLSIGN}, {$FACILITY} Center, Roger, {@BARO}.{NOREADBACK}`
   - Interpolated: `speedbird123, Heathrow Center, Roger, QNH 1013.`
 
-### `@HANDOFF`
-- Function: `generateHandoffPhrase`
-- Output: controller handoff phrase including next facility/role and frequency.
-- Example phrase:
-  - Template: `{$CALLSIGN}, clear runway {@RUNWAY} [when able], {@HANDOFF}`
-  - Interpolated: `speedbird123, clear runway 27left, [contact] Center Approach on 123 decimal 45 [good day]`
-
 ### `@VALEDICTION`
-- Function: `generateValediction`
 - Behavior: optional integer argument influences how often a valediction is returned.
   - `{@VALEDICTION}` uses default factor `5`
   - `{@VALEDICTION(4)}` uses factor `4`
@@ -307,13 +297,12 @@ Example phrase:
   - Template: `{$CALLSIGN}, copy that, have a {@VALEDICTION(1)}.`
   - Interpolated: `speedbird123, copy that, have a [good evening].`
 
-### `@HOLD_FIX`
-- Function: returns assigned hold fix name or `published hold`.
+### `@WIND`
+- Output:
+  - `calm` if speed is low
+  - otherwise `<direction> at <knots>`, with optional gusting if turbulence is high
 - Example phrase:
-  - Template: `{$CALLSIGN}, affirm, at {@HOLD_FIX}. {NOREADBACK}`
-  - Interpolated: `speedbird123, affirm, at VOR HOLD.`
+  - Template: `{$CALLSIGN}, runway {@RUNWAY}, cleared for takeoff, fly runway heading[, wind {@WIND}].`
+  - Interpolated: `speedbird123, runway 27left, cleared for takeoff, fly runway heading, wind 270 at 9 knots.`
 
-## Notes
-- PCL expansion is handled by `internal/pcl/pcl.go`.
-- The runtime token bindings are created in `internal/atc/atcvoice.go`.
-- All phrase examples in this document come from `resources/phrases.json`.
+---

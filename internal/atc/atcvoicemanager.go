@@ -27,12 +27,12 @@ var (
 		"$BARO_AIRCRAFT": true, "$WIND_SPEED": true, "$WIND_SHEAR": true, "$TURBULENCE": true,
 		"$PARKING": true, "$APPROACH_TYPE": true, "$HOLD_FIX_NAME": true, "$HOLD_FIX_IDENT": true,
 		"$MA_HEADING": true, "$MA_ALTITUDE": true, "$MA_FIX": true, "$FA_ALTITUDE": true,
-		"$VECTORING": true,
+		"$VECTORING": true, "$ATC_HEADING": true,
 		"@RUNWAY":    true, "@TAXIPATH": true, "@PARKING": true, "@DESTINATION": true, "@APPROACH_TYPE": true,
 		"@MA_HEADING": true, "@MA_ALTITUDE": true, "@MA_FIX": true, "@ALTITUDE": true,
 		"@ALT_CLEARANCE": true, "@BARO": true, "@WIND": true, "@SHEAR": true,
 		"@TURBULENCE": true, "@HANDOFF": true, "@VALEDICTION": true, "@HOLD_FIX": true,
-		"@RUNWAY_HOLD": true, "@RUNWAY_EXIT": true, "@SID": true, "@STAR": true,
+		"@RUNWAY_HOLD": true, "@RUNWAY_EXIT": true, "@SID": true, "@STAR": true, "@ATC_HEADING": true,
 	}
 )
 

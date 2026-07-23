@@ -351,6 +351,9 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"$HEADING": func(args ...string) interface{} {
 			return fmt.Sprintf("%03d", int(math.Round(geometry.NormalizeHeading(ac.Flight.Position.Heading))))
 		},
+		"$ATC_HEADING": func(args ...string) interface{} {
+			return fmt.Sprintf("%03d", int(math.Round(geometry.NormalizeHeading(ac.Flight.TargetHeading))))
+		},
 		"$RUNWAY":        func(args ...string) interface{} { return ac.Flight.AssignedRunwayName },
 		"$DESTINATION":   func(args ...string) interface{} { return ac.Flight.Destination },
 		"$BARO_SEALEVEL": func(args ...string) interface{} { return int(math.Round(s.Weather.Baro.Sealevel)) },
@@ -484,6 +487,17 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 				return "as filed"
 			}
 			return formatAirportName(ac.Flight.Destination, s.Airports)
+		},
+		"@ATC_HEADING": func(args ...string) interface{} {
+			// calculate whether the heading is a left or right turn from the current heading to the target heading
+			// 1. calculate the shortest signed difference (-180 to +180)
+			turnDiff := geometry.NormalizeDiffDegrees(ac.Flight.TargetHeading, ac.Flight.Position.Heading)
+			// 2. determine turn direction
+			turnDirection := "right"
+			if turnDiff < 0 {
+				turnDirection = "left"
+			}	
+			return fmt.Sprintf("turn %s heading %03d", turnDirection, int(math.Round(geometry.NormalizeHeading(ac.Flight.TargetHeading))))
 		},
 		// --- MISSED APPROACH LOGIC ---
 		"@MA_HEADING": func(args ...string) interface{} {
@@ -973,63 +987,67 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 
 	var clearance int
 
-	switch ac.Flight.Phase.Current {
-	case flightphase.Parked.Index(), flightphase.Startup.Index(), flightphase.TaxiOut.Index(),
-		flightphase.Takeoff.Index(), flightphase.Climbout.Index():
-		if ac.Flight.AssignedSID != nil {
-			clearance = ac.Flight.AssignedSID.Entry.ConstraintAlt
-		} else {
-			clearance = int(GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ap))
-		}
-	case flightphase.Departure.Index():
-		if ac.Flight.AssignedSID != nil {
-			clearance = ac.Flight.AssignedSID.Exit.ConstraintAlt
-		} else {
-			clearance = ac.Flight.CruiseAlt
-		}
-	case flightphase.Cruise.Index():
-		clearance = ac.Flight.CruiseAlt
-		// if past TOD, set to assigned STAR entry ALT or 10,000
-		if ac.Flight.ClearedTOD {
-			if ac.Flight.AssignedSTAR != nil {
-				clearance = ac.Flight.AssignedSTAR.Entry.ConstraintAlt
+	if ac.Flight.Phase.Current >= flightphase.Braking.Index() {
+		clearance = int(ac.Flight.TargetAltitude)
+	} else {
+		switch ac.Flight.Phase.Current {
+		case flightphase.Parked.Index(), flightphase.Startup.Index(), flightphase.TaxiOut.Index(),
+			flightphase.Takeoff.Index(), flightphase.Climbout.Index():
+			if ac.Flight.AssignedSID != nil {
+				clearance = ac.Flight.AssignedSID.Entry.ConstraintAlt
 			} else {
 				clearance = int(GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ap))
 			}
-		}
-	case flightphase.Arrival.Index():
-		if ac.Flight.AssignedSTAR != nil {
-			clearance = ac.Flight.AssignedSTAR.Exit.ConstraintAlt
-		}
-	case flightphase.Holding.Index():
-		holding := ac.Flight.Holding
-		if holding != nil {
-			if holding.AssignedHold != nil {
-				clearance = ac.Flight.Holding.AssignedHold.MinAlt
-				if clearance == 0 {
-					clearance = ac.Flight.Holding.AssignedHold.MaxAlt
+		case flightphase.Departure.Index():
+			if ac.Flight.AssignedSID != nil {
+				clearance = ac.Flight.AssignedSID.Exit.ConstraintAlt
+			} else {
+				clearance = ac.Flight.CruiseAlt
+			}
+		case flightphase.Cruise.Index():
+			clearance = ac.Flight.CruiseAlt
+			// if past TOD, set to assigned STAR entry ALT or 10,000
+			if ac.Flight.ClearedTOD {
+				if ac.Flight.AssignedSTAR != nil {
+					clearance = ac.Flight.AssignedSTAR.Entry.ConstraintAlt
+				} else {
+					clearance = int(GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ap))
 				}
 			}
-		}
-		if clearance == 0 {
-			clearance = int(GetElevationAdjustedAltitude(constants.DefaultHoldingAltFt, ap, rwy, 100))
-		}
+		case flightphase.Arrival.Index():
+			if ac.Flight.AssignedSTAR != nil {
+				clearance = ac.Flight.AssignedSTAR.Exit.ConstraintAlt
+			}
+		case flightphase.Holding.Index():
+			holding := ac.Flight.Holding
+			if holding != nil {
+				if holding.AssignedHold != nil {
+					clearance = ac.Flight.Holding.AssignedHold.MinAlt
+					if clearance == 0 {
+						clearance = ac.Flight.Holding.AssignedHold.MaxAlt
+					}
+				}
+			}
+			if clearance == 0 {
+				clearance = int(GetElevationAdjustedAltitude(constants.DefaultHoldingAltFt, ap, rwy, 100))
+			}
 
-	case flightphase.GoAround.Index():
-		if rwy.MAalt > 0 {
-			clearance = rwy.MAalt
-		} else {
-			clearance = int(GetElevationAdjustedAltitude(constants.DefaultMissedApproachAltFt, ap, rwy, 100))
-		}
+		case flightphase.GoAround.Index():
+			if rwy.MAalt > 0 {
+				clearance = rwy.MAalt
+			} else {
+				clearance = int(GetElevationAdjustedAltitude(constants.DefaultMissedApproachAltFt, ap, rwy, 100))
+			}
 
-	case flightphase.Approach.Index():
-		if rwy.FAFalt > 0 {
-			clearance = rwy.FAFalt
-		} else {
-			clearance = int(GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ap, rwy, 100))
+		case flightphase.Approach.Index():
+			if rwy.FAFalt > 0 {
+				clearance = rwy.FAFalt
+			} else {
+				clearance = int(GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ap, rwy, 100))
+			}
+		case flightphase.Final.Index(), flightphase.Braking.Index(), flightphase.TaxiIn.Index(), flightphase.Shutdown.Index():
+			clearance = int(GetElevationAdjustedAltitude(0, ap, rwy, 100))
 		}
-	case flightphase.Final.Index(), flightphase.Braking.Index(), flightphase.TaxiIn.Index(), flightphase.Shutdown.Index():
-		clearance = int(GetElevationAdjustedAltitude(0, ap, rwy, 100))
 	}
 
 	// fallback
@@ -1051,10 +1069,10 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase flightphase.Phase) string {
 
 	instruction := ""
-	phrase := ""
+	term := ""
 
 	if clearance == 0 {
-		return phrase
+		return term
 	}
 
 	scaledClearedAlt, clearedScaleIsFlightLevel := scaleAltitude(float64(clearance), transitionLevel, phase)
@@ -1081,9 +1099,9 @@ func generateAltClearance(rawAlt float64, transitionLevel, clearance int, phase 
 		}
 	}
 
-	phrase = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(clearance), transitionLevel, phase))
+	term = fmt.Sprintf("%s %s", instruction, formatAltitude(float64(clearance), transitionLevel, phase))
 
-	return phrase
+	return term
 }
 
 // scaleAltitude rounds the altitude and scales to either feet or flight level. The returned bool value
