@@ -56,7 +56,7 @@ func TestAssignHold(t *testing.T) {
 					Position:    Position{Lat: tc.lat, Long: tc.lon},
 				},
 			}
-			s.AssignHold(ac, "")
+			s.AssignHold(ac, "", true)
 			if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil {
 				t.Fatalf("expected %s, got nil", tc.expected)
 			} else {
@@ -96,7 +96,7 @@ func TestAssignHoldPriority(t *testing.T) {
 			Position:    Position{Lat: 51.50, Long: -0.10},
 		},
 	}
-	s.AssignHold(ac, "EGAA")
+	s.AssignHold(ac, "EGAA", true)
 	if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil || ac.Flight.Holding.AssignedHold.Ident != "LOCAL" {
 		t.Fatalf("airport hold not preferred, got %v", ac.Flight.Holding)
 	}
@@ -115,7 +115,7 @@ func TestAssignHoldPriority(t *testing.T) {
 			Phase:              flightphase.Phase{Current: flightphase.GoAround.Index()},
 		},
 	}
-	s.AssignHold(ac2, "EGLL")
+	s.AssignHold(ac2, "EGLL", true)
 	if ac2.Flight.Holding == nil || ac2.Flight.Holding.AssignedHold == nil || ac2.Flight.Holding.AssignedHold.Ident != "MA1" {
 		t.Fatalf("go-around MAFix not returned, got %v", ac2.Flight.Holding)
 	}
@@ -134,7 +134,7 @@ func TestAssignHoldPriority(t *testing.T) {
 			Phase:              flightphase.Phase{Current: flightphase.GoAround.Index()},
 		},
 	}
-	s.AssignHold(ac3, "EGKK")
+	s.AssignHold(ac3, "EGKK", true)
 	if ac3.Flight.Holding == nil || ac3.Flight.Holding.AssignedHold == nil || (ac3.Flight.Holding.AssignedHold.Ident != "A1" && ac3.Flight.Holding.AssignedHold.Ident != "A2") {
 		t.Fatalf("expected nearest airport hold fallback, got %v", ac3.Flight.Holding)
 	}
@@ -147,7 +147,7 @@ func TestAssignHoldPriority(t *testing.T) {
 			Position:    Position{Lat: 37.60, Long: -122.40},
 		},
 	}
-	s.AssignHold(ac4, "EMPTY")
+	s.AssignHold(ac4, "EMPTY", true)
 	if ac4.Flight.Holding == nil || ac4.Flight.Holding.AssignedHold == nil || ac4.Flight.Holding.AssignedHold.Ident != "SFO" {
 		t.Fatalf("expected global fallback to SFO, got %v", ac4.Flight.Holding)
 	}

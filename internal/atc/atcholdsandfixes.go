@@ -138,7 +138,7 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 // For the arrival phase, a check is performed to see if a STAR is assigned and if the STAR exit
 // is a defined hold, this will be the assigned hold.
 // For all other phases, and as a backup to the go around phase, the nearest hold for the airport is assigned.
-func (s *Service) AssignHold(ac *Aircraft, icao string) {
+func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bool) {
 	holding := &Holding{}
 	ac.Flight.Holding = holding
 
@@ -267,7 +267,11 @@ func (s *Service) AssignHold(ac *Aircraft, icao string) {
 	holding.ArrivedAtHoldFix = false
 	holding.ExitingHold = false
 
-	util.LogDebugWithLabel(ac.Registration, "assigned hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
+	if holding.AssignedHold != nil {
+		util.LogDebugWithLabel(ac.Registration, "assigned hold %s", holding.AssignedHold.Ident)
+	} else {
+		util.LogDebugWithLabel(ac.Registration, "no hold assigned")
+	}
 }
 
 // extract all holds from hold data file. returns two maps or an error

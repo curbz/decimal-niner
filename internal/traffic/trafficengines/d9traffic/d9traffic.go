@@ -100,7 +100,7 @@ const (
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	// maximum number of aircraft allowed on approach for a single airport before
 	// new arrivals are sent to hold
-	MAX_APPROACH_ON_APPROACH = 3
+	MAX_APPROACH_ON_APPROACH = 2
 )
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -947,20 +947,6 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			continue
 		}
 
-		// --- D9 Collision Avoidance: pre-movement detection & maneuver advancement ---
-		// If aircraft already executing a maneuver, advance it and skip other updates for this tick.
-		if ac.Flight.ActiveManeuver != nil {
-			// advance maneuver using current sim time; heading will be used in normal position update below
-			e.advanceCollisionManeuver(ac, currSimZTime)
-			continue
-		} else if threat := e.detectCollisionThreat(ac); threat != nil {
-			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
-			util.LogDebugWithLabel(ac.Registration, "collision threat detected - taking avoidance action")
-			e.startCollisionManeuver(ac)
-			e.advanceCollisionManeuver(ac, currSimZTime)
-			continue
-		}
-
 		// We determine the current/next relevant airport based on flight phase class
 		var airport *atc.Airport
 		var targetICAO string
@@ -970,6 +956,26 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			targetICAO = f.IcaoOrigin
 		}
 		airport = e.AtcService.Airports[targetICAO]
+
+		// --- D9 Collision Avoidance: pre-movement detection & maneuver advancement ---
+		// If aircraft already executing a maneuver, advance it and skip other updates for this tick.
+		if ac.Flight.ActiveManeuver != nil {
+			// advance maneuver using current sim time; heading will be used in normal position update below
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		} else if threat := e.detectCollisionThreat(ac); threat != nil {
+			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
+			util.LogDebugWithLabel(ac.Registration, "collision threat detected - taking avoidance action")
+			if ac.Flight.Phase.Current == flightphase.Final.Index() {
+				// transition to missed approach if in final and a threat is detected
+				e.transitionToPhase(ac, flightphase.GoAround, 0, 0)
+				e.updateGoAroundPosition(ac, airport)
+				continue
+			}
+			e.startCollisionManeuver(ac)
+			e.advanceCollisionManeuver(ac, currSimZTime)
+			continue
+		}
 
 		//TODO: change to using a distance radius
 		// if airport is not relevant to the user's current context, skip it
@@ -1116,7 +1122,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 				// 3. There is already a stack established for this runway!
 				if approachCount > MAX_APPROACH_ON_APPROACH || holdingCount > 0 {
 					// Send to hold due to traffic management constraints
-					e.AtcService.AssignHold(ac, airport.ICAO)
+					e.AtcService.AssignHold(ac, airport.ICAO, true)
 
 					// Indefinite/position-driven holding phase transition
 					e.transitionToPhase(ac, flightphase.Holding, 0, 0)
@@ -1689,7 +1695,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			ac.Flight.Position.Altitude = airportElev
 		}
 	}
-	
+
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
 		util.LogWarnWithLabel(ac.Registration, "Latitude out of bounds: %f during phase %s context.", ac.Flight.Position.Lat, phase)
 	}
@@ -2074,44 +2080,40 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 	deltaTimeSeconds := getLastUpdateDeltaTimeSec(ac, now)
 	ac.Flight.Phase.LastUpdateTime = now
 
+	e.AtcService.AssignHold(ac, airport.ICAO, false)
+	if ac.Flight.Holding.AssignedHold != nil {
+		e.transitionToPhase(ac, flightphase.Holding, 0, 0)
+		e.updateHoldingPosition(ac, ac.Flight.AssignedRunway)
+	}
+
 	// Resolve target anchors from the holding/exit structure
-	var targetFix *atc.Fix
 	targetAlt := atc.GetElevationAdjustedAltitude(constants.DefaultClimbExitDepartureEntryAltFt, airport, ac.Flight.AssignedRunway, 500.0)
 
-	if ac.Flight.Holding != nil && ac.Flight.Holding.TargetApproachFix != nil {
-		targetFix = ac.Flight.Holding.TargetApproachFix
-		if ac.Flight.Holding.TargetApproachAlt > 0 {
-			targetAlt = ac.Flight.Holding.TargetApproachAlt
-		}
-	}
-
-	// Safety check: If no target fix was set up during AssignHold, create a synthetic fallback gate
 	rwy := ac.Flight.AssignedRunway
-	if targetFix == nil {
-		projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
-		baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
 
-		// 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
-		lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
-		lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
+	projectHeading := geometry.NormalizeHeading(rwy.Heading + 180.0)
+	baseLat, baseLon := geometry.Project(airport.Lat, airport.Lon, projectHeading, constants.DefaultArrivalExitApproachEntryNM)
 
-		// 2. Fetch aircraft positions and compute distance vectors
-		acLat := ac.Flight.Position.Lat
-		acLon := ac.Flight.Position.Long
+	// 1. Calculate all three potential physical displacements (90° Left, 90° Right, and 180°)
+	lat90L, lon90L := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading-90.0), 3.0)
+	lat90R, lon90R := geometry.Project(baseLat, baseLon, geometry.NormalizeHeading(projectHeading+90.0), 3.0)
 
-		dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
-		dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
+	// 2. Fetch aircraft positions and compute distance vectors
+	acLat := ac.Flight.Position.Lat
+	acLon := ac.Flight.Position.Long
 
-		// 3. Find the absolute closest point among the choices
-		var targetLat, targetLon float64
-		if dist90L < dist90R {
-			targetLat, targetLon = lat90L, lon90L
-		} else {
-			targetLat, targetLon = lat90R, lon90R
-		}
+	dist90L := geometry.DistNM(acLat, acLon, lat90L, lon90L)
+	dist90R := geometry.DistNM(acLat, acLon, lat90R, lon90R)
 
-		targetFix = &atc.Fix{Lat: targetLat, Lon: targetLon}
+	// 3. Find the absolute closest point among the choices
+	var targetLat, targetLon float64
+	if dist90L < dist90R {
+		targetLat, targetLon = lat90L, lon90L
+	} else {
+		targetLat, targetLon = lat90R, lon90R
 	}
+
+	targetFix := &atc.Fix{Lat: targetLat, Lon: targetLon}
 
 	// --- 1. DETERMINE HEADING & LATERAL TARGET ---
 	var targetHeading float64
