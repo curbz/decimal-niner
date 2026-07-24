@@ -259,7 +259,7 @@ This document lists the PCL variables and macros available in Decimal Niner phra
   - Interpolated: `speedbird123, cleared for take off runway 27left, [caution] wind shear [alert, loss or gain of] 20 knots`
 
 ### `@SID`
-- Output: Standard Instrument Departure (SID) name, optionally including climb altitude. If an argument is provided and is `false`, the climb altitude is omitted. If no assigned SID, defaults to `assigned departure`.
+- Output: Standard Instrument Departure (SID) name, optionally including climb instructions. If an argument is provided and is `false`, the climb instruction is omitted. If no assigned SID, defaults to `assigned departure`.
 - Example phrase:
   - Template: `{$CALLSIGN}, cleared via the {@SID(true)}.`
   - Interpolated: `speedbird123, cleared via the BNN 5A deaprture, climb to 7 thousand.`

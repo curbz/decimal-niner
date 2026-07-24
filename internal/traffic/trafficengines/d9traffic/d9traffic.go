@@ -1682,19 +1682,14 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			phase.String(), distRemaining, isOvershoot)
 	}
 
-	// Phase specific altitude guards
-	switch phase {
-	case flightphase.Arrival:
-		if ac.Flight.AssignedSTAR == nil {
-			ac.Flight.Position.Altitude = atc.GetMinSafeAltitude(ac.Flight.Position.Altitude, ctxAp)
-		}
-	case flightphase.Final:
+	// altitude guard for final
+	if phase == flightphase.Final {
 		airportElev := atc.GetElevation(ctxAp, rwy)
 		if ac.Flight.Position.Altitude < airportElev {
 			ac.Flight.Position.Altitude = airportElev
 		}
 	}
-
+	
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
 		util.LogWarnWithLabel(ac.Registration, "Latitude out of bounds: %f during phase %s context.", ac.Flight.Position.Lat, phase)
 	}
