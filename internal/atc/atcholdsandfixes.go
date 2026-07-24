@@ -251,21 +251,23 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 		}
 	}
 
-	// 3. GLOBAL FALLBACK: Find nearest regional en-route fix structure hold
-	var bestGlobalHold *Hold
-	bestDotGlobal := -2.0
-	for _, h := range s.Holds {
-		dot := ux*h.X + uy*h.Y + uz*h.Z
-		if dot > bestDotGlobal {
-			bestDotGlobal = dot
-			bestGlobalHold = h
+	if fallbackToGlobalHolds {
+		// GLOBAL FALLBACK: Find nearest regional en-route fix structure hold
+		var bestGlobalHold *Hold
+		bestDotGlobal := -2.0
+		for _, h := range s.Holds {
+			dot := ux*h.X + uy*h.Y + uz*h.Z
+			if dot > bestDotGlobal {
+				bestDotGlobal = dot
+				bestGlobalHold = h
+			}
 		}
-	}
 
-	holding.AssignedHold = bestGlobalHold
-	holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
-	holding.ArrivedAtHoldFix = false
-	holding.ExitingHold = false
+		holding.AssignedHold = bestGlobalHold
+		holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
+		holding.ArrivedAtHoldFix = false
+		holding.ExitingHold = false
+	}
 
 	if holding.AssignedHold != nil {
 		util.LogDebugWithLabel(ac.Registration, "assigned hold %s", holding.AssignedHold.Ident)
