@@ -1673,7 +1673,10 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	}
 
 	// 3. Evaluate Position-Based Triggers for State Transition Flags
-	const posTransitionThresholdNM = 0.05
+	posTransitionThresholdNM := 0.05
+	if phase == flightphase.Arrival {
+		posTransitionThresholdNM = 0.9
+	}
 	distRemaining := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
 	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(distRemaining, speedKts))
