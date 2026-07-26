@@ -100,7 +100,7 @@ const (
 	TRAFFIC_MANAGEMENT_PER_AIRCRAFT_DELAY_SECONDS = 180 // delay time multiplied by current queue length
 	// maximum number of aircraft allowed on approach for a single airport before
 	// new arrivals are sent to hold
-	MAX_APPROACH_ON_APPROACH = 2
+	MAX_APPROACH_ON_APPROACH = 3
 )
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -1111,29 +1111,19 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			if ac.Flight.Phase.PositionComplete {
 				// assign active runway
 				ac.Flight.AssignedRunway = e.AirportConfig[airport.ICAO].Arrival
+				//if nil - we are not concerned with this airport, so we can cull this flight from the active list
+				if ac.Flight.AssignedRunway == nil {
+					util.LogWithLabel(ac.Registration, "no active airport flow configuration found for %s - terminating flight", airport.ICAO)
+					e.endFlight(ac)
+					continue
+				}
 				ac.Flight.AssignedRunwayName = ac.Flight.AssignedRunway.Name
 
 				// Check for arrival saturation conditions
 				approachCount, holdingCount, _ := e.getArrivalSaturationStats(ac, airport)
-
-				// Hold Criteria
-				// 1. Approach sector is saturated OR
-				// 2. Localizer queue threshold is exceeded OR
-				// 3. There is already a stack established for this runway!
 				if approachCount > MAX_APPROACH_ON_APPROACH || holdingCount > 0 {
 					// Send to hold due to traffic management constraints
-					e.AtcService.AssignHold(ac, airport.ICAO, true)
-
-					// Indefinite/position-driven holding phase transition
-					e.transitionToPhase(ac, flightphase.Holding, 0, 0)
-
-					// Seed initial sub-phase state tracker
-					if ac.Flight.Holding != nil {
-						ac.Flight.Holding.ArrivedAtHoldFix = false
-						ac.Flight.Holding.ExitingHold = false
-					}
-
-					e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
+					e.sendToHold(ac, airport)
 				} else {
 					// Sector clean and empty: proceed straight to approach flow
 					e.transitionToPhase(ac, flightphase.Approach, 0, 0)
@@ -1270,6 +1260,21 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 	}
 
 	e.initialised = true
+}
+
+func (e *D9TrafficEngine) sendToHold(ac *atc.Aircraft, airport *atc.Airport) {
+	e.AtcService.AssignHold(ac, airport.ICAO, true)
+
+	// Indefinite/position-driven holding phase transition
+	e.transitionToPhase(ac, flightphase.Holding, 0, 0)
+
+	// Seed initial sub-phase state tracker
+	if ac.Flight.Holding != nil {
+		ac.Flight.Holding.ArrivedAtHoldFix = false
+		ac.Flight.Holding.ExitingHold = false
+	}
+
+	e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 }
 
 func (e *D9TrafficEngine) getArrivalSaturationStats(ac *atc.Aircraft, airport *atc.Airport) (approachCount, holdingCount, runwayQueueCount int) {
@@ -1543,6 +1548,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	ac.Flight.GroundSpeed = speedKts
 
 	distanceMovedThisTick := speedKts * (deltaTimeSec / 3600.0)
+	currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
 	if phase == flightphase.Approach {
 
@@ -1552,13 +1558,12 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long))
 			return
 		}
-		distToFinalTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 
-		if distToFinalTarget > 0 {
+		if currentDistToTarget > 0 {
 			altitudeToLose := ac.Flight.Position.Altitude - targetAlt
 			if altitudeToLose > 0 {
-				descentStep := (altitudeToLose / distToFinalTarget) * distanceMovedThisTick
+				descentStep := (altitudeToLose / currentDistToTarget) * distanceMovedThisTick
 				maxVerticalStepFt := 1500.0 * (deltaTimeSec / 60.0)
 				if descentStep > maxVerticalStepFt {
 					descentStep = maxVerticalStepFt
@@ -1577,12 +1582,8 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		}
 	} else {
 		// --- General Linear Phase Tracking Step ---
-		currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-
 		if currentDistToTarget > distanceMovedThisTick {
-
 			heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-
 			// Smoothly track heading changes
 			applySmoothTurnHeading(ac, heading, 1.0, deltaTimeSec)
 			// use the current heading to project the next position
@@ -1666,6 +1667,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			ac.Flight.Position.Lat = targetPos.Lat
 			ac.Flight.Position.Long = targetPos.Long
 			ac.Flight.TargetHeading = heading
+			ac.Flight.TargetDistance = 0.0
 			ac.Flight.Phase.PositionComplete = true
 			util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
 			return
@@ -1673,22 +1675,26 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	}
 
 	// 3. Evaluate Position-Based Triggers for State Transition Flags
-	posTransitionThresholdNM := 0.05
-	if phase == flightphase.Arrival {
-		posTransitionThresholdNM = 0.9
-	}
-	distRemaining := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-
-	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(distRemaining, speedKts))
+	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(currentDistToTarget, speedKts))
 
 	currentBearingToTarget := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 	bearingDifference := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - geometry.NormalizeHeading(heading))
-	isOvershoot := bearingDifference > 90.0 && bearingDifference < 270.0 && distRemaining < 1.0
+	isTrackingAwayFromTarget := bearingDifference > 90.0 && bearingDifference < 270.0
+	isOvershoot := isTrackingAwayFromTarget && currentDistToTarget < 1.0
 
-	if distRemaining <= posTransitionThresholdNM || isOvershoot || (targetPos.Lat == startPos.Lat && targetPos.Long == startPos.Long) {
+	posTransitionThresholdNM := 0.05
+	if phase == flightphase.Arrival  {
+		posTransitionThresholdNM = 1.0
+		if !isOvershoot && ac.Flight.TargetDistance > 0.0 && currentDistToTarget > ac.Flight.TargetDistance {
+			isOvershoot = true
+			util.LogDebugWithLabel(ac.Registration, "Arrival phase position overshoot detected")
+		}
+	}
+
+	if currentDistToTarget < posTransitionThresholdNM || isOvershoot || (targetPos.Lat == startPos.Lat && targetPos.Long == startPos.Long) {
 		ac.Flight.Phase.PositionComplete = true
 		util.LogDebugWithLabel(ac.Registration, "phase %s completed (distRemaining=%0.3fNM, overshoot=%t), transitioning state",
-			phase.String(), distRemaining, isOvershoot)
+			phase.String(), currentDistToTarget, isOvershoot)
 	}
 
 	// altitude guard for final
@@ -1703,6 +1709,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		util.LogWarnWithLabel(ac.Registration, "Latitude out of bounds: %f during phase %s context.", ac.Flight.Position.Lat, phase)
 	}
 
+	ac.Flight.TargetDistance = currentDistToTarget
 }
 
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
@@ -2387,11 +2394,9 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 		// 1. Primary: Trust the explicit assigned STAR's entry fix position
 		arrivalEntryGateNM = geometry.DistNM(destAp.Lat, destAp.Lon, star.Entry.Fix.Lat, star.Entry.Fix.Lon)
-
 	} else if peekStar := e.AtcService.GetMatchingSTAR(destAp, ac.Flight.AssignedRunway, origAirport); peekStar != nil && peekStar.Entry.Fix.Lat != 0 {
 		// 2. Secondary Fallback: Use the route-matched peek strategy
 		peekDist := geometry.DistNM(destAp.Lat, destAp.Lon, peekStar.Entry.Fix.Lat, peekStar.Entry.Fix.Lon)
-
 		// GUARD: Trigger the fallback ONLY if the peeked fix
 		// is further out than 120 NM AND takes up more than 75% of the remaining trip.
 		if peekDist > 120.0 && peekDist > (distToDestAirfield*0.75) {
@@ -2411,7 +2416,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	if distToDestAirfield <= arrivalEntryGateNM {
 		ac.Flight.Phase.PositionComplete = true
 		ac.Flight.Phase.LastUpdateTime = e.AtcService.GetCurrentZuluTime()
-
+		ac.Flight.TargetDistance = distToTarget
 		ac.Flight.Phase.Current = flightphase.Arrival.Index()
 		ac.Flight.Phase.Previous = flightphase.Cruise.Index()
 
@@ -2442,6 +2447,7 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	}
 
 	ac.Flight.TargetHeading = targetHeading
+	ac.Flight.TargetDistance = distToTarget
 
 }
 

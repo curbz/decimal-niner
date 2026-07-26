@@ -55,6 +55,7 @@ type Flight struct {
 	ActiveManeuver      *ManeuverState
 	TargetAltitude	   float64
 	TargetHeading	   float64
+	TargetDistance	   float64
 }
 
 type Holding struct {

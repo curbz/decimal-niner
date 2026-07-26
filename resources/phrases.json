@@ -51,7 +51,6 @@
   ],
   "holding": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, entering the holding pattern at {@HOLD_FIX}.", "atc": "{$CALLSIGN}, affirm, at {@HOLD_FIX}. {NOREADBACK}" },
-    { "initiator": "atc", "pilot": "Entering the hold, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, enter the holding pattern, hold northwest of the station, altitude {@ALTITUDE}." },
     { "initiator": "atc", "pilot": "Standard turns at {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to hold at {@HOLD_FIX}, fly standard turns, maintain {@ALTITUDE}." },
     { "initiator": "atc", "pilot": "Roger, continue holding, {$CALLSIGN}.", "atc": "{$CALLSIGN}, continue holding, expect further clearance." },
     { "initiator": "atc", "pilot": "cleared to {@HOLD_FIX}, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to {@HOLD_FIX}, {@ALTITUDE}." }
