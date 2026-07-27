@@ -162,6 +162,8 @@
     const zoomStep = 1;          
 
     let aircraftList = [];
+    let runwayList = [];
+    let holdList = [];
     
     // --- NEW GLOBAL MAP VECTOR STORAGE ---
     let worldMapSegments = []; // Extracted line paths ready for rendering
@@ -258,6 +260,8 @@
         }
 
         aircraftList = snapshot.aircraft || [];
+        runwayList = snapshot.runways || [];
+        holdList = snapshot.holds || []
     };
 
     canvas.addEventListener('wheel', (event) => {
@@ -277,10 +281,13 @@
         }
 
         drawStaticOverlays();
+        drawRunways();
+        drawHolds();
 
         aircraftList.forEach(ac => {
             // Ground Traffic Filtering
-            const isOnGround = ac.alt <= 100 || ac.phase.toLowerCase() === "ground" || ac.phase.toLowerCase() === "taxi";
+            const isOnGround = ac.phase.toLowerCase() === "parked" || ac.phase.toLowerCase() === "startup"
+                || ac.phase.toLowerCase() === "taxi_out" || ac.phase.toLowerCase() === "taxi_in" || ac.phase.toLowerCase() === "shutdown";
             if (!showGroundTraffic && isOnGround) {
                 return;
             }
@@ -291,6 +298,22 @@
 
             // Target Blip
             ctx.fillStyle = '#00ff66';
+            ctx.strokeStyle = '#00ff66';
+            switch(ac.phase.toLowerCase()) {
+            case 'holding':
+                ctx.fillStyle = '#009999';
+                ctx.strokeStyle = '#009999';
+                break;
+            case 'approach':
+                ctx.fillStyle = '#3366ff';
+                ctx.strokeStyle = '#3366ff';
+                break;
+            case 'final':
+                ctx.fillStyle = '#00ffff';
+                ctx.strokeStyle = '#00ffff';
+                break;
+            }
+
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
             ctx.fill();
@@ -298,7 +321,6 @@
             // Vector Leader Line
             const vectorLength = 20; 
             const rad = (ac.hdg - 90) * Math.PI / 180; 
-            ctx.strokeStyle = '#00ff66';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
@@ -306,7 +328,6 @@
             ctx.stroke();
 
             // Render Target Data Block Text
-            ctx.fillStyle = '#00ff66';
             ctx.font = '11px "Courier New"';
             
             let identityText = ac.callsign;
@@ -343,7 +364,7 @@
 
     function drawGeographicMap() {
         ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(0, 255, 102, 0.15)'; // Low-intensity phosphor tint
+        ctx.strokeStyle = 'rgba(100, 100, 100, 1.0)'; // Low-intensity phosphor tint
         
         // Convert your current radar range mileage into a rough degree threshold bounding box
         // 1 Degree Latitude is approx 60 Nautical Miles. Pad by 1.5x for screen edges.
@@ -369,6 +390,47 @@
             });
             ctx.stroke();
         });
+    }
+
+    function drawRunways() {
+        runwayList.forEach(rwy => {
+            const pos = coordinateToPixel(rwy.lat, rwy.lon);
+            const posEnd = coordinateToPixel(rwy.endlat, rwy.endlon);
+            const distFromCenter = Math.hypot(pos.x - centerX, pos.y - centerY);
+            if (distFromCenter > maxRadius) return;
+
+            ctx.strokeStyle = '#0000ee';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(posEnd.x, posEnd.y);
+            ctx.stroke();
+        })
+    }
+
+    function drawHolds() {
+        holdList.forEach(hold => {
+            const pos = coordinateToPixel(hold.lat, hold.lon);
+            const distFromCenter = Math.hypot(pos.x - centerX, pos.y - centerY);
+            if (distFromCenter > maxRadius) return;
+
+            ctx.fillStyle = '#cc66ff';
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(pos.x - 5, pos.y + 5);  // Bottom left corner
+            ctx.lineTo(pos.x + 5, pos.y + 5);  // Bottom right corner
+            ctx.closePath();       // Automatically closes back to the peak
+            // Render the solid shape
+            ctx.fill();
+
+            //ctx.font = '16px Arial';           // Font style
+            ctx.textAlign = 'center';            // Perfectly centers text on its X-coordinate
+            let label = hold.fullname;
+            if (label == '') {
+                label = hold.ident;
+            }
+            ctx.fillText(label, pos.x, pos.y - 5);
+        })
     }
 
     function drawStaticOverlays() {

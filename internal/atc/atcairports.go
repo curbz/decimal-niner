@@ -42,10 +42,12 @@ type Airport struct {
 }
 
 type Runway struct {
-	Name                     string  // e.g., "09L"
-	Lat, Lon                 float64 // The coordinates of the threshold
-	EndLat, EndLon           float64 // The coordinates of the opposite threshold (used for runway access logic)
-	Heading                  float64 // The magnetic or true heading of the runway
+	Name                     string  `json:"name"` 		// e.g., "09L"
+	Lat                 	 float64 `json:"lat"`		// The coordinates of the threshold
+	Lon            			 float64 `json:"lon"`		// The coordinates of the threshold
+	EndLat                 	 float64 `json:"endlat"`	// The coordinates of the opposite threshold (used for runway access logic)
+	EndLon           	  	 float64 `json:"endlon"`	// The coordinates of the opposite threshold (used for runway access logic)
+	Heading                  float64 `json:"heading"`	// The magnetic or true heading of the runway
 	Length                   float64 // Length in meters
 	Width                    float64 // Width in meters
 	ThresholdElevation       float64 // feet

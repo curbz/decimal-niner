@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/curbz/decimal-niner/internal/atc"
 )
 
 // RadarBlip represents the minimal telemetry data needed by the browser canvas
@@ -24,10 +26,12 @@ type RadarBlip struct {
 
 // RadarSnapshot is the frame package sent on every tick
 type RadarSnapshot struct {
-	CenterLat float64     `json:"center_lat"` // The coordinate the scope should center on
-	CenterLng float64     `json:"center_lng"`
-	Timestamp time.Time   `json:"timestamp"`
-	Aircraft  []RadarBlip `json:"aircraft"`
+	CenterLat float64      `json:"center_lat"` // The coordinate the scope should center on
+	CenterLng float64      `json:"center_lng"`
+	Timestamp time.Time    `json:"timestamp"`
+	Aircraft  []RadarBlip  `json:"aircraft"`
+	Holds     []atc.Hold   `json:"holds"`
+	Runways	  []atc.Runway `json:"runways"`
 }
 
 type RadarServer struct {

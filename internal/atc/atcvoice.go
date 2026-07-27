@@ -580,8 +580,12 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 					r = "published hold"
 				} else {
 					holdfix := holding.AssignedHold
-					if holdfix != nil && holdfix.FullName != "" {
-						r = holdfix.FullName
+					if holdfix != nil { 
+						if holdfix.FullName != "" {
+							r = holdfix.FullName
+						} else {
+							r = holdfix.Ident
+						}
 						util.LogDebugWithLabel(ac.Registration, "controller says hold fix is %s", r)
 					} else {
 						r = "published hold"

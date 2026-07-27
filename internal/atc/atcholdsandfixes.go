@@ -16,24 +16,24 @@ import (
 )
 
 type Hold struct {
-	Ident    string
+	Ident    string	`json:"ident"`
 	Region   string
-	FullName string
+	FullName string `json:"fullname"`
 	ICAO     string // airport ICAO or 'ENRT'
 	MinAlt   int
 	MaxAlt   int
-	Lat      float64
-	Lon      float64
+	Lat      float64 `json:"lat"`
+	Lon      float64 `json:"lon"`
 	X, Y, Z  float64
 }
 
 type Fix struct {
-	Ident    string
+	Ident    string		
 	Region   string
-	FullName string
-	Lat      float64
-	Lon      float64
-	Hold     *Hold // if this fix is also a hold, this field will be populated otherwise nil
+	FullName string		
+	Lat      float64	
+	Lon      float64 	
+	Hold     *Hold 						  // if this fix is also a hold, this field will be populated otherwise nil
 }
 
 type ProcedureFix struct {

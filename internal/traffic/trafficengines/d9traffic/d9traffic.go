@@ -3367,6 +3367,12 @@ func getReciprocalName(name string) string {
 func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 	var blips []server.RadarBlip
 
+	var runways []atc.Runway
+	var holds []atc.Hold
+
+	runwaysMap := make(map[string]atc.Runway)
+	holdsMap := make(map[string]atc.Hold)
+
 	// Lock or safely iterate through active aircraft
 	for _, ac := range e.ActiveAircraft {
 		if ac == nil {
@@ -3391,6 +3397,21 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 			Destination:  ac.Flight.Destination,
 			GroundSpeed:  ac.Flight.GroundSpeed,
 		})
+
+		if ac.Flight.AssignedRunway != nil {
+			runwaysMap[ac.Flight.AssignedRunway.Name] = *ac.Flight.AssignedRunway
+		}
+		if ac.Flight.Holding != nil && ac.Flight.Holding.AssignedHold != nil {
+			holdsMap[ac.Flight.Holding.AssignedHold.Ident] = *ac.Flight.Holding.AssignedHold
+		}
+	}
+
+	// Convert maps to slices for serialization
+	for _, rwy := range runwaysMap {
+		runways = append(runways, rwy)
+	}
+	for _, hold := range holdsMap {
+		holds = append(holds, hold)
 	}
 
 	userPos := e.AtcService.GetUserState().Position
@@ -3400,6 +3421,8 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 		CenterLng: userPos.Long,
 		Timestamp: e.AtcService.GetCurrentZuluTime(),
 		Aircraft:  blips,
+		Runways: runways,
+		Holds: holds,
 	}
 
 	// Ship it to the streaming server
