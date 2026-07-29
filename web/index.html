@@ -300,20 +300,65 @@
             ctx.fillStyle = '#00ff66';
             ctx.strokeStyle = '#00ff66';
             switch(ac.phase.toLowerCase()) {
+            case 'parked':
+                ctx.fillStyle = '#555555';
+                ctx.strokeStyle = '#555555';
+                break;
+            case 'startup':
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#ffffff';
+                break;
+            case 'shutdown':
+                ctx.fillStyle = '#aaaaaa';
+                ctx.strokeStyle = '#aaaaaa';
+                break;
+            case 'taxi_out':
+                ctx.fillStyle = '#ffff99';
+                ctx.strokeStyle = '#ffff99';
+                break;
+            case 'takeoff':
+                ctx.fillStyle = '#ffff00';
+                ctx.strokeStyle = '#ffff00';
+                break;
+            case 'climbout':
+                ctx.fillStyle = '#ff9900';
+                ctx.strokeStyle = '#ff9900';
+                break;
+            case 'departure':
+                ctx.fillStyle = '#cc9900';
+                ctx.strokeStyle = '#cc9900';
+                break;
+            case 'cruise':
+                ctx.fillStyle = '#cc6699';
+                ctx.strokeStyle = '#cc6699';
+                break;
             case 'holding':
-                ctx.fillStyle = '#009999';
-                ctx.strokeStyle = '#009999';
+                ctx.fillStyle = '#558000';
+                ctx.strokeStyle = '#558000';
                 break;
             case 'approach':
-                ctx.fillStyle = '#3366ff';
-                ctx.strokeStyle = '#3366ff';
+                ctx.fillStyle = '#3399ff';
+                ctx.strokeStyle = '#3399ff';
                 break;
             case 'final':
                 ctx.fillStyle = '#00ffff';
                 ctx.strokeStyle = '#00ffff';
                 break;
+            case 'braking':
+                ctx.fillStyle = '#ff0066';
+                ctx.strokeStyle = '#ff0066';
+                break;
+            case 'taxi_in':
+                ctx.fillStyle = '#997744';
+                ctx.strokeStyle = '#997744';
+                break;
+            case 'go_around':
+                ctx.fillStyle = '#ff0000';
+                ctx.strokeStyle = '#ff0000';
+                break;
             }
 
+// Render Radar Blip
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
             ctx.fill();
@@ -327,8 +372,15 @@
             ctx.lineTo(pos.x + vectorLength * Math.cos(rad), pos.y + vectorLength * Math.sin(rad));
             ctx.stroke();
 
-            // Render Target Data Block Text
+            // Dynamic Text Placement
+            // If aircraft is heading East (0° to 179°), project vector right and place text to the LEFT.
+            // If aircraft is heading West (180° to 359°), project vector left and place text to the RIGHT.
+            const isEastbound = (ac.hdg >= 0 && ac.hdg < 180);
+            const textX = isEastbound ? pos.x - 12 : pos.x + 12;
+
+            ctx.save();
             ctx.font = '11px "Courier New"';
+            ctx.textAlign = isEastbound ? 'right' : 'left';
             
             let identityText = ac.callsign;
             if (displayRegOnly) {
@@ -337,26 +389,28 @@
 
             if (displayCallsignOnly || displayRegOnly) {
                 // MINI MODE
-                ctx.fillText(identityText, pos.x + 10, pos.y + 4);
+                ctx.fillText(identityText, textX, pos.y + 4);
             } else {
                 // FULL 4-ROW MODE
                 // Row 1: Flight Identity
-                ctx.fillText(identityText, pos.x + 10, pos.y - 5);
+                ctx.fillText(identityText, textX, pos.y - 5);
                 
                 // Row 2: Mode-C Altitude Block + Groundspeed Shorthand
                 const altText = String(Math.round(ac.alt / 100)).padStart(3, '0');
                 const speedText = Math.round(ac.gs / 10);
-                ctx.fillText(`${altText}⬿${speedText}`, pos.x + 10, pos.y + 8);
+                ctx.fillText(`${altText}-${speedText}`, textX, pos.y + 8);
                 
                 // Row 3: Equipment Type (or Fallback Size Class) + Flight Phase
                 const typeText = ac.ac_type || ac.size_class || "UNKN";
-                ctx.fillText(`${typeText} ${ac.phase}`, pos.x + 10, pos.y + 20);
+                ctx.fillText(`${typeText} ${ac.phase}`, textX, pos.y + 20);
 
                 // Row 4: Route Profile Route Paths
                 const origin = ac.origin || "----";
                 const dest = ac.dest || "----";
-                ctx.fillText(`${origin} ${dest}`, pos.x + 10, pos.y + 32);
+                ctx.fillText(`${origin} ${dest}`, textX, pos.y + 32);
             }
+
+            ctx.restore();
         });
 
         requestAnimationFrame(drawRadar);

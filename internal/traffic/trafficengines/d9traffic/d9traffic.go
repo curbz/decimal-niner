@@ -1462,7 +1462,9 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			startPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
 			if star.Exit.Fix.Lat != 0 {
 				targetPos = atc.Position{Lat: star.Exit.Fix.Lat, Long: star.Exit.Fix.Lon}
-				targetAlt = float64(star.Exit.ConstraintAlt)
+				if star.Exit.ConstraintAlt > 0.0 {
+					targetAlt = float64(star.Exit.ConstraintAlt)
+				}
 			} else {
 				// DEFENSIVE FALLBACK: STAR entry is valid, but exit fix is corrupted/zero.
 				util.LogWarnWithLabel(ac.Registration, "STAR %s has no valid exit fix. Falling back targetPos to standard approach entry gate.", star.Name)
@@ -1519,14 +1521,18 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 
 	case flightphase.Braking:
 		startPos = atc.Position{Lat: rwy.Lat, Long: rwy.Lon}
+		targetAlt = atc.GetElevation(ctxAp, rwy)
+		heading = rwy.Heading
 		if ac.Flight.ArrivalAccess != nil {
 			targetPos.Lat = ac.Flight.ArrivalAccess.Coord.Lat
 			targetPos.Long = ac.Flight.ArrivalAccess.Coord.Lon
+			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d runway exit: %s",
+							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(heading), ac.Flight.ArrivalAccess.Name)	
 		} else {
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM*0.75)
+			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d",
+							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(heading))	
 		}
-		targetAlt = atc.GetElevation(ctxAp, rwy)
-		heading = rwy.Heading
 	}
 	ac.Flight.TargetAltitude = targetAlt
 
@@ -1749,22 +1755,21 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 	}
 
 	// 2. Resolve geographic endpoints based on direction
-	var startLat, startLon, endLat, endLon float64
+	var startLat, startLon, endLat, endLon, cornerLat, cornerLon float64
 
 	if isOutbound {
 		startLat = ac.Flight.AssignedParkingSpot.Lat
 		startLon = ac.Flight.AssignedParkingSpot.Lon
 		endLat = ac.Flight.DepartureAccess.Coord.Lat
 		endLon = ac.Flight.DepartureAccess.Coord.Lon
+		cornerLat, cornerLon = startLat, endLon
 	} else {
 		startLat = ac.Flight.ArrivalAccess.Coord.Lat
 		startLon = ac.Flight.ArrivalAccess.Coord.Lon
 		endLat = ac.Flight.AssignedParkingSpot.Lat
 		endLon = ac.Flight.AssignedParkingSpot.Lon
+		cornerLat, cornerLon = endLat, startLon
 	}
-
-	// Define the L-shaped inflection point (the corner)
-	cornerLat, cornerLon := startLat, endLon
 
 	// 3. Compute Segment and Total Physical Distances
 	leg1Dist := geometry.DistNM(startLat, startLon, cornerLat, cornerLon)

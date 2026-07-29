@@ -307,7 +307,7 @@ func (s *Service) AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep in
 	}
 
 	for _, access := range accessMap {
-		// Which of these qualified entries is closest to our PARKED position?
+		// Which of these qualified entries is closest to our parking position?
 		dist := geometry.DistNM(spot.Lat, spot.Lon, access.Coord.Lat, access.Coord.Lon)
 		if dist < minDistToGate {
 			minDistToGate = dist
@@ -1246,111 +1246,112 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 
 func finaliseRuwayAccess(ap *Airport, nodeBuffer map[int]Coordinate, edgeBuffer []RawEdge, namedNodes []NamedNode) {
 
-	for _, rwy := range ap.Runways {
-		rwy.DepartureAccess = make(map[string]*AccessPoint)
-		rwy.ArrivalAccess = make(map[string]*AccessPoint)
+    for _, rwy := range ap.Runways {
+        rwy.DepartureAccess = make(map[string]*AccessPoint)
+        rwy.ArrivalAccess = make(map[string]*AccessPoint)
 
-		for _, edge := range edgeBuffer {
-			if edge.TaxiName == "" {
-				continue
-			}
+        rwyLengthNM := geometry.DistNM(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
+        rwyHeading := geometry.CalculateBearing(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
 
-			// Optimization: Get coordinates once
-			coordA := nodeBuffer[edge.NodeA]
-			coordB := nodeBuffer[edge.NodeB]
+        // Helper to check if a node actually lies within the physical boundaries of the runway segment
+        isOnRunwaySegment := func(coord Coordinate, maxXTD float64) (bool, float64, float64) {
+            xtd := math.Abs(geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coord.Lat, coord.Lon))
+            if xtd > maxXTD {
+                return false, 0, 0
+            }
 
-			// DEPARTURE HANDLING
-			usage := getUsage(ap, edge.TaxiName, rwy.Name)
-			if usage == "departure" || usage == "both" {
+            // AlongTrackDistance returns meters from threshold along rwyHeading
+            atdMeters := geometry.AlongTrackDistance(coord.Lat, coord.Lon, rwy.Lat, rwy.Lon, rwyHeading)
+            atdNM := atdMeters / 1852.0 // Convert meters to NM
 
-				// Helper for Departure logic to avoid code duplication
-				processDeparture := func(nodeOnRwy, offRwyNode Coordinate, distToStart float64) {
-					// NEW: XTD check ensures the node is actually ON the runway pavement
-					xtd := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
+            // Margin tolerance (0.01 NM ~ 18.5m) for nodes sitting slightly outside threshold nodes
+            const marginNM = 0.01
+            if atdNM < -marginNM || atdNM > (rwyLengthNM+marginNM) {
+                return false, 0, 0
+            }
 
-					if xtd < 0.03 { // 0.03 NM (~50m) is roughly half a runway width
-						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.05, true)
-						entryBrg := geometry.CalculateBearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
+            distFromEndNM := rwyLengthNM - atdNM
+            return true, atdNM, distFromEndNM
+        }
 
-						updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, nodeOnRwy, distToStart, touching, entryBrg)
-					}
-				}
+        for _, edge := range edgeBuffer {
+            if edge.TaxiName == "" {
+                continue
+            }
 
-				// Check Node A
-				distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-				if distAStart < 0.2 {
-					processDeparture(coordA, coordB, distAStart)
-				}
+            coordA := nodeBuffer[edge.NodeA]
+            coordB := nodeBuffer[edge.NodeB]
 
-				// Check Node B
-				distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-				if distBStart < 0.2 {
-					processDeparture(coordB, coordA, distBStart)
-				}
-			}
+            usage := getUsage(ap, edge.TaxiName, rwy.Name)
 
-			// ARRIVAL HANDLING
-			if usage == "arrival" || usage == "both" {
+            // DEPARTURE HANDLING
+            if usage == "departure" || usage == "both" {
+                processDeparture := func(nodeOnRwy, offRwyNode Coordinate, distStart float64) {
+                    touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.05, true)
+                    entryBrg := geometry.CalculateBearing(offRwyNode.Lat, offRwyNode.Lon, nodeOnRwy.Lat, nodeOnRwy.Lon)
 
-				// Helper to evaluate a specific node for arrival
-				processArrival := func(nodeOnRwy, nextNode Coordinate, distFromStart float64) {
-					// 1. Centerline Escape Check
-					xtdNext := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nextNode.Lat, nextNode.Lon)
-					xtdCurr := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-					if xtdNext <= xtdCurr {
-						return
-					}
+                    updateAccessPointIfCloser(rwy.DepartureAccess, edge.TaxiName, nodeOnRwy, distStart, touching, entryBrg)
+                }
 
-					distFromEnd := geometry.DistNM(rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon)
-					isLastChance := distFromEnd < constants.LastExitBufferNM
-					isSafeRollout := distFromStart > constants.DefaultRolloutDistNM
+                if onRwy, atdA, _ := isOnRunwaySegment(coordA, 0.03); onRwy && atdA < 0.2 {
+                    processDeparture(coordA, coordB, atdA)
+                }
 
-					if isSafeRollout || isLastChance {
-						touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)
+                if onRwy, atdB, _ := isOnRunwaySegment(coordB, 0.03); onRwy && atdB < 0.2 {
+                    processDeparture(coordB, coordA, atdB)
+                }
+            }
 
-						if touching != "" || isLastChance {
-							rwyHeading := geometry.CalculateBearing(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon)
-							exitBrg := geometry.CalculateBearing(nodeOnRwy.Lat, nodeOnRwy.Lon, nextNode.Lat, nextNode.Lon)
+            // ARRIVAL HANDLING
+            if usage == "arrival" || usage == "both" {
+                processArrival := func(nodeOnRwy, nextNode Coordinate, distFromStart, distFromEnd float64) {
+                    xtdCurr := math.Abs(geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nodeOnRwy.Lat, nodeOnRwy.Lon))
+                    xtdNext := math.Abs(geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, nextNode.Lat, nextNode.Lon))
 
-							angleDiff := math.Abs(rwyHeading - exitBrg)
-							if angleDiff > 180 {
-								angleDiff = 360 - angleDiff
-							}
+                    if xtdNext <= xtdCurr {
+                        return
+                    }
 
-							// The Directional Filter
-							maxAngle := 90.0 // Mid-runway: Forward exits only
-							if isLastChance {
-								maxAngle = 140.0
-							} // End: Tight turns allowed
+                    isLastChance := distFromEnd < constants.LastExitBufferNM
+                    isSafeRollout := distFromStart > constants.DefaultRolloutDistNM
 
-							if angleDiff <= maxAngle {
-								acp := updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, nodeOnRwy, distFromEnd, touching, exitBrg)
-								if acp != nil {
-									// RETs (Rapid Exit Taxiways)
-									acp.IsHighSpeed = (angleDiff <= constants.HighSpeedExitThresholdDeg)
-									acp.IsNearEnd = isLastChance
-								}
-							}
-						}
-					}
-				}
+                    if isSafeRollout || isLastChance {
+                        touching := findArterialFast(nodeOnRwy.Lat, nodeOnRwy.Lon, edge.TaxiName, namedNodes, 0.10, true)
 
-				// Check Node A (if it's on the runway)
-				xtdA := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordA.Lat, coordA.Lon)
-				if xtdA < 0.05 {
-					distAStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordA.Lat, coordA.Lon)
-					processArrival(coordA, coordB, distAStart)
-				}
+                        if touching != "" || isLastChance {
+                            exitBrg := geometry.CalculateBearing(nodeOnRwy.Lat, nodeOnRwy.Lon, nextNode.Lat, nextNode.Lon)
 
-				// Check Node B (if it's on the runway)
-				xtdB := geometry.CrossTrackDistance(rwy.Lat, rwy.Lon, rwy.EndLat, rwy.EndLon, coordB.Lat, coordB.Lon)
-				if xtdB < 0.05 {
-					distBStart := geometry.DistNM(rwy.Lat, rwy.Lon, coordB.Lat, coordB.Lon)
-					processArrival(coordB, coordA, distBStart)
-				}
-			}
-		}
-	}
+                            angleDiff := math.Abs(rwyHeading - exitBrg)
+                            if angleDiff > 180 {
+                                angleDiff = 360 - angleDiff
+                            }
+
+                            maxAngle := 90.0
+                            if isLastChance {
+                                maxAngle = 140.0
+                            }
+
+                            if angleDiff <= maxAngle {
+                                acp := updateAccessPointIfCloser(rwy.ArrivalAccess, edge.TaxiName, nodeOnRwy, distFromEnd, touching, exitBrg)
+                                if acp != nil {
+                                    acp.IsHighSpeed = (angleDiff <= constants.HighSpeedExitThresholdDeg)
+                                    acp.IsNearEnd = isLastChance
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if onRwy, atdA, distEndA := isOnRunwaySegment(coordA, 0.05); onRwy {
+                    processArrival(coordA, coordB, atdA, distEndA)
+                }
+
+                if onRwy, atdB, distEndB := isOnRunwaySegment(coordB, 0.05); onRwy {
+                    processArrival(coordB, coordA, atdB, distEndB)
+                }
+            }
+        }
+    }
 }
 
 func getUsage(ap *Airport, taxiName string, rwyName string) string {
