@@ -1684,10 +1684,10 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(currentDistToTarget, speedKts))
 
 	currentBearingToTarget := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-	bearingDifference := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - geometry.NormalizeHeading(heading))
-	isTrackingAwayFromTarget := bearingDifference > 90.0 && bearingDifference < 270.0
-	isOvershoot := isTrackingAwayFromTarget && currentDistToTarget < 1.0
-
+	bearingDifferenceToTargetPos := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - geometry.NormalizeHeading(heading))
+	headingBearingDifference := math.Abs(geometry.NormalizeHeading(ac.Flight.TargetHeading) - geometry.NormalizeHeading(heading))
+	isTrackingAwayFromTarget := bearingDifferenceToTargetPos > 90.0 && bearingDifferenceToTargetPos < 270.0
+	isOvershoot := isTrackingAwayFromTarget && currentDistToTarget < 1.0 && headingBearingDifference < 180.0
 	posTransitionThresholdNM := 0.05
 	if phase == flightphase.Arrival  {
 		posTransitionThresholdNM = 1.0
