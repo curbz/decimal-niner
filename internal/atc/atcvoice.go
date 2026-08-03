@@ -496,7 +496,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			turnDirection := "right"
 			if turnDiff < 0 {
 				turnDirection = "left"
-			}	
+			}
 			return fmt.Sprintf("turn %s heading %03d", turnDirection, int(math.Round(geometry.NormalizeHeading(ac.Flight.TargetHeading))))
 		},
 		// --- MISSED APPROACH LOGIC ---
@@ -580,7 +580,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 					r = "published hold"
 				} else {
 					holdfix := holding.AssignedHold
-					if holdfix != nil { 
+					if holdfix != nil {
 						if holdfix.FullName != "" {
 							r = holdfix.FullName
 						} else {
@@ -1428,4 +1428,3 @@ func (s *Service) formatTurbulence(role string) string {
 
 	return phrase
 }
-

@@ -1381,7 +1381,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 
 	var startPos, targetPos atc.Position
 	var targetAlt float64
-	var heading float64
+	var targetHeading float64
 
 	// STEP 1A. Establish Static Phase Boundaries (Anchors remains unchanged)
 	switch phase {
@@ -1397,7 +1397,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM)
 
 		targetAlt = atc.GetElevationAdjustedAltitude(constants.DefaultTakeOffExitClimboutEntryAltFt, ctxAp, rwy, 100.0)
-		heading = rwy.Heading
+		targetHeading = rwy.Heading
 
 	case flightphase.Climbout:
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM)
@@ -1421,7 +1421,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, constants.DefaultClimbExitDepartureEntryNM)
 		}
 
-		heading = rwy.Heading
+		targetHeading = rwy.Heading
 
 		// default altitude protection
 		if targetAlt == 0 {
@@ -1453,7 +1453,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 				"[DEPARTURE-INIT] Resetting segment startPos to current aircraft position to preserve tracking ratios.")
 		}
 
-		heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+		targetHeading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 		if targetAlt == 0 {
 			targetAlt = atc.GetMinSafeAltitude(float64(constants.DefaultDepartureExitCruiseEntryAltFt), ctxAp)
 		}
@@ -1487,7 +1487,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetLat, targetLon := geometry.Project(ctxAp.Lat, ctxAp.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
 			targetPos = atc.Position{Lat: targetLat, Long: targetLon}
 		}
-		heading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
+		targetHeading = geometry.CalculateBearing(startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long)
 
 	case flightphase.Approach:
 		if star := ac.Flight.AssignedSTAR; star != nil && star.Exit.Fix.Lat != 0 {
@@ -1519,21 +1519,21 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		startPos.Lat, startPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), start)
 		targetPos = atc.Position{Lat: rwy.Lat, Long: rwy.Lon}
 		targetAlt = atc.GetElevation(ctxAp, rwy)
-		heading = rwy.Heading
+		targetHeading = rwy.Heading
 
 	case flightphase.Braking:
 		startPos = atc.Position{Lat: rwy.Lat, Long: rwy.Lon}
 		targetAlt = atc.GetElevation(ctxAp, rwy)
-		heading = rwy.Heading
+		targetHeading = rwy.Heading
 		if ac.Flight.ArrivalAccess != nil {
 			targetPos.Lat = ac.Flight.ArrivalAccess.Coord.Lat
 			targetPos.Long = ac.Flight.ArrivalAccess.Coord.Lon
 			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d runway exit: %s",
-							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(heading), ac.Flight.ArrivalAccess.Name)	
+							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading), ac.Flight.ArrivalAccess.Name)	
 		} else {
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM*0.75)
 			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d",
-							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(heading))	
+							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading))	
 		}
 	}
 	ac.Flight.TargetAltitude = targetAlt
@@ -1559,10 +1559,11 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
 	if phase == flightphase.Approach {
-
 		// set heading
 		e.SetLocalizerInterceptHeading(ac, rwy.Lat, rwy.Lon, rwy.Heading, deltaTimeSec)
 		if ac.Flight.Phase.PositionComplete {
+			ac.Flight.TargetHeading = rwy.Heading
+			ac.Flight.TargetDistance = 0.0
 			util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long))
 			return
 		}
@@ -1590,127 +1591,114 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		}
 	} else {
 		// --- General Linear Phase Tracking Step ---
-		if currentDistToTarget > distanceMovedThisTick {
-			heading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-			// Smoothly track heading changes
-			applySmoothTurnHeading(ac, heading, 1.0, deltaTimeSec)
-			// use the current heading to project the next position
-			ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
-			// calculate progress ratio for altitude tracking
-			if phaseTotalDist > 0 {
-				progRatio := 1.0 - (currentDistToTarget / phaseTotalDist)
-				if progRatio < 0.0 {
-					progRatio = 0.0
-				} else if progRatio > 1.0 {
-					progRatio = 1.0
+		targetHeading = geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+		// Smoothly track heading changes
+		applySmoothTurnHeading(ac, targetHeading, 3.0, deltaTimeSec)
+		// use the current heading to project the next position
+		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
+		// calculate progress ratio for altitude tracking
+		if phaseTotalDist > 0 {
+			progRatio := 1.0 - (currentDistToTarget / phaseTotalDist)
+			if progRatio < 0.0 {
+				progRatio = 0.0
+			} else if progRatio > 1.0 {
+				progRatio = 1.0
+			}
+
+			util.LogDebugWithLabel(ac.Registration, "Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f",
+				phase.String(), currentDistToTarget, phaseTotalDist, progRatio)
+
+			switch phase {
+			case flightphase.Takeoff:
+				runwayElev := atc.GetElevation(ctxAp, rwy)
+				ac.Flight.Position.Altitude = runwayElev + (progRatio * (targetAlt - runwayElev))
+			case flightphase.Braking, flightphase.TaxiOut, flightphase.TaxiIn:
+				ac.Flight.Position.Altitude = targetAlt
+			default:
+				intendedAlt := phaseInitAlt + (progRatio * (targetAlt - phaseInitAlt))
+
+				// 1. Calculate time remaining to target fix in minutes
+				var timeRemainingMin float64
+				if speedKts > 0 {
+					timeRemainingMin = (currentDistToTarget / speedKts) * 60.0
 				}
 
-				util.LogDebugWithLabel(ac.Registration, "Phase: %s | DistToTarget: %0.4f NM | TotalPlanned: %0.4f NM | Raw Ratio: %0.4f",
-					phase.String(), currentDistToTarget, phaseTotalDist, progRatio)
+				// 2. Compute the precise required vertical rate (FPM)
+				var vrate float64
+				if timeRemainingMin > 0 {
+					altitudeDelta := targetAlt - ac.Flight.Position.Altitude
+					vrate = altitudeDelta / timeRemainingMin
+				}
 
-				switch phase {
-				case flightphase.Takeoff:
-					runwayElev := atc.GetElevation(ctxAp, rwy)
-					ac.Flight.Position.Altitude = runwayElev + (progRatio * (targetAlt - runwayElev))
-				case flightphase.Braking, flightphase.TaxiOut, flightphase.TaxiIn:
-					ac.Flight.Position.Altitude = targetAlt
-				default:
-					intendedAlt := phaseInitAlt + (progRatio * (targetAlt - phaseInitAlt))
+				// --- ENFORCE baseline performance floor to prevent the shallow crawl ---
+				const minClimbFloorFPM = 500.0
+				const minDescentFloorFPM = -500.0
 
-					// 1. Calculate time remaining to target fix in minutes
-					var timeRemainingMin float64
-					if speedKts > 0 {
-						timeRemainingMin = (currentDistToTarget / speedKts) * 60.0
-					}
+				if intendedAlt > ac.Flight.Position.Altitude && vrate < minClimbFloorFPM {
+					vrate = minClimbFloorFPM
+				} else if intendedAlt < ac.Flight.Position.Altitude && vrate > minDescentFloorFPM {
+					vrate = minDescentFloorFPM
+				}
 
-					// 2. Compute the precise required vertical rate (FPM)
-					var vrate float64
-					if timeRemainingMin > 0 {
-						altitudeDelta := targetAlt - ac.Flight.Position.Altitude
-						vrate = altitudeDelta / timeRemainingMin
-					}
+				// 3. Global safety clamps enforced consistently in outer scope
+				if vrate < -4000.0 {
+					vrate = -4000.0
+				}
+				if vrate > 3000.0 {
+					vrate = 3000.0
+				}
 
-					// --- ENFORCE baseline performance floor to prevent the shallow crawl ---
-					const minClimbFloorFPM = 500.0
-					const minDescentFloorFPM = -500.0
+				util.LogDebugWithLabel(ac.Registration, "TargetAlt: %0.2f | IntendedAlt: %0.2f | CalcVRate: %0.2f FPM | TimeRemaining: %0.2f Min",
+					targetAlt, intendedAlt, vrate, timeRemainingMin)
 
-					if intendedAlt > ac.Flight.Position.Altitude && vrate < minClimbFloorFPM {
-						vrate = minClimbFloorFPM
-					} else if intendedAlt < ac.Flight.Position.Altitude && vrate > minDescentFloorFPM {
-						vrate = minDescentFloorFPM
-					}
+				// 4. Apply frame-based kinematic step tracking intendedAlt
+				if vrate == 0 || deltaTimeSec <= 0 {
+					ac.Flight.Position.Altitude = intendedAlt
+				} else {
+					// Convert FPM to feet per second and step forward
+					allowedDeltaAlt := vrate * (deltaTimeSec / 60.0)
+					nextFrameAlt := ac.Flight.Position.Altitude + allowedDeltaAlt
 
-					// 3. Global safety clamps enforced consistently in outer scope
-					if vrate < -4000.0 {
-						vrate = -4000.0
-					}
-					if vrate > 3000.0 {
-						vrate = 3000.0
-					}
-
-					util.LogDebugWithLabel(ac.Registration, "TargetAlt: %0.2f | IntendedAlt: %0.2f | CalcVRate: %0.2f FPM | TimeRemaining: %0.2f Min",
-						targetAlt, intendedAlt, vrate, timeRemainingMin)
-
-					// 4. Apply frame-based kinematic step tracking intendedAlt
-					if vrate == 0 || deltaTimeSec <= 0 {
-						ac.Flight.Position.Altitude = intendedAlt
+					// Drive toward intendedAlt, clamping tightly to ensure no overshooting
+					if vrate > 0 {
+						ac.Flight.Position.Altitude = math.Min(intendedAlt, nextFrameAlt)
 					} else {
-						// Convert FPM to feet per second and step forward
-						allowedDeltaAlt := vrate * (deltaTimeSec / 60.0)
-						nextFrameAlt := ac.Flight.Position.Altitude + allowedDeltaAlt
-
-						// Drive toward intendedAlt, clamping tightly to ensure no overshooting
-						if vrate > 0 {
-							ac.Flight.Position.Altitude = math.Min(intendedAlt, nextFrameAlt)
-						} else {
-							ac.Flight.Position.Altitude = math.Max(intendedAlt, nextFrameAlt)
-						}
+						ac.Flight.Position.Altitude = math.Max(intendedAlt, nextFrameAlt)
 					}
 				}
 			}
-			ac.Flight.TargetHeading = heading
-		} else {
-			ac.Flight.Position.Altitude = targetAlt
-			applySmoothTurnHeading(ac, heading, 3.0, deltaTimeSec)
-			ac.Flight.Position.Lat = targetPos.Lat
-			ac.Flight.Position.Long = targetPos.Long
-			ac.Flight.TargetHeading = heading
-			ac.Flight.TargetDistance = 0.0
-			ac.Flight.Phase.PositionComplete = true
-			util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
-			return
 		}
+		ac.Flight.TargetHeading = targetHeading
 	}
 
-	// 3. Evaluate Position-Based Triggers for State Transition Flags
-	ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(currentDistToTarget, speedKts))
-
-	currentBearingToTarget := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
-	bearingDifferenceToTargetPos := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - geometry.NormalizeHeading(heading))
-	headingBearingDifference := math.Abs(geometry.NormalizeHeading(ac.Flight.TargetHeading) - geometry.NormalizeHeading(heading))
-	isTrackingAwayFromTarget := bearingDifferenceToTargetPos > 90.0 && bearingDifferenceToTargetPos < 270.0
-	isOvershoot := isTrackingAwayFromTarget && currentDistToTarget < 1.0 && headingBearingDifference < 180.0
-	posTransitionThresholdNM := 0.05
-	if phase == flightphase.Arrival  {
-		posTransitionThresholdNM = 1.0
-		if !isOvershoot && ac.Flight.TargetDistance > 0.0 && currentDistToTarget > ac.Flight.TargetDistance {
-			isOvershoot = true
-			util.LogDebugWithLabel(ac.Registration, "Arrival phase position overshoot detected")
-		}
-	}
-
-	if currentDistToTarget < posTransitionThresholdNM || isOvershoot || (targetPos.Lat == startPos.Lat && targetPos.Long == startPos.Long) {
+	if currentDistToTarget <= distanceMovedThisTick {
 		ac.Flight.Phase.PositionComplete = true
-		util.LogDebugWithLabel(ac.Registration, "phase %s completed (distRemaining=%0.3fNM, overshoot=%t), transitioning state",
-			phase.String(), currentDistToTarget, isOvershoot)
-	}
+		util.LogDebugWithLabel(ac.Registration, "General linear phase %s complete. Snapped to destination fix and marking PositionComplete.", phase.String())
+	} else {
+		ac.Flight.Phase.EstimatedNextTransition = e.AtcService.GetCurrentZuluTime().Add(geometry.CalculateKinematicDuration(currentDistToTarget, speedKts))
 
-	// altitude guard for final
-	if phase == flightphase.Final {
-		airportElev := atc.GetElevation(ctxAp, rwy)
-		if ac.Flight.Position.Altitude < airportElev {
-			ac.Flight.Position.Altitude = airportElev
+		currentBearingToTarget := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
+		bearingDifferenceToTargetPos := math.Abs(geometry.NormalizeHeading(currentBearingToTarget) - ac.Flight.Position.Heading)
+		headingBearingDifference := math.Abs(geometry.NormalizeHeading(ac.Flight.TargetHeading) - ac.Flight.Position.Heading)
+		isTrackingAwayFromTarget := bearingDifferenceToTargetPos > 90.0 && bearingDifferenceToTargetPos < 270.0
+		isOvershoot := isTrackingAwayFromTarget && currentDistToTarget < 1.0 && headingBearingDifference < 180.0
+		posTransitionThresholdNM := 0.05
+		// if phase == flightphase.Arrival  {
+		// 	posTransitionThresholdNM = 1.0
+		// 	if !isOvershoot && ac.Flight.TargetDistance > 0.0 && currentDistToTarget > ac.Flight.TargetDistance {
+		// 		isOvershoot = true
+		// 		util.LogDebugWithLabel(ac.Registration, "Arrival phase position overshoot detected")
+		// 	}
+		// }
+
+		if currentDistToTarget < posTransitionThresholdNM || isOvershoot { //|| (targetPos.Lat == startPos.Lat && targetPos.Long == startPos.Long) {
+			ac.Flight.Phase.PositionComplete = true
+			util.LogDebugWithLabel(ac.Registration, "phase %s completed (distRemaining=%0.3fNM, overshoot=%t), transitioning state",
+				phase.String(), currentDistToTarget, isOvershoot)
 		}
+
+		util.LogDebugWithLabel(ac.Registration, "target heading: %f isTrackingAwayFromTarget: %v bearingDifferenceToTargetPos: %f headingBearingDifference: %f currentDistToTarget: %f",
+										ac.Flight.TargetHeading, isTrackingAwayFromTarget, bearingDifferenceToTargetPos, headingBearingDifference, currentDistToTarget)
 	}
 
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
@@ -1718,6 +1706,13 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	}
 
 	ac.Flight.TargetDistance = currentDistToTarget
+
+	if ac.Flight.Phase.PositionComplete {
+		ac.Flight.Position.Altitude = targetAlt
+		ac.Flight.Position.Lat = targetPos.Lat
+		ac.Flight.Position.Long = targetPos.Long
+		ac.Flight.TargetDistance = 0.0
+	}
 }
 
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
@@ -3627,12 +3622,14 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 		}
 		targetHeading = calcBearing(acLat, acLong, targetLat, targetLong)
 	}
+	ac.Flight.TargetHeading = targetHeading
 
 	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
 	applySmoothTurnHeading(ac, targetHeading, 3.0, dt)
 
 	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
 	distToPointA := calcDist(acLat, acLong, pA_Lat, pA_Long)
+	util.LogDebugWithLabel(ac.Registration, "distToPointA %f", distToPointA)
 	if distToPointA < 0.15 {
 		ac.Flight.Position.Heading = rwyHdg
 		ac.Flight.Position.Lat = pA_Lat
