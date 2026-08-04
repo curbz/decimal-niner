@@ -1697,7 +1697,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 				phase.String(), currentDistToTarget, isOvershoot)
 		}
 
-		util.LogDebugWithLabel(ac.Registration, "target heading: %f isTrackingAwayFromTarget: %v bearingDifferenceToTargetPos: %f headingBearingDifference: %f currentDistToTarget: %f",
+		util.LogDebugWithLabel(ac.Registration, "targetHeading: %f isTrackingAwayFromTarget: %v bearingDifferenceToTargetPos: %f headingBearingDifference: %f currentDistToTarget: %f",
 										ac.Flight.TargetHeading, isTrackingAwayFromTarget, bearingDifferenceToTargetPos, headingBearingDifference, currentDistToTarget)
 	}
 
@@ -3511,9 +3511,10 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 	radarSrv.BroadcastSnapshot(snapshot)
 }
 
-// SetLocalizerInterceptHeading handles pure lateral localizer tracking based on geometric segments.
-// It modifies only the heading of the aircraft, completely safeguarding altitude profiles.
+// SetLocalizerInterceptHeading handles pure lateral localizer tracking based on geometric points.
 func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat, rwyLong, rwyHdg float64, dt float64) {
+
+	var targetHeading, targetLat, targetLong float64
 
 	// Constants for flat-earth coordinate conversions over short distances
 	const nmToDegLat = 1.0 / 60.0
@@ -3524,118 +3525,60 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	pA_Lat := rwyLat + (7.5*nmToDegLat)*math.Cos(recipHdgRad)
 	pA_Long := rwyLong + (7.5*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
 
-	// 2. Calculate Circle Centers (Diameter 3NM -> Radius = 1.5 NM)
-	northHdgRad := (rwyHdg - 90.0) * math.Pi / 180.0
-	oN_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(northHdgRad)
-	oN_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(northHdgRad)
+	// 2. Calculate Point B (3.0 NM out from point A at a 30 degree bearing offset from the reciprocal heading)
+	recipHdgRadPlus30 := (rwyHdg + 180.0 + 30.0) * math.Pi / 180.0
+	pB_Lat := pA_Lat + (3.0*nmToDegLat)*math.Cos(recipHdgRadPlus30)
+	pB_Long := pA_Long + (3.0*nmToDegLat/cosLat)*math.Sin(recipHdgRadPlus30)
 
-	southHdgRad := (rwyHdg + 90.0) * math.Pi / 180.0
-	oS_Lat := pA_Lat + (1.5*nmToDegLat)*math.Cos(southHdgRad)
-	oS_Long := pA_Long + (1.5*nmToDegLat/cosLat)*math.Sin(southHdgRad)
+	// 3. Caclulate Point C (3.0 NM out from point A at a -30 degree bearing offset from the reciprocal heading
+	recipHdgRadMinus30 := (rwyHdg + 180.0 - 30.0) * math.Pi / 180.0
+	pC_Lat := pA_Lat + (3.0*nmToDegLat)*math.Cos(recipHdgRadMinus30)
+	pC_Long := pA_Long + (3.0*nmToDegLat/cosLat)*math.Sin(recipHdgRadMinus30)
 
-	// Current Aircraft Position (Matching your exact .Long struct naming)
+	// 4. Determine if aircraft is already on the intercept path i.e. reached point B or C
+	if ac.Flight.FinalIntercepted {
+		// target point A directly
+		targetLat = pA_Lat
+		targetLong = pA_Long
+	} else {
+		// target closest of point B or C
+		acLat := ac.Flight.Position.Lat
+		acLong := ac.Flight.Position.Long
+		distToB := geometry.DistNM(acLat, acLong, pB_Lat, pB_Long)
+		distToC := geometry.DistNM(acLat, acLong, pC_Lat, pC_Long)
+		if distToB < distToC {
+			targetLat = pB_Lat
+			targetLong = pB_Long
+		} else {
+			targetLat = pC_Lat
+			targetLong = pC_Long
+		}
+	}
+
+	// 5. Calculate the target heading to the target point
 	acLat := ac.Flight.Position.Lat
 	acLong := ac.Flight.Position.Long
-
-	// Local self-contained geometry helpers to eliminate compiler dependencies
-	calcDist := func(lat1, lon1, lat2, lon2 float64) float64 {
-		dLat := (lat2 - lat1) * 60.0
-		dLon := (lon2 - lon1) * 60.0 * math.Cos(lat1*math.Pi/180.0)
-		return math.Sqrt(dLat*dLat + dLon*dLon)
-	}
-
-	calcBearing := func(lat1, lon1, lat2, lon2 float64) float64 {
-		dLat := lat2 - lat1
-		dLon := lon2 - lon1
-		brg := math.Atan2(dLon*math.Cos(lat1*math.Pi/180.0), dLat) * 180.0 / math.Pi
-		for brg < 0 {
-			brg += 360.0
-		}
-		for brg >= 360.0 {
-			brg -= 360.0
-		}
-		return brg
-	}
-
-	distToON := calcDist(acLat, acLong, oN_Lat, oN_Long)
-	distToOS := calcDist(acLat, acLong, oS_Lat, oS_Long)
-
-	// Determine if aircraft is North or South of the extended centerline
-	brgFromA := calcBearing(pA_Lat, pA_Long, acLat, acLong)
-	relBrgFromA := geometry.NormalizeDiffDegrees(brgFromA, rwyHdg)
-	isNorthSide := relBrgFromA < 0
-
-	var targetLat, targetLong float64
-	var targetHeading float64
-	isOnArc := false
-
-	// Check if aircraft has arrived at its intercept circle (Radius 1.5 NM + small entry threshold)
-	if isNorthSide && distToON <= 1.55 {
-		isOnArc = true
-	} else if !isNorthSide && distToOS <= 1.55 {
-		isOnArc = true
-	}
-
-	if isOnArc {
-		// SMOOTH TURN PHASE: Ditch the points and guide along the circle's tangent vector to Point A
-		if isNorthSide {
-			radialBrg := calcBearing(oN_Lat, oN_Long, acLat, acLong)
-			targetHeading = radialBrg - 90.0 // Counter-clockwise turn flow
-		} else {
-			radialBrg := calcBearing(oS_Lat, oS_Long, acLat, acLong)
-			targetHeading = radialBrg + 90.0 // Clockwise turn flow
-		}
-	} else {
-		// STRAIGHT TRAJECTORY PHASE: Match current segment to target point
-		hdgDiff := math.Abs(geometry.NormalizeDiffDegrees(ac.Flight.Position.Heading, rwyHdg))
-
-		if isNorthSide {
-			if hdgDiff > 65.0 {
-				// Segment U -> Target Point C (West edge of North circle)
-				cBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(cBrgRad)
-				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(cBrgRad)
-			} else if hdgDiff > 30.0 {
-				// Segment V -> Target Point B (South-West edge of North circle)
-				bBrgRad := (rwyHdg + 225.0) * math.Pi / 180.0
-				targetLat = oN_Lat + (1.5*nmToDegLat)*math.Cos(bBrgRad)
-				targetLong = oN_Long + (1.5*nmToDegLat/cosLat)*math.Sin(bBrgRad)
-			} else {
-				// Segment W -> Target Point A
-				targetLat, targetLong = pA_Lat, pA_Long
-			}
-		} else {
-			if hdgDiff > 65.0 {
-				// Segment Z -> Target Point E (West edge of South circle)
-				eBrgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(eBrgRad)
-				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(eBrgRad)
-			} else if hdgDiff > 30.0 {
-				// Segment X -> Target Point D (North-West edge of South circle)
-				dBrgRad := (rwyHdg + 135.0) * math.Pi / 180.0
-				targetLat = oS_Lat + (1.5*nmToDegLat)*math.Cos(dBrgRad)
-				targetLong = oS_Long + (1.5*nmToDegLat/cosLat)*math.Sin(dBrgRad)
-			} else {
-				// Segment Y -> Target Point A
-				targetLat, targetLong = pA_Lat, pA_Long
-			}
-		}
-		targetHeading = calcBearing(acLat, acLong, targetLat, targetLong)
-	}
+	targetHeading = geometry.CalculateBearing(acLat, acLong, targetLat, targetLong)
 	ac.Flight.TargetHeading = targetHeading
-
+	
 	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
 	applySmoothTurnHeading(ac, targetHeading, 3.0, dt)
 
-	// Direct lock onto localizer track once explicitly inside the Point A arrival gate
-	distToPointA := calcDist(acLat, acLong, pA_Lat, pA_Long)
-	util.LogDebugWithLabel(ac.Registration, "distToPointA %f", distToPointA)
-	if distToPointA < 0.15 {
-		ac.Flight.Position.Heading = rwyHdg
-		ac.Flight.Position.Lat = pA_Lat
-		ac.Flight.Position.Long = pA_Long
-		ac.Flight.Phase.PositionComplete = true
+	distToTarget := geometry.DistNM(acLat, acLong, targetLat, targetLong)
+	if distToTarget <= 0.3 {
+		if !ac.Flight.FinalIntercepted {
+			ac.Flight.FinalIntercepted = true
+			util.LogWithLabel(ac.Registration, "final localizer intercept achieved, now tracking point A")
+		} else {
+			ac.Flight.Position.Heading = rwyHdg
+			ac.Flight.Position.Lat = pA_Lat
+			ac.Flight.Position.Long = pA_Long
+			ac.Flight.Phase.PositionComplete = true
+		}
 	}
+
+	util.LogDebugWithLabel(ac.Registration, "targetHeading: %f targetLat: %f targetLong: %f distToTarget: %f",
+										ac.Flight.TargetHeading, targetLat, targetLong, distToTarget)
 }
 
 func applySmoothTurnHeading(ac *atc.Aircraft, targetHeading, rate, deltaTimeSec float64) {

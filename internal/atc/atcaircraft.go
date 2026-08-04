@@ -42,6 +42,7 @@ type Flight struct {
 	AssignedSID         *Procedure
 	AssignedSTAR        *Procedure
 	Vectoring           bool
+	FinalIntercepted    bool
 	Squawk              string
 	PlanAssigned        bool
 	Airline             *AirlineInfo
