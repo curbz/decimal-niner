@@ -3525,13 +3525,13 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	pA_Lat := rwyLat + (7.5*nmToDegLat)*math.Cos(recipHdgRad)
 	pA_Long := rwyLong + (7.5*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
 
-	// 2. Calculate Point B (3.0 NM out from point A at a 30 degree bearing offset from the reciprocal heading)
-	recipHdgRadPlus30 := (rwyHdg + 180.0 + 30.0) * math.Pi / 180.0
+	// 2. Calculate Point B (3.0 NM out from point A at a 40 degree bearing offset from the reciprocal heading)
+	recipHdgRadPlus30 := (rwyHdg + 180.0 + 40.0) * math.Pi / 180.0
 	pB_Lat := pA_Lat + (3.0*nmToDegLat)*math.Cos(recipHdgRadPlus30)
 	pB_Long := pA_Long + (3.0*nmToDegLat/cosLat)*math.Sin(recipHdgRadPlus30)
 
-	// 3. Caclulate Point C (3.0 NM out from point A at a -30 degree bearing offset from the reciprocal heading
-	recipHdgRadMinus30 := (rwyHdg + 180.0 - 30.0) * math.Pi / 180.0
+	// 3. Caclulate Point C (3.0 NM out from point A at a -40 degree bearing offset from the reciprocal heading
+	recipHdgRadMinus30 := (rwyHdg + 180.0 - 40.0) * math.Pi / 180.0
 	pC_Lat := pA_Lat + (3.0*nmToDegLat)*math.Cos(recipHdgRadMinus30)
 	pC_Long := pA_Long + (3.0*nmToDegLat/cosLat)*math.Sin(recipHdgRadMinus30)
 
@@ -3571,8 +3571,8 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			util.LogWithLabel(ac.Registration, "final localizer intercept achieved, now tracking point A")
 		} else {
 			ac.Flight.Position.Heading = rwyHdg
-			ac.Flight.Position.Lat = pA_Lat
-			ac.Flight.Position.Long = pA_Long
+			// ac.Flight.Position.Lat = pA_Lat
+			// ac.Flight.Position.Long = pA_Long
 			ac.Flight.Phase.PositionComplete = true
 		}
 	}
