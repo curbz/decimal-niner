@@ -1382,6 +1382,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	var startPos, targetPos atc.Position
 	var targetAlt float64
 	var targetHeading float64
+	var FAFDistNM float64
 
 	// STEP 1A. Establish Static Phase Boundaries (Anchors remains unchanged)
 	switch phase {
@@ -1501,15 +1502,21 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			startPos.Lat, startPos.Long = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
 		}
 
-		target := constants.DefaultApproachExitFinalEntryNM
+		FAFDistNM = constants.DefaultApproachExitFinalEntryNM
 		if rwy.FAFdistNM > 0 {
-			target = rwy.FAFdistNM
+			FAFDistNM = rwy.FAFdistNM
 		}
-		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), target)
+		targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), FAFDistNM)
+
 		targetAlt = float64(rwy.FAFalt)
 		if targetAlt == 0 {
-			targetAlt = atc.GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ctxAp, rwy, 500.0)
+			if rwy.ThresholdElevation > 0 {
+				targetAlt = atc.CalculateFAFAlt(rwy.ThresholdElevation, FAFDistNM)
+			} else {
+				targetAlt = atc.GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, ctxAp, rwy, 100.0)
+			}
 		}
+		util.LogDebugWithLabel(ac.Registration, "FAFDistNM: %f targetAlt: %f", FAFDistNM, targetAlt)
 
 	case flightphase.Final:
 		start := constants.DefaultApproachExitFinalEntryNM
@@ -1559,15 +1566,16 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 	currentDistToTarget := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long)
 
 	if phase == flightphase.Approach {
+		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 		// set heading
-		e.SetLocalizerInterceptHeading(ac, rwy.Lat, rwy.Lon, rwy.Heading, deltaTimeSec)
+		e.SetLocalizerInterceptHeading(ac, rwy.Lat, rwy.Lon, rwy.Heading, deltaTimeSec, FAFDistNM)
 		if ac.Flight.Phase.PositionComplete {
+			ac.Flight.Position.Heading = rwy.Heading
 			ac.Flight.TargetHeading = rwy.Heading
 			ac.Flight.TargetDistance = 0.0
 			util.LogWithLabel(ac.Registration, "Approach segment boundary breached (dist: %f NM). Transitioning to Final.", geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetPos.Lat, targetPos.Long))
 			return
 		}
-		ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 
 		if currentDistToTarget > 0 {
 			altitudeToLose := ac.Flight.Position.Altitude - targetAlt
@@ -3512,7 +3520,7 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 }
 
 // SetLocalizerInterceptHeading handles pure lateral localizer tracking based on geometric points.
-func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat, rwyLong, rwyHdg float64, dt float64) {
+func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat, rwyLong, rwyHdg float64, dt float64, distToFAFNM float64) {
 
 	var targetHeading, targetLat, targetLong float64
 
@@ -3522,8 +3530,8 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 
 	// 1. Calculate Point A (7.5 NM out on the reciprocal runway heading)
 	recipHdgRad := (rwyHdg + 180.0) * math.Pi / 180.0
-	pA_Lat := rwyLat + (7.5*nmToDegLat)*math.Cos(recipHdgRad)
-	pA_Long := rwyLong + (7.5*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
+	pA_Lat := rwyLat + (distToFAFNM*nmToDegLat)*math.Cos(recipHdgRad)
+	pA_Long := rwyLong + (distToFAFNM*nmToDegLat/cosLat)*math.Sin(recipHdgRad)
 
 	// 2. Calculate Point B (3.0 NM out from point A at a 40 degree bearing offset from the reciprocal heading)
 	recipHdgRadPlus30 := (rwyHdg + 180.0 + 40.0) * math.Pi / 180.0
@@ -3570,9 +3578,6 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 			ac.Flight.FinalIntercepted = true
 			util.LogWithLabel(ac.Registration, "final localizer intercept achieved, now tracking point A")
 		} else {
-			ac.Flight.Position.Heading = rwyHdg
-			// ac.Flight.Position.Lat = pA_Lat
-			// ac.Flight.Position.Long = pA_Long
 			ac.Flight.Phase.PositionComplete = true
 		}
 	}

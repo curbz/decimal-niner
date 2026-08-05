@@ -543,7 +543,7 @@ func TestUpdateLateralApproach_Scenarios(t *testing.T) {
 				},
 			}
 
-			e.SetLocalizerInterceptHeading(ac, tt.rwyLat, tt.rwyLong, tt.rwyHdg, tt.dt)
+			e.SetLocalizerInterceptHeading(ac, tt.rwyLat, tt.rwyLong, tt.rwyHdg, tt.dt, 7.5)
 
 			actualHdg := ac.Flight.Position.Heading
 			if actualHdg < tt.expectedMinHdg || actualHdg > tt.expectedMaxHdg {
@@ -582,7 +582,7 @@ func TestUpdateLateralApproach_ArcTurnPhase(t *testing.T) {
 	}
 
 	// Run with a large dt so it immediately matches the target heading if calculated correctly
-	e.SetLocalizerInterceptHeading(ac, rwyLat, rwyLong, rwyHdg, 10.0)
+	e.SetLocalizerInterceptHeading(ac, rwyLat, rwyLong, rwyHdg, 10.0, 7.5)
 
 	// Since the aircraft is directly on the East arc point of the North circle,
 	// the bearing from center is 090. Tangent turn rules subtract 90 deg -> target is 000.0.

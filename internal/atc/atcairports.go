@@ -124,6 +124,9 @@ const (
 	ARRIVAL_CONTEXT   = 1
 	PROC_TYPE_SID     = 0
 	PROC_TYPE_STAR    = 1
+
+	FeetPerNM = 6076.1155
+	DefaultTCH = 50.0 // Standard Threshold Crossing Height in feet
 )
 
 func (s *Service) GetClosestAirport(lat, lon, withinRangeNm float64) string {
@@ -1965,4 +1968,27 @@ func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureTyp
 		// Flight path is: Parsed Entry Waypoint -> Synthetic Exit Gate
 		return []ProcedureFix{existingFix, syntheticProcFix}
 	}
+}
+
+// CalculateGlideslopeAlt returns the target MSL altitude for a given distance from the threshold.
+// distNM: Distance from threshold in Nautical Miles
+// rwyElev: Runway threshold elevation in feet MSL
+// glidepathDeg: Glideslope angle in degrees (pass 3.0 for standard ILS)
+func CalculateGlideslopeAlt(distNM float64, rwyElev float64, glidepathDeg float64) float64 {
+	if glidepathDeg <= 0 {
+		glidepathDeg = 3.0
+	}
+	
+	rad := glidepathDeg * math.Pi / 180.0
+	heightAGL := DefaultTCH + (distNM * FeetPerNM * math.Tan(rad))
+	
+	return rwyElev + heightAGL
+}
+
+// CalculateFAFAlt is a convenience wrapper using a Runway struct's parameters
+func CalculateFAFAlt(rwyThresholdElev float64, fafDistNM float64) float64 {
+	altMSL := CalculateGlideslopeAlt(fafDistNM, rwyThresholdElev, 3.0)
+	
+	// Round to the nearest 100 feet (standard for ATC procedure charts)
+	return math.Round(altMSL/100.0) * 100.0
 }
