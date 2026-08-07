@@ -627,6 +627,9 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 
 			startLat, startLon = geometry.Project(airport.Lat, airport.Lon, reverseRouteBearing, 150.0)
 			targetLat, targetLon = geometry.Project(airport.Lat, airport.Lon, reverseRouteBearing, constants.DefaultArrivalExitApproachEntryNM)
+		}
+
+		if targetArrivalAlt == 0.0 {
 			targetArrivalAlt = atc.GetMinSafeAltitude(float64(constants.DefaultCruiseExitArrivalEntryAltFt), airport)
 		}
 
@@ -1373,9 +1376,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		if sid := ac.Flight.AssignedSID; sid != nil && sid.Entry != nil && sid.Entry.Fix != nil && sid.Entry.Fix.Lat != 0 {
 			targetPos = atc.Position{Lat: sid.Entry.Fix.Lat, Long: sid.Entry.Fix.Lon}
 
-			if sid.Entry.ConstraintAlt < 1000 && sid.Entry.ConstraintAlt > 0 {
-				targetAlt = float64(sid.Entry.ConstraintAlt * 10)
-			} else if sid.Entry.ConstraintAlt >= 1000 {
+			if sid.Entry.ConstraintAlt > 0 {
 				targetAlt = float64(sid.Entry.ConstraintAlt)
 			} else {
 				targetAlt = 0.0
@@ -2171,16 +2172,10 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	if sid := ac.Flight.AssignedSID; sid != nil && sid.Exit.Fix.Lat != 0 {
 		startPos = atc.Position{Lat: sid.Exit.Fix.Lat, Long: sid.Exit.Fix.Lon}
 		if sid.Exit.ConstraintAlt > 0 {
-			if sid.Exit.ConstraintAlt < 1000 {
-				startAlt = float64(sid.Exit.ConstraintAlt * 10)
-			} else {
-				startAlt = float64(sid.Exit.ConstraintAlt)
-			}
+			startAlt = float64(sid.Exit.ConstraintAlt)
 		} else if sid.Entry.Fix != nil && sid.Entry.Fix.Lat != 0 {
 			var entryAlt float64
-			if sid.Entry.ConstraintAlt < 1000 && sid.Entry.ConstraintAlt > 0 {
-				entryAlt = float64(sid.Entry.ConstraintAlt * 10)
-			} else if sid.Entry.ConstraintAlt >= 1000 {
+			if sid.Entry.ConstraintAlt > 0 {
 				entryAlt = float64(sid.Entry.ConstraintAlt)
 			} else {
 				entryAlt = (math.Ceil(originAp.Elevation+constants.DefaultClimbExitDepartureEntryAltFt) / 500.0) * 500.0
@@ -2203,16 +2198,10 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 	if star := ac.Flight.AssignedSTAR; star != nil && star.Entry.Fix.Lat != 0 {
 		targetPos = atc.Position{Lat: star.Entry.Fix.Lat, Long: star.Entry.Fix.Lon}
 		if star.Entry.ConstraintAlt > 0 {
-			if star.Entry.ConstraintAlt < 1000 {
-				targetAlt = float64(star.Entry.ConstraintAlt * 10)
-			} else {
-				targetAlt = float64(star.Entry.ConstraintAlt)
-			}
+			targetAlt = float64(star.Entry.ConstraintAlt)
 		} else if star.Exit.Fix != nil && star.Exit.Fix.Lat != 0 {
 			var exitAlt float64
-			if star.Exit.ConstraintAlt < 1000 && star.Exit.ConstraintAlt > 0 {
-				exitAlt = float64(star.Exit.ConstraintAlt * 10)
-			} else if star.Exit.ConstraintAlt >= 1000 {
+			if star.Exit.ConstraintAlt > 0 {
 				exitAlt = float64(star.Exit.ConstraintAlt)
 			} else {
 				exitAlt = float64(constants.DefaultArrivalExitApproachEntryAltFt)
