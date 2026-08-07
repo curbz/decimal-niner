@@ -597,8 +597,7 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	progressRatio := 1.0 - timeRatio
 
 	// Resolve assigned runway properties ahead of block branching
-	rwyName := e.AirportConfig[airport.ICAO].Arrival.Name
-	rwy := e.AtcService.GetAirportRunway(airport, rwyName)
+	rwy := e.AirportConfig[airport.ICAO].Arrival
 	star := e.AtcService.GetMatchingSTAR(airport, rwy, originAp)
 
 	switch initialPhase {
@@ -640,38 +639,6 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 
 		phaseInitAlt := cruiseAlt
 		spawnAlt = phaseInitAlt + (progressRatio * (targetArrivalAlt - phaseInitAlt))
-
-	case flightphase.Approach:
-		var startLat, startLon, targetLat, targetLon float64
-		var approachInitAlt, approachTargetAlt float64
-
-		targetLat, targetLon = geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultApproachExitFinalEntryNM)
-		approachTargetAlt = atc.GetElevationAdjustedAltitude(constants.DefaultApproachExitFinalEntryAltFt, airport, rwy, 500.0)
-
-		if star != nil && star.Exit.Fix.Lat != 0 {
-			startLat, startLon = star.Exit.Fix.Lat, star.Exit.Fix.Lon
-			approachInitAlt = float64(star.Exit.ConstraintAlt)
-		} else {
-			// FIX: Anchor directly to the runway centerline structure, matching updateLinearPosition exactly!
-			centerline15NMLat, centerline15NMLon := geometry.Project(rwy.Lat, rwy.Lon, geometry.NormalizeHeading(rwy.Heading+180.0), constants.DefaultArrivalExitApproachEntryNM)
-
-			offsetHeading := geometry.NormalizeHeading(rwy.Heading + 90.0)
-			if len(f.AircraftRegistration) > 0 && f.AircraftRegistration[len(f.AircraftRegistration)-1]%2 == 0 {
-				offsetHeading = geometry.NormalizeHeading(rwy.Heading - 90.0)
-			}
-
-			startLat, startLon = geometry.Project(centerline15NMLat, centerline15NMLon, offsetHeading, constants.InterceptLOCSegmentANM)
-			approachInitAlt = atc.GetElevationAdjustedAltitude(constants.DefaultArrivalExitApproachEntryAltFt, airport, rwy, 500.0)
-		}
-
-		trackBearing := geometry.CalculateBearing(startLat, startLon, targetLat, targetLon)
-		trackDistance := geometry.DistNM(startLat, startLon, targetLat, targetLon)
-
-		// Project position inside the localized terminal vector boundaries
-		distAlongTrack := trackDistance * progressRatio
-		spawnLat, spawnLon = geometry.Project(startLat, startLon, trackBearing, distAlongTrack)
-		spawnHdg = trackBearing
-		spawnAlt = approachInitAlt + (progressRatio * (approachTargetAlt - approachInitAlt))
 	}
 
 	initialPhaseIdx := initialPhase.Index()
@@ -1405,7 +1372,14 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 
 		if sid := ac.Flight.AssignedSID; sid != nil && sid.Entry != nil && sid.Entry.Fix != nil && sid.Entry.Fix.Lat != 0 {
 			targetPos = atc.Position{Lat: sid.Entry.Fix.Lat, Long: sid.Entry.Fix.Lon}
-			targetAlt = float64(sid.Entry.ConstraintAlt)
+
+			if sid.Entry.ConstraintAlt < 1000 && sid.Entry.ConstraintAlt > 0 {
+				targetAlt = float64(sid.Entry.ConstraintAlt * 10)
+			} else if sid.Entry.ConstraintAlt >= 1000 {
+				targetAlt = float64(sid.Entry.ConstraintAlt)
+			} else {
+				targetAlt = 0.0
+			}
 
 			// If the valid SID fix is too close to the runway end, project the target forward
 			// so the kinematics engine has space to fly, but KEEP the procedure's targetAlt
@@ -1425,7 +1399,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		targetHeading = rwy.Heading
 
 		// default altitude protection
-		if targetAlt == 0 {
+		if targetAlt == 0.0 {
 			targetAlt = atc.GetElevationAdjustedAltitude(constants.DefaultClimbExitDepartureEntryAltFt, ctxAp, rwy, 500.0)
 		}
 

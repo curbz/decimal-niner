@@ -186,26 +186,34 @@ func (s *Service) GetParkingSpotByName(icao, name string) *ParkingSpot {
 }
 
 func (s *Service) GetMatchingSID(airport *Airport, depRwy *Runway, destAirport *Airport) *Procedure {
-	// FIX: Guard against a nil destAirport to avoid an absolute pointer panic
 	if depRwy == nil || len(depRwy.SIDs) == 0 || destAirport == nil {
 		return nil
 	}
 
-	// Vector pointing from London to Milan (~140°)
-	bearingToTarget := geometry.CalculateBearing(airport.Lat, airport.Lon, destAirport.Lat, destAirport.Lon)
-
 	var bestSID *Procedure
-	minDiff := 360.0
+	minDetour := math.MaxFloat64
 
-	for i := range depRwy.SIDs {
-		sid := depRwy.SIDs[i]
-		// Vector pointing from London to the SID exit fix.
-		// For a southbound exit fix, this correctly shoots Southeast (~130°), cleanly matching the target.
-		sidBearing := geometry.CalculateBearing(airport.Lat, airport.Lon, sid.Exit.Fix.Lat, sid.Exit.Fix.Lon)
+	// Direct baseline distance from departure runway to destination airport
+	directDist := geometry.DistNM(depRwy.Lat, depRwy.Lon, destAirport.Lat, destAirport.Lon)
 
-		diff := math.Abs(geometry.BearingDiff(bearingToTarget, sidBearing))
-		if diff < minDiff {
-			minDiff = diff
+	for _, sid := range depRwy.SIDs {
+		// Safety Guard: Protect against missing or vector-only exit fixes in navdata
+		if sid == nil || sid.Exit == nil || sid.Exit.Fix == nil {
+			continue
+		}
+
+		exitLat := sid.Exit.Fix.Lat
+		exitLon := sid.Exit.Fix.Lon
+
+		// Calculate total distance via this SID exit fix
+		distRwyToExit := geometry.DistNM(depRwy.Lat, depRwy.Lon, exitLat, exitLon)
+		distExitToDest := geometry.DistNM(exitLat, exitLon, destAirport.Lat, destAirport.Lon)
+
+		// Extra miles added by using this SID transition
+		detour := (distRwyToExit + distExitToDest) - directDist
+
+		if detour < minDetour {
+			minDetour = detour
 			bestSID = sid
 		}
 	}
@@ -230,27 +238,35 @@ func (s *Service) AssignSID(ac *Aircraft, airport *Airport, depRwy *Runway) {
 	}
 }
 
-func (s *Service) GetMatchingSTAR(airport *Airport, arrRwy *Runway, origAirport *Airport) *Procedure {
+func (s *Service) GetMatchingSTAR(destAirport *Airport, arrRwy *Runway, origAirport *Airport) *Procedure {
 	if arrRwy == nil || len(arrRwy.STARs) == 0 || origAirport == nil {
 		return nil
 	}
 
-	// Vector pointing from Milan to London (~320°)
-	bearingToTarget := geometry.CalculateBearing(origAirport.Lat, origAirport.Lon, airport.Lat, airport.Lon)
-
 	var bestSTAR *Procedure
-	minDiff := 360.0
+	minDetour := math.MaxFloat64
 
-	for i := range arrRwy.STARs {
-		star := arrRwy.STARs[i]
+	// Direct distance from origin airport to destination airport
+	directDist := geometry.DistNM(origAirport.Lat, origAirport.Lon, destAirport.Lat, destAirport.Lon)
 
-		// FIX: Calculate bearing FROM the entry fix TO the destination airport
-		// For a southern fix, this will point North/Northwest (~340° to 360°), cleanly matching a 320° arrival vector.
-		starBearing := geometry.CalculateBearing(star.Entry.Fix.Lat, star.Entry.Fix.Lon, airport.Lat, airport.Lon)
+	for _, star := range arrRwy.STARs {
+		// Safety check for incomplete navigation data
+		if star == nil || star.Entry == nil || star.Entry.Fix == nil {
+			continue
+		}
 
-		diff := math.Abs(geometry.BearingDiff(bearingToTarget, starBearing))
-		if diff < minDiff {
-			minDiff = diff
+		fixLat := star.Entry.Fix.Lat
+		fixLon := star.Entry.Fix.Lon
+
+		// Total route distance via this STAR entry fix
+		distOrigToFix := geometry.DistNM(origAirport.Lat, origAirport.Lon, fixLat, fixLon)
+		distFixToDest := geometry.DistNM(fixLat, fixLon, destAirport.Lat, destAirport.Lon)
+
+		// Extra detour distance incurred by using this entry fix
+		detour := (distOrigToFix + distFixToDest) - directDist
+
+		if detour < minDetour {
+			minDetour = detour
 			bestSTAR = star
 		}
 	}
@@ -1190,9 +1206,12 @@ func parseCIFP(cifpPath string, allFixes map[string]*Fix, ap *Airport) error {
 				rw.Length = geometry.DistanceInMeters(rw.Lat, rw.Lon, recip.Lat, recip.Lon)
 			}
 
-			// 3. Fallback for Elevation (if end B is 0.0, use end A)
+			// 3. Fallback for Elevation (if end B is 0.0, use end A), fallbcak to airport elevation if both are 0.0
 			if rw.ThresholdElevation == 0 && recip.ThresholdElevation > 0 {
 				rw.ThresholdElevation = recip.ThresholdElevation
+			}
+			if rw.ThresholdElevation == 0 && recip.ThresholdElevation == 0 {
+				rw.ThresholdElevation = ap.Elevation
 			}
 
 			// 4. Default Width if missing
@@ -1231,7 +1250,7 @@ func finaliseProcedures(runways map[string]*Runway, pendingProcs []pendingProc) 
 			if p.RunwayName == "ALL" || p.RunwayName == name {
 				// We must have 2 fixes
 				if len(p.Legs) == 1 {
-					p.Legs = SynthesizeProcedureLegs(rw, p.Legs[0], p.Type)
+					p.Legs = SynthesizeProcedureLegs(rw, p.Legs[0], p.Type, p.Name)
 				}
 				if p.Type == 0 { // SID
 					rw.SIDs = append(rw.SIDs, newProc)
@@ -1870,7 +1889,7 @@ func GetMinSafeAltitude(baseAlt float64, ap *Airport) float64 {
 }
 
 // SynthesizeProcedureLegs evaluates a single-fix procedure and returns a complete 2-leg sequence
-func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureType int) []ProcedureFix {
+func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureType int, procedureName string) []ProcedureFix {
 	// 1. Core math setup: Project a point off the runway threshold
 	// For a SID, we project forward along runway heading.
 	// For a STAR, we project backward (reciprocal heading) to create an approach gate.
@@ -1924,19 +1943,16 @@ func SynthesizeProcedureLegs(rwy *Runway, existingFix ProcedureFix, procedureTyp
 	targetLonRad = math.Mod(targetLonRad+3*math.Pi, 2*math.Pi) - math.Pi
 
 	// 2. Build the underlying raw Fix object
-	var ident, fullName string
+	var ident string
 	if procedureType == PROC_TYPE_SID {
-		ident = existingFix.Fix.Ident + "-SID-ENT"
-		fullName = fmt.Sprintf("Synthetic Departure Entry RWY %s", rwy.Name)
+		ident = procedureName + " SID ENTRY"
 	} else {
-		ident = existingFix.Fix.Ident + "-STAR-EXT"
-		fullName = fmt.Sprintf("Synthetic Arrival Exit RWY %s", rwy.Name)
+		ident = procedureName + " STAR EXIT"
 	}
-
 	syntheticRawFix := Fix{
 		Ident:    ident,
 		Region:   existingFix.Fix.Region,
-		FullName: fullName,
+		FullName: ident,
 		Lat:      targetLatRad * 180.0 / math.Pi,
 		Lon:      targetLonRad * 180.0 / math.Pi,
 		Hold:     nil,
