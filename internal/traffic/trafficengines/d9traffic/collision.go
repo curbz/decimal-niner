@@ -12,8 +12,8 @@ import (
 
 const (
 	collisionMaxDistanceNM         = 2.0
-	collisionMaxVerticalSeparation = 800.0
-	collisionFunnelHalfAngleDeg    = 15.0
+	collisionMaxVerticalSeparation = 999.0	// 800.0
+	collisionFunnelHalfAngleDeg    = 85.0   // 15.0
 	collisionAirportBufferNM       = 3.0
 	collisionBaseTurnRateDegPerSec = 3.0
 	collisionReferenceGroundSpeed  = 200.0
@@ -62,7 +62,7 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 		if distanceToOther > collisionMaxDistanceNM {
 			continue
 		}
-		if !isWithinFunnel(ac, other) {
+		if !isWithinFunnel(ac, other, collisionFunnelHalfAngleDeg) {
 			continue
 		}
 		if ac.Flight.Phase.Current == flightphase.Climbout.Index() && ac.Flight.Position.Altitude >= other.Flight.Position.Altitude {
@@ -80,11 +80,7 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 	return nil
 }
 
-func isWithinFunnel(ac, other *atc.Aircraft) bool {
-	if ac == nil || other == nil {
-		return false
-	}
-
+func isWithinFunnel(ac, other *atc.Aircraft, funnelHalfAngle float64) bool {
 	bearingToOther := geometry.CalculateBearing(
 		ac.Flight.Position.Lat,
 		ac.Flight.Position.Long,
@@ -92,7 +88,7 @@ func isWithinFunnel(ac, other *atc.Aircraft) bool {
 		other.Flight.Position.Long,
 	)
 	relativeBearing := math.Abs(geometry.BearingDiff(ac.Flight.Position.Heading, bearingToOther))
-	return relativeBearing <= collisionFunnelHalfAngleDeg
+	return relativeBearing <= funnelHalfAngle
 }
 
 func collisionTurnRateDegPerSec(groundSpeed float64) float64 {

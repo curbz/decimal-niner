@@ -937,7 +937,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			continue
 		} else if threat := e.detectCollisionThreat(ac); threat != nil {
 			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
-			util.LogDebugWithLabel(ac.Registration, "collision threat detected - taking avoidance action")
+			util.LogDebugWithLabel(ac.Registration, "collision threat detected %s - taking avoidance action", threat.Registration)
 			if ac.Flight.Phase.Current == flightphase.Final.Index() {
 				// transition to missed approach if in final and a threat is detected
 				e.transitionToPhase(ac, flightphase.GoAround, 0, 0)

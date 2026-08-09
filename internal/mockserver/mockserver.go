@@ -295,7 +295,7 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	case simdata.DRSimATCCom2Active:
 		return 0 // inactive
 
-	//--- User Position (Heathrow Center) ---
+	// // //--- User Position (Heathrow Center) ---
 	// case simdata.DRSimFlightmodelPositionLatitude:
 	// 	return 51.471865 //+ (float64(iter) * 0.0005) // <-- uncommment to simulate user position changing
 	// case simdata.DRSimFlightmodelPositionLongitude:
