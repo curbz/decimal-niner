@@ -139,6 +139,7 @@ func (s *Service) startComms() {
 			// sub-phases
 			// - cruise sector handoffs: when Flight.Comms.CruiseHandoff is not equal to NoHandoff (default)
 			// - "cruise_tod": 	when Flight.ClearedTOD is true in cruise phase, indicating the aircraft has passed its top of descent point
+			// - "intercept_final": when Flight.FinalIntercepted is true in approach phase, indicating the aircraft has been cleared to intercept the final approach course
 
 			// cruise sector handoffs
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
@@ -180,9 +181,13 @@ func (s *Service) startComms() {
 
 			// "cruise-tod" detection. the condition should only allow for this to be triggered once
 			if ac.Flight.Phase.Current == flightphase.Cruise.Index() && ac.Flight.ClearedTOD {
-				phraseKey = fmt.Sprintf("%s_tod", phraseKey)
+				phraseKey = "cruise_tod"
 			}
 
+			// "intercept-final" detection. the condition should only allow for this to be triggered once
+			if ac.Flight.Phase.Current == flightphase.Approach.Index() && ac.Flight.FinalInterceptTickCount == 2 {
+				phraseKey = "intercept_final"
+			}
 			// ----------- end of sub-phase detection --------------
 
 			exchanges, exists := phraseSource[phraseKey]

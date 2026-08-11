@@ -1511,11 +1511,11 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 			targetPos.Lat = ac.Flight.ArrivalAccess.Coord.Lat
 			targetPos.Long = ac.Flight.ArrivalAccess.Coord.Lon
 			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d runway exit: %s",
-							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading), ac.Flight.ArrivalAccess.Name)	
+				startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading), ac.Flight.ArrivalAccess.Name)
 		} else {
 			targetPos.Lat, targetPos.Long = geometry.Project(rwy.Lat, rwy.Lon, rwy.Heading, rwyLengthNM*0.75)
 			util.LogDebugWithLabel(ac.Registration, "BREAKING_DATA: runway start lat: %0.6f lon: %0.6f target lat: %0.6f lon: %0.6f heading %d",
-							startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading))	
+				startPos.Lat, startPos.Long, targetPos.Lat, targetPos.Long, int(targetHeading))
 		}
 	}
 	ac.Flight.TargetAltitude = targetAlt
@@ -1681,7 +1681,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 		}
 
 		util.LogDebugWithLabel(ac.Registration, "targetHeading: %f isTrackingAwayFromTarget: %v bearingDifferenceToTargetPos: %f headingBearingDifference: %f currentDistToTarget: %f",
-										ac.Flight.TargetHeading, isTrackingAwayFromTarget, bearingDifferenceToTargetPos, headingBearingDifference, currentDistToTarget)
+			ac.Flight.TargetHeading, isTrackingAwayFromTarget, bearingDifferenceToTargetPos, headingBearingDifference, currentDistToTarget)
 	}
 
 	if ac.Flight.Position.Lat > 90 || ac.Flight.Position.Lat < -90 {
@@ -2405,23 +2405,26 @@ func (e *D9TrafficEngine) updateCruisePosition(ac *atc.Aircraft) {
 		ac.Flight.ClearedTOD = true
 		util.LogWithLabel(ac.Registration, "TOD reached at %0.2f NM from target - beginning descent from cruise altitude of %0.2f to target entry altitude of %0.2f over the next %0.2f NM",
 			distToTarget, cruiseAlt, targetAlt, requiredDescentDist)
-
-		v := deepcopy.Copy(ac)
-		if acSnap, ok := v.(*atc.Aircraft); ok {
-			util.GoSafe(func() {
-				acSnap.Flight.Comms.Controller = e.AtcService.AssignController(acSnap)
-				if acSnap.Flight.Comms.Controller != nil {
-					e.AtcService.Transmit(e.AtcService.UserState, acSnap)
-				}
-			})
-		} else {
-			util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot for cruise TOD; skipping phrase generation")
-		}
+		e.triggerPhrase(ac)
 	}
 
 	ac.Flight.TargetHeading = targetHeading
 	ac.Flight.TargetDistance = distToTarget
 
+}
+
+func (e *D9TrafficEngine) triggerPhrase(ac *atc.Aircraft) {
+	v := deepcopy.Copy(ac)
+	if acSnap, ok := v.(*atc.Aircraft); ok {
+		util.GoSafe(func() {
+			acSnap.Flight.Comms.Controller = e.AtcService.AssignController(acSnap)
+			if acSnap.Flight.Comms.Controller != nil {
+				e.AtcService.Transmit(e.AtcService.UserState, acSnap)
+			}
+		})
+	} else {
+		util.LogWarnWithLabel(ac.Registration, "failed to deepcopy aircraft snapshot; skipping phrase generation")
+	}
 }
 
 func (e *D9TrafficEngine) endFlight(ac *atc.Aircraft) {
@@ -2742,163 +2745,163 @@ func (e *D9TrafficEngine) releaseParking(icao string, spot *atc.ParkingSpot) {
 }
 
 func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
-    weather := e.AtcService.GetWeatherState()
+	weather := e.AtcService.GetWeatherState()
 
-    // 1. Identify the primary active runway orientation via wind utility score
-    var primaryRwy *atc.Runway
-    highestScore := -1000.0
+	// 1. Identify the primary active runway orientation via wind utility score
+	var primaryRwy *atc.Runway
+	highestScore := -1000.0
 
-    for _, rwy := range ap.Runways {
-        score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
-        if score > highestScore {
-            highestScore = score
-            primaryRwy = rwy
-        }
-    }
+	for _, rwy := range ap.Runways {
+		score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
+		if score > highestScore {
+			highestScore = score
+			primaryRwy = rwy
+		}
+	}
 
-    if primaryRwy == nil {
-        util.LogErrWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s", ap.ICAO)
-        return
-    }
+	if primaryRwy == nil {
+		util.LogErrWithLabel("D9TRAFFIC", "unable to determine active runway for airport %s", ap.ICAO)
+		return
+	}
 
-    // 2. Filter all viable runways matching the active magnetic orientation group
-    activeOrientation := int(math.Round(primaryRwy.Heading / 10.0))
-    viable := e.getViableRunways(ap)
-    orientations := e.groupByOrientation(viable)
+	// 2. Filter all viable runways matching the active magnetic orientation group
+	activeOrientation := int(math.Round(primaryRwy.Heading / 10.0))
+	viable := e.getViableRunways(ap)
+	orientations := e.groupByOrientation(viable)
 
-    candidates, exists := orientations[activeOrientation]
-    if !exists || len(candidates) == 0 {
-        candidates = []*atc.Runway{primaryRwy}
-    }
+	candidates, exists := orientations[activeOrientation]
+	if !exists || len(candidates) == 0 {
+		candidates = []*atc.Runway{primaryRwy}
+	}
 
-    // Single runway airport or single viable runway in this flow
-    if len(candidates) == 1 {
-        e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
-            Arrival:       candidates[0],
-            Departure:     candidates[0],
-            LastWindSpeed: weather.Wind.Speed,
-            LastWindDir:   weather.Wind.Direction,
-        }
-        return
-    }
+	// Single runway airport or single viable runway in this flow
+	if len(candidates) == 1 {
+		e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
+			Arrival:       candidates[0],
+			Departure:     candidates[0],
+			LastWindSpeed: weather.Wind.Speed,
+			LastWindDir:   weather.Wind.Direction,
+		}
+		return
+	}
 
-    // 3. Score and select the best Departure and Arrival runways independently
-    bestDeparture := e.selectBestDepartureRunway(ap, candidates, weather)
-    bestArrival := e.selectBestArrivalRunway(ap, candidates, weather)
+	// 3. Score and select the best Departure and Arrival runways independently
+	bestDeparture := e.selectBestDepartureRunway(ap, candidates, weather)
+	bestArrival := e.selectBestArrivalRunway(ap, candidates, weather)
 
-    // 4. De-conflict parallel operations if both roles selected the same runway
-    if bestDeparture.Name == bestArrival.Name && len(candidates) >= 2 {
-        // Find alternative for arrival or departure depending on SID/STAR counts
-        if len(bestDeparture.SIDs) >= len(bestArrival.STARs) {
-            // Keep Departure, pick next best Arrival candidate
-            bestArrival = e.selectSecondaryRunway(ap, candidates, bestDeparture, false)
-        } else {
-            // Keep Arrival, pick next best Departure candidate
-            bestDeparture = e.selectSecondaryRunway(ap, candidates, bestArrival, true)
-        }
-    }
+	// 4. De-conflict parallel operations if both roles selected the same runway
+	if bestDeparture.Name == bestArrival.Name && len(candidates) >= 2 {
+		// Find alternative for arrival or departure depending on SID/STAR counts
+		if len(bestDeparture.SIDs) >= len(bestArrival.STARs) {
+			// Keep Departure, pick next best Arrival candidate
+			bestArrival = e.selectSecondaryRunway(ap, candidates, bestDeparture, false)
+		} else {
+			// Keep Arrival, pick next best Departure candidate
+			bestDeparture = e.selectSecondaryRunway(ap, candidates, bestArrival, true)
+		}
+	}
 
-    e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
-        Arrival:       bestArrival,
-        Departure:     bestDeparture,
-        LastWindSpeed: weather.Wind.Speed,
-        LastWindDir:   weather.Wind.Direction,
-    }
+	e.AirportConfig[ap.ICAO] = ActiveRunwaySet{
+		Arrival:       bestArrival,
+		Departure:     bestDeparture,
+		LastWindSpeed: weather.Wind.Speed,
+		LastWindDir:   weather.Wind.Direction,
+	}
 
-    util.LogWithLabel("D9TRAFFIC", "%s runway config update: arriving %s (%d STARs), departing %s (%d SIDs)",
-        ap.ICAO, bestArrival.Name, len(bestArrival.STARs), bestDeparture.Name, len(bestDeparture.SIDs))
+	util.LogWithLabel("D9TRAFFIC", "%s runway config update: arriving %s (%d STARs), departing %s (%d SIDs)",
+		ap.ICAO, bestArrival.Name, len(bestArrival.STARs), bestDeparture.Name, len(bestDeparture.SIDs))
 }
 
 // Selects best departure runway based on SID count, wind utility, and inboard preference
 func (e *D9TrafficEngine) selectBestDepartureRunway(ap *atc.Airport, candidates []*atc.Runway, weather *atc.Weather) *atc.Runway {
-    var best *atc.Runway
-    bestScore := -10000.0
+	var best *atc.Runway
+	bestScore := -10000.0
 
-    for _, rwy := range candidates {
-        score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
+	for _, rwy := range candidates {
+		score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
 
-        // Heavy penalty if no SIDs exist; bonus for published SIDs
-        if len(rwy.SIDs) == 0 {
-            score -= 500.0
-        } else {
-            score += 100.0 + float64(len(rwy.SIDs))*10.0
-        }
+		// Heavy penalty if no SIDs exist; bonus for published SIDs
+		if len(rwy.SIDs) == 0 {
+			score -= 500.0
+		} else {
+			score += 100.0 + float64(len(rwy.SIDs))*10.0
+		}
 
-        // Real-World Inboard Preference: Departures prefer runways closer to airport center
-        distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
-        score -= distToCenter * 5.0 // Slightly favor inner runways
+		// Real-World Inboard Preference: Departures prefer runways closer to airport center
+		distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
+		score -= distToCenter * 5.0 // Slightly favor inner runways
 
-        if score > bestScore {
-            bestScore = score
-            best = rwy
-        }
-    }
-    return best
+		if score > bestScore {
+			bestScore = score
+			best = rwy
+		}
+	}
+	return best
 }
 
 // Selects best arrival runway based on STAR count, wind utility, and outboard preference
 func (e *D9TrafficEngine) selectBestArrivalRunway(ap *atc.Airport, candidates []*atc.Runway, weather *atc.Weather) *atc.Runway {
-    var best *atc.Runway
-    bestScore := -10000.0
+	var best *atc.Runway
+	bestScore := -10000.0
 
-    for _, rwy := range candidates {
-        score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
+	for _, rwy := range candidates {
+		score := e.getRunwayUtilityScore(rwy, weather.Wind.Direction, weather.Wind.Speed)
 
-        // Heavy penalty if no STARs exist; bonus for published STARs
-        if len(rwy.STARs) == 0 {
-            score -= 500.0
-        } else {
-            score += 100.0 + float64(len(rwy.STARs))*10.0
-        }
+		// Heavy penalty if no STARs exist; bonus for published STARs
+		if len(rwy.STARs) == 0 {
+			score -= 500.0
+		} else {
+			score += 100.0 + float64(len(rwy.STARs))*10.0
+		}
 
-        // Real-World Outboard Preference: Arrivals prefer runways further from airport center
-        distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
-        score += distToCenter * 5.0 // Favor outer runways
+		// Real-World Outboard Preference: Arrivals prefer runways further from airport center
+		distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
+		score += distToCenter * 5.0 // Favor outer runways
 
-        if score > bestScore {
-            bestScore = score
-            best = rwy
-        }
-    }
-    return best
+		if score > bestScore {
+			bestScore = score
+			best = rwy
+		}
+	}
+	return best
 }
 
 // Backup helper to select a distinct parallel runway if primary selection produced a collision
 func (e *D9TrafficEngine) selectSecondaryRunway(ap *atc.Airport, candidates []*atc.Runway, primary *atc.Runway, isDeparture bool) *atc.Runway {
-    var secondary *atc.Runway
-    bestScore := -10000.0
+	var secondary *atc.Runway
+	bestScore := -10000.0
 
-    for _, rwy := range candidates {
-        if rwy.Name == primary.Name {
-            continue
-        }
-        
-        var count int
-        if isDeparture {
-            count = len(rwy.SIDs)
-        } else {
-            count = len(rwy.STARs)
-        }
+	for _, rwy := range candidates {
+		if rwy.Name == primary.Name {
+			continue
+		}
 
-        score := float64(count) * 20.0
-        distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
-        
-        if isDeparture {
-            score -= distToCenter * 5.0 // Favor inboard
-        } else {
-            score += distToCenter * 5.0 // Favor outboard
-        }
+		var count int
+		if isDeparture {
+			count = len(rwy.SIDs)
+		} else {
+			count = len(rwy.STARs)
+		}
 
-        if score > bestScore {
-            bestScore = score
-            secondary = rwy
-        }
-    }
+		score := float64(count) * 20.0
+		distToCenter := geometry.DistNM(ap.Lat, ap.Lon, rwy.Lat, rwy.Lon)
 
-    if secondary == nil {
-        return primary
-    }
-    return secondary
+		if isDeparture {
+			score -= distToCenter * 5.0 // Favor inboard
+		} else {
+			score += distToCenter * 5.0 // Favor outboard
+		}
+
+		if score > bestScore {
+			bestScore = score
+			secondary = rwy
+		}
+	}
+
+	if secondary == nil {
+		return primary
+	}
+	return secondary
 }
 
 func (e *D9TrafficEngine) getViableRunways(ap *atc.Airport) []*atc.Runway {
@@ -3474,8 +3477,8 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 		CenterLng: userPos.Long,
 		Timestamp: e.AtcService.GetCurrentZuluTime(),
 		Aircraft:  blips,
-		Runways: runways,
-		Holds: holds,
+		Runways:   runways,
+		Holds:     holds,
 	}
 
 	// Ship it to the streaming server
@@ -3507,7 +3510,8 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	pC_Long := pA_Long + (3.0*nmToDegLat/cosLat)*math.Sin(recipHdgRadMinus30)
 
 	// 4. Determine if aircraft is already on the intercept path i.e. reached point B or C
-	if ac.Flight.FinalIntercepted {
+	if ac.Flight.FinalInterceptTickCount > 0 {
+		ac.Flight.FinalInterceptTickCount++
 		// target point A directly
 		targetLat = pA_Lat
 		targetLong = pA_Long
@@ -3531,22 +3535,26 @@ func (e *D9TrafficEngine) SetLocalizerInterceptHeading(ac *atc.Aircraft, rwyLat,
 	acLong := ac.Flight.Position.Long
 	targetHeading = geometry.CalculateBearing(acLat, acLong, targetLat, targetLong)
 	ac.Flight.TargetHeading = targetHeading
-	
+	if ac.Flight.FinalInterceptTickCount == 2 {
+		e.triggerPhrase(ac)
+	}
+
 	// Smoothly track heading changes using a standard rate turn threshold (3 deg/sec)
 	applySmoothTurnHeading(ac, targetHeading, 3.0, dt)
 
 	distToTarget := geometry.DistNM(acLat, acLong, targetLat, targetLong)
 	if distToTarget <= 0.3 {
-		if !ac.Flight.FinalIntercepted {
-			ac.Flight.FinalIntercepted = true
+		if ac.Flight.FinalInterceptTickCount == 0 {
+			ac.Flight.FinalInterceptTickCount = 1
 			util.LogWithLabel(ac.Registration, "final localizer intercept achieved, now tracking point A")
+
 		} else {
 			ac.Flight.Phase.PositionComplete = true
 		}
 	}
 
 	util.LogDebugWithLabel(ac.Registration, "targetHeading: %f targetLat: %f targetLong: %f distToTarget: %f",
-										ac.Flight.TargetHeading, targetLat, targetLong, distToTarget)
+		ac.Flight.TargetHeading, targetLat, targetLong, distToTarget)
 }
 
 func applySmoothTurnHeading(ac *atc.Aircraft, targetHeading, rate, deltaTimeSec float64) {

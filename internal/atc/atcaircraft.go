@@ -27,36 +27,36 @@ type Aircraft struct {
 }
 
 type Flight struct {
-	Position            Position
-	LastCheckedPosition Position
-	Number              int
-	Origin              string
-	Destination         string
-	Phase               flightphase.Phase
-	Comms               Comms
-	CruiseAlt           int
-	AssignedParkingName string
-	AssignedParkingSpot *ParkingSpot
-	AssignedRunwayName  string
-	AssignedRunway      *Runway
-	AssignedSID         *Procedure
-	AssignedSTAR        *Procedure
-	Vectoring           bool
-	FinalIntercepted    bool
-	Squawk              string
-	PlanAssigned        bool
-	Airline             *AirlineInfo
-	Schedule            *flightplan.ScheduledFlight
-	DepartureDelay      int
-	ArrivalAccess       *AccessPoint
-	DepartureAccess     *AccessPoint
-	ClearedTOD          bool
-	Holding             *Holding
-	GroundSpeed         float64
-	ActiveManeuver      *ManeuverState
-	TargetAltitude	   float64
-	TargetHeading	   float64
-	TargetDistance	   float64
+	Position                Position
+	LastCheckedPosition     Position
+	Number                  int
+	Origin                  string
+	Destination             string
+	Phase                   flightphase.Phase
+	Comms                   Comms
+	CruiseAlt               int
+	AssignedParkingName     string
+	AssignedParkingSpot     *ParkingSpot
+	AssignedRunwayName      string
+	AssignedRunway          *Runway
+	AssignedSID             *Procedure
+	AssignedSTAR            *Procedure
+	Vectoring               bool
+	FinalInterceptTickCount int
+	Squawk                  string
+	PlanAssigned            bool
+	Airline                 *AirlineInfo
+	Schedule                *flightplan.ScheduledFlight
+	DepartureDelay          int
+	ArrivalAccess           *AccessPoint
+	DepartureAccess         *AccessPoint
+	ClearedTOD              bool
+	Holding                 *Holding
+	GroundSpeed             float64
+	ActiveManeuver          *ManeuverState
+	TargetAltitude          float64
+	TargetHeading           float64
+	TargetDistance          float64
 }
 
 type Holding struct {

@@ -46,6 +46,9 @@
   "cruise_tod": [
     { "initiator": "atc", "pilot": "{$FACILITY} Center, {$CALLSIGN}, with you at {@ALTITUDE}. {@TURBULENCE}.", "atc": "{$CALLSIGN}, start [your] descent [into {@DESTINATION}], {@ALT_CLEARANCE}." }
   ],
+  "intercept_final": [
+    { "initiator": "atc", "pilot": "{@ATC_HEADING} for {@APPROACH_TYPE} {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ATC_HEADING} for {@APPROACH_TYPE}" }
+  ],
   "arrival": [
       { "initiator": "atc", "atc": "{$CALLSIGN}, continue [your] descent [into {@DESTINATION}] {WHEN $VECTORING EQ true SAY `expect vectors` OTHERWISE SAY `via the {@STAR(true)}`}" }
   ],
