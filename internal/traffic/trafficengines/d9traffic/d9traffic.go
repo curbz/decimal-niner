@@ -935,18 +935,28 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 			// advance maneuver using current sim time; heading will be used in normal position update below
 			e.advanceCollisionManeuver(ac, currSimZTime)
 			continue
-		} else if threat := e.detectCollisionThreat(ac); threat != nil {
-			// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
-			util.LogDebugWithLabel(ac.Registration, "collision threat detected %s - taking avoidance action", threat.Registration)
-			if ac.Flight.Phase.Current == flightphase.Final.Index() {
-				// transition to missed approach if in final and a threat is detected
-				e.transitionToPhase(ac, flightphase.GoAround, 0, 0)
-				e.updateGoAroundPosition(ac, airport)
+		} else {
+			threat := e.detectCollisionThreat(ac)
+			if threat != nil {
+				// Only start maneuver if not already maneuvering; threat detection is skipped during active maneuver
+				util.LogDebugWithLabel(ac.Registration, "collision threat detected %s - taking avoidance action", threat.Registration)
+				if ac.Flight.Phase.Current == flightphase.Final.Index() {
+					// transition to missed approach if in final and a threat is detected
+					e.transitionToPhase(ac, flightphase.GoAround, 0, 0)
+					e.updateGoAroundPosition(ac, airport)
+					continue
+				}
+				e.startCollisionManeuver(ac, threat)
+				// update TargetHeading for phrase correctness only - collision maneuver logic does not use this value
+				if ac.Flight.ActiveManeuver.Direction == atc.ManeuverDirectionLeft {
+					ac.Flight.TargetHeading = geometry.NormalizeHeading(ac.Flight.TargetHeading - collisionManeuverHeadingOffset)
+				} else {
+					ac.Flight.TargetHeading = geometry.NormalizeHeading(ac.Flight.TargetHeading + collisionManeuverHeadingOffset)
+				}
+				e.triggerPhrase(ac)
+				e.advanceCollisionManeuver(ac, currSimZTime)
 				continue
 			}
-			e.startCollisionManeuver(ac)
-			e.advanceCollisionManeuver(ac, currSimZTime)
-			continue
 		}
 
 		//TODO: change to using a distance radius

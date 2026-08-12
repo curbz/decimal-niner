@@ -46,9 +46,6 @@
   "cruise_tod": [
     { "initiator": "atc", "pilot": "{$FACILITY} Center, {$CALLSIGN}, with you at {@ALTITUDE}. {@TURBULENCE}.", "atc": "{$CALLSIGN}, start [your] descent [into {@DESTINATION}], {@ALT_CLEARANCE}." }
   ],
-  "intercept_final": [
-    { "initiator": "atc", "pilot": "{@ATC_HEADING} for {@APPROACH_TYPE} {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ATC_HEADING} for {@APPROACH_TYPE}" }
-  ],
   "arrival": [
       { "initiator": "atc", "atc": "{$CALLSIGN}, continue [your] descent [into {@DESTINATION}] {WHEN $VECTORING EQ true SAY `expect vectors` OTHERWISE SAY `via the {@STAR(true)}`}" }
   ],
@@ -63,6 +60,9 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, cleared [for the] {@APPROACH_TYPE}, runway {@RUNWAY}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, descending through {@ALTITUDE}.", "atc": "{$CALLSIGN}, Roger, expect vectors for the {@APPROACH_TYPE} runway {@RUNWAY}, {@BARO}." },
     { "initiator": "atc", "pilot": "{$ATC_HEADING}, descending to {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, turn heading {$ATC_HEADING}, descend {@ALTITUDE}, cleared for the {@APPROACH_TYPE}." }
+  ],
+  "intercept_final": [
+    { "initiator": "atc", "pilot": "{@ATC_HEADING} for {@APPROACH_TYPE} {$CALLSIGN}.", "atc": "{$CALLSIGN}, {@ATC_HEADING} for {@APPROACH_TYPE}" }
   ],
   "final": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Tower, {$CALLSIGN}, established on final, runway {@RUNWAY}.", "atc": "{$CALLSIGN}, runway {@RUNWAY}, cleared to land[, wind {@WIND}]." },
@@ -98,5 +98,10 @@
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, engines off.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION(4)}" },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, shutdown at the gate, see you on the return.", "atc": "{$CALLSIGN}, copy that, have a {@VALEDICTION(1)}." },
     { "initiator": "pilot", "pilot": "{$FACILITY} Ground, {$CALLSIGN}, on stand, shutdown.", "atc": "{$CALLSIGN}, roger, shutdown acknowledged. {@VALEDICTION(4)}" }
+  ],
+  "traffic_alert": [
+    { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING}" },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, {@ATC_HEADING} [, vector for traffic]" },
+    { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING} immediately" }
   ]
 }

@@ -80,9 +80,11 @@ const (
 
 // ManeuverState tracks an in-progress collision avoidance turn.
 type ManeuverState struct {
-	Direction         ManeuverDirection
-	RemainingDegrees  float64
-	TurnRateDegPerSec float64
+	Threat                *Aircraft
+	ThreatRelativeBearing float64
+	Direction             ManeuverDirection
+	RemainingDegrees      float64
+	TurnRateDegPerSec     float64
 }
 
 type Position struct {

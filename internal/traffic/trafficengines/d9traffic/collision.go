@@ -12,13 +12,14 @@ import (
 
 const (
 	collisionMaxDistanceNM         = 2.0
-	collisionMaxVerticalSeparation = 999.0	// 800.0
-	collisionFunnelHalfAngleDeg    = 85.0   // 15.0
+	collisionMaxVerticalSeparation = 999.0 // 800.0
+	collisionFunnelHalfAngleDeg    = 85.0  // 15.0
 	collisionAirportBufferNM       = 3.0
 	collisionBaseTurnRateDegPerSec = 3.0
 	collisionReferenceGroundSpeed  = 200.0
 	collisionMinTurnRateDegPerSec  = 1.5
 	collisionMaxTurnRateDegPerSec  = 6.0
+	collisionManeuverHeadingOffset = 40.0
 )
 
 func isAirbornePhase(phase int) bool {
@@ -65,11 +66,6 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 		if !isWithinFunnel(ac, other, collisionFunnelHalfAngleDeg) {
 			continue
 		}
-		if ac.Flight.Phase.Current == flightphase.Climbout.Index() && ac.Flight.Position.Altitude >= other.Flight.Position.Altitude {
-			ac.Flight.Position.Altitude = other.Flight.Position.Altitude + collisionMaxVerticalSeparation
-			util.LogDebugWithLabel(ac.Registration, "entering avoidance climb")
-			continue
-		}
 		if other.Flight.ActiveManeuver != nil {
 			// If the other aircraft is already maneuvering, we will not initiate a new maneuver for this aircraft.
 			continue
@@ -114,7 +110,7 @@ func collisionTurnRadiusNM(groundSpeed, turnRateDegPerSec float64) float64 {
 	return groundSpeedNmPerSec / angularRateRadPerSec
 }
 
-func (e *D9TrafficEngine) turnDirectionWouldIntrude(ac *atc.Aircraft, direction atc.ManeuverDirection) bool {
+func (e *D9TrafficEngine) turnDirectionConflictsWithAirport(ac *atc.Aircraft, direction atc.ManeuverDirection) bool {
 	if ac == nil || ac.Flight.Schedule == nil {
 		return false
 	}
@@ -146,24 +142,65 @@ func (e *D9TrafficEngine) turnDirectionWouldIntrude(ac *atc.Aircraft, direction 
 }
 
 func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.ManeuverDirection {
-	if e.turnDirectionWouldIntrude(ac, atc.ManeuverDirectionRight) && !e.turnDirectionWouldIntrude(ac, atc.ManeuverDirectionLeft) {
+
+	// first check if either direction conflicts with the threat aircraft's heading to avoid turning into the threat's path.
+	// we must avoid at all costs, so if one direction is clear and the other is not, we will choose the clear direction.
+	threat := ac.Flight.ActiveManeuver.Threat
+
+	threatBearing := geometry.CalculateBearing(
+		ac.Flight.Position.Lat,
+		ac.Flight.Position.Long,
+		threat.Flight.Position.Lat,
+		threat.Flight.Position.Long,
+	)
+
+	// calculate the relative bearing of the threat aircraft from the current aircraft's heading - this can be negative or positive
+	// and will be used to determine if the threat is on the left or right side of the current aircraft's heading.
+	ac.Flight.ActiveManeuver.ThreatRelativeBearing = geometry.BearingDiff(ac.Flight.Position.Heading, threatBearing)
+
+	leftTurnBearing := geometry.NormalizeHeading(ac.Flight.Position.Heading - 90.0)
+	rightTurnBearing := geometry.NormalizeHeading(ac.Flight.Position.Heading + 90.0)
+
+	leftTurnConflict := math.Abs(geometry.BearingDiff(leftTurnBearing, threatBearing)) < collisionFunnelHalfAngleDeg
+	rightTurnConflict := math.Abs(geometry.BearingDiff(rightTurnBearing, threatBearing)) < collisionFunnelHalfAngleDeg
+
+	if leftTurnConflict && !rightTurnConflict {
+		return atc.ManeuverDirectionRight
+	} else if rightTurnConflict && !leftTurnConflict {
 		return atc.ManeuverDirectionLeft
 	}
-	if e.turnDirectionWouldIntrude(ac, atc.ManeuverDirectionLeft) && !e.turnDirectionWouldIntrude(ac, atc.ManeuverDirectionRight) {
+
+	// next check if either direction conflicts with airport proximity
+	airportConflictLeft := e.turnDirectionConflictsWithAirport(ac, atc.ManeuverDirectionLeft)
+	airportConflictRight := e.turnDirectionConflictsWithAirport(ac, atc.ManeuverDirectionRight)
+
+	if airportConflictLeft && !airportConflictRight {
+		return atc.ManeuverDirectionRight
+	} else if airportConflictRight && !airportConflictLeft {
+		return atc.ManeuverDirectionLeft
+	}
+
+	// if both directions are clear, choose the direction that is furthest from the threat aircraft's heading.
+	leftTurnDiff := math.Abs(geometry.BearingDiff(leftTurnBearing, threatBearing))
+	rightTurnDiff := math.Abs(geometry.BearingDiff(rightTurnBearing, threatBearing))
+
+	if leftTurnDiff > rightTurnDiff {
+		return atc.ManeuverDirectionLeft
+	} else {
 		return atc.ManeuverDirectionRight
 	}
-	return atc.ManeuverDirectionRight
 }
 
-func (e *D9TrafficEngine) startCollisionManeuver(ac *atc.Aircraft) {
+func (e *D9TrafficEngine) startCollisionManeuver(ac *atc.Aircraft, threat *atc.Aircraft) {
 	if ac == nil {
 		return
 	}
 	ac.Flight.ActiveManeuver = &atc.ManeuverState{
-		Direction:         e.chooseCollisionTurnDirection(ac),
+		Threat:            threat,
 		RemainingDegrees:  360.0,
 		TurnRateDegPerSec: collisionTurnRateDegPerSec(ac.Flight.GroundSpeed),
 	}
+	ac.Flight.ActiveManeuver.Direction = e.chooseCollisionTurnDirection(ac)
 }
 
 func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTime time.Time) {
@@ -187,8 +224,14 @@ func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTim
 		sign = -1.0
 	}
 	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading + sign*headingDelta)
+	util.LogDebugWithLabel(ac.Registration, "changed heading to %f", ac.Flight.Position.Heading)
+
 	state.RemainingDegrees -= headingDelta
-	if state.RemainingDegrees <= 0 {
+	remainingThreshold := 360 - collisionManeuverHeadingOffset
+	if ac.Flight.Phase.Current == flightphase.Approach.Index() {
+		remainingThreshold = 0.0
+	}
+	if state.RemainingDegrees <= remainingThreshold {
 		util.LogDebugWithLabel(ac.Registration, "avoidance action complete")
 		ac.Flight.ActiveManeuver = nil
 	}
