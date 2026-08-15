@@ -232,6 +232,8 @@ func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTim
 		remainingThreshold = 0.0
 	}
 	if state.RemainingDegrees <= remainingThreshold {
+		ac.Flight.ActiveManeuver.Resolved = true
+		e.triggerPhrase(ac)
 		util.LogDebugWithLabel(ac.Registration, "avoidance action complete")
 		ac.Flight.ActiveManeuver = nil
 	}

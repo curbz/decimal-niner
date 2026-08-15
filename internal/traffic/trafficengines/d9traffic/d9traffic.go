@@ -1538,7 +1538,7 @@ func (e *D9TrafficEngine) updateLinearPosition(ac *atc.Aircraft, ctxAp *atc.Airp
 
 	// --- IMPORTANT! SYSTEM INJECTION PROGRESSION SYNCHRONIZATION ---
 	if ac.Flight.Phase.Previous == flightphase.Unknown.Index() {
-		util.LogDebugWithLabel(ac.Registration, "spawn detected in updateLinearPosition - setting previous phase to current to avoid transition trigger on first pass")
+		util.LogDebugWithLabel(ac.Registration, "spawn detected in updateLinearPosition - setting previous phase to current to prevent transition trigger on first pass")
 		ac.Flight.Phase.Previous = flightphase.FlightPhase(ac.Flight.Phase.Current).Index()
 	}
 

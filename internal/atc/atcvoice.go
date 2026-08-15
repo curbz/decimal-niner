@@ -141,7 +141,7 @@ func (s *Service) startComms() {
 			// - "cruise_tod": 	when Flight.ClearedTOD is true in cruise phase, indicating the aircraft has passed its top of descent point
 			// - "intercept_final": when Flight.FinalIntercepted is true in approach phase, indicating the aircraft has been cleared to intercept the final approach course
 			// - "traffic_alert": when ac.Flight.ActiveManeuver is not nil, indicating the aircraft is performing a collision avoidance maneuver
-
+			// - "traffic_alert_resolution": when ac.Flight.ActiveManeuver is not nil and ac.Flight.ActiveManeuver.Resolved is true, indicating the aircraft has completed a collision avoidance maneuver
 			// cruise sector handoffs
 			if ac.Flight.Comms.CruiseHandoff != NoHandoff {
 				//TODO handoff phrases should be defined in phrases.json for maximum flexibility and variety
@@ -180,19 +180,23 @@ func (s *Service) startComms() {
 				continue
 			}
 
-			// "cruise-tod" detection
+			// "cruise_tod" detection
 			if ac.Flight.Phase.Current == flightphase.Cruise.Index() && ac.Flight.ClearedTOD {
 				phraseKey = "cruise_tod"
 			}
 
-			// "intercept-final" detection
+			// "intercept_final" detection
 			if ac.Flight.Phase.Current == flightphase.Approach.Index() && ac.Flight.FinalInterceptTickCount == 2 {
 				phraseKey = "intercept_final"
 			}
 
-			// "traffic-alert" detection
+			// "traffic_alert" detection
 			if ac.Flight.ActiveManeuver != nil {
-				phraseKey = "traffic_alert"
+				if ac.Flight.ActiveManeuver.Resolved {
+					phraseKey = "traffic_alert_resolved"
+				} else {
+					phraseKey = "traffic_alert"
+				}
 			}
 
 			// ----------- end of sub-phase detection --------------

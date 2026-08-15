@@ -85,6 +85,7 @@ type ManeuverState struct {
 	Direction             ManeuverDirection
 	RemainingDegrees      float64
 	TurnRateDegPerSec     float64
+	Resolved              bool
 }
 
 type Position struct {

@@ -103,5 +103,8 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING}" },
     { "initiator": "atc", "atc": "{$CALLSIGN}, {@ATC_HEADING} [, vector for traffic]" },
     { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING} immediately" }
+  ],
+  "traffic_alert_resolved" : [
+    { "initiator": "atc", "pilot": "{$FACILITY} resuming own navigation, {$CALLSIGN}.", "atc": "{$CALLSIGN}, clear of traffic, resume own navigation" }
   ]
 }
