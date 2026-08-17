@@ -199,6 +199,11 @@ func (s *Service) startComms() {
 				}
 			}
 
+			// hold level change detection
+			if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding && ac.Flight.Holding != nil &&
+				ac.Flight.Holding.ArrivedAtHoldFix && ac.Flight.TargetAltitude != ac.Flight.Holding.TargetHoldAlt {
+				phraseKey = "holding_level_change"
+			}
 			// ----------- end of sub-phase detection --------------
 
 			exchanges, exists := phraseSource[phraseKey]

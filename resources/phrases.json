@@ -50,10 +50,12 @@
       { "initiator": "atc", "atc": "{$CALLSIGN}, continue [your] descent [into {@DESTINATION}] {WHEN $VECTORING EQ true SAY `expect vectors` OTHERWISE SAY `via the {@STAR(true)}`}" }
   ],
   "holding": [
-    { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, entering the holding pattern at {@HOLD_FIX}.", "atc": "{$CALLSIGN}, affirm, at {@HOLD_FIX}. {NOREADBACK}" },
-    { "initiator": "atc", "pilot": "Standard turns at {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to hold at {@HOLD_FIX}, fly standard turns, maintain {@ALTITUDE}." },
-    { "initiator": "atc", "pilot": "Roger, continue holding, {$CALLSIGN}.", "atc": "{$CALLSIGN}, continue holding, expect further clearance." },
-    { "initiator": "atc", "pilot": "cleared to {@HOLD_FIX}, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared to {@HOLD_FIX}, {@ALTITUDE}." }
+    { "initiator": "atc", "atc": "{$CALLSIGN}, hold [at] {@HOLD_FIX}, standard turns, {@ALT_CLEARANCE}." },
+    { "initiator": "atc", "pilot": "cleared to {@HOLD_FIX} for hold, {@ALTITUDE}, {$CALLSIGN}.", "atc": "{$CALLSIGN}, cleared direct to {@HOLD_FIX}. hold and expect further clearance, {@ALT_CLEARANCE}." }
+  ],
+  "holding_level_change": [
+    { "initiator": "atc", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, remain in hold"},
+    { "initiator": "atc", "atc": "{$CALLSIGN}, {@ALT_CLEARANCE}, continue holding"}
   ],
   "approach": [
     { "initiator": "pilot", "pilot": "{$FACILITY} Approach, {$CALLSIGN}, requesting vectors for the approach to runway {@RUNWAY}.", "atc": "{$CALLSIGN}, {$FACILITY} Approach, turn heading {$ATC_HEADING} for {@APPROACH_TYPE}, {@ALT_CLEARANCE}." },
@@ -105,6 +107,7 @@
     { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING} immediately" }
   ],
   "traffic_alert_resolved" : [
-    { "initiator": "atc", "pilot": "{$FACILITY} resuming own navigation, {$CALLSIGN}.", "atc": "{$CALLSIGN}, clear of traffic, resume own navigation" }
+    { "initiator": "atc", "pilot": "{$FACILITY} resuming own navigation, {$CALLSIGN}.", "atc": "{$CALLSIGN}, clear of traffic, resume own navigation" },
+    { "initiator": "atc", "pilot": "{$FACILITY} roger, resuming own navigation, {$CALLSIGN}.", "atc": "{$CALLSIGN}, clear of conflict, resume own navigation" }
   ]
 }

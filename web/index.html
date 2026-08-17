@@ -358,7 +358,7 @@
                 break;
             }
 
-// Render Radar Blip
+            // Render Radar Blip
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
             ctx.fill();
@@ -379,6 +379,11 @@
             const textX = isEastbound ? pos.x - 12 : pos.x + 12;
 
             ctx.save();
+
+            if (ac.active_collision_avoidance) {
+                ctx.fillStyle = '#ff0000';
+            }
+
             ctx.font = '11px "Courier New"';
             ctx.textAlign = isEastbound ? 'right' : 'left';
             

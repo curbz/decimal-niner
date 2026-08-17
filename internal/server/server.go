@@ -11,17 +11,18 @@ import (
 
 // RadarBlip represents the minimal telemetry data needed by the browser canvas
 type RadarBlip struct {
-	Callsign     string  `json:"callsign"`
-	Registration string  `json:"registration"`
-	Aircraft     string  `json:"ac_type"`
-	Lat          float64 `json:"lat"`
-	Lng          float64 `json:"lng"`
-	Altitude     float64 `json:"alt"`
-	Heading      int     `json:"hdg"`
-	Phase        string  `json:"phase"`
-	Origin       string  `json:"origin"`
-	Destination  string  `json:"dest"`
-	GroundSpeed  float64 `json:"gs"`
+	Callsign                 string  `json:"callsign"`
+	Registration             string  `json:"registration"`
+	AircraftType             string  `json:"ac_type"`
+	Lat                      float64 `json:"lat"`
+	Lng                      float64 `json:"lng"`
+	Altitude                 float64 `json:"alt"`
+	Heading                  int     `json:"hdg"`
+	Phase                    string  `json:"phase"`
+	Origin                   string  `json:"origin"`
+	Destination              string  `json:"dest"`
+	GroundSpeed              float64 `json:"gs"`
+	ActiveCollisionAvoidance bool    `json:"active_collision_avoidance"`
 }
 
 // RadarSnapshot is the frame package sent on every tick
@@ -31,7 +32,7 @@ type RadarSnapshot struct {
 	Timestamp time.Time    `json:"timestamp"`
 	Aircraft  []RadarBlip  `json:"aircraft"`
 	Holds     []atc.Hold   `json:"holds"`
-	Runways	  []atc.Runway `json:"runways"`
+	Runways   []atc.Runway `json:"runways"`
 }
 
 type RadarServer struct {

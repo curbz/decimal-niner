@@ -1903,7 +1903,9 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 
 		ac.Flight.Holding.ArrivedAtHoldFix = true
 		ac.Flight.Holding.PatternEntryTime = now
-		util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s", ac.Flight.Holding.AssignedHold.Ident)
+		util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s alt: %f, targetAlt: %f, targetHoldAt: %f",
+			ac.Flight.Holding.AssignedHold.Ident, ac.Flight.Position.Altitude,
+			ac.Flight.TargetAltitude, ac.Flight.Holding.TargetHoldAlt)
 	}
 
 	// --- 4. EXIT PHASE LOGIC ---
@@ -2687,18 +2689,17 @@ func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
 		return
 	}
 
-	// FIX 1: Sort by the time they entered the hold, NOT their current altitude.
-	// This makes the stack order 100% deterministic and immune to telemetry jitter.
+	// Sort by the time they entered the hold
 	sort.Slice(stack, func(i, j int) bool {
 		return stack[i].Flight.Holding.PatternEntryTime.Before(stack[j].Flight.Holding.PatternEntryTime)
 	})
 
 	for i, a := range stack {
 		tgtAlt := float64(h.MinAlt + (i * 1000))
-
-		// FIX 2: Assign this to a TARGET or COMMANDED altitude field.
-		// Let your aircraft's update/flight-dynamics loop smoothly pitch up/down
-		// to track towards this TargetAltitude, rather than snapping Position.Altitude directly.
+		a.Flight.TargetAltitude = tgtAlt
+		if a.Flight.Holding.TargetHoldAlt != tgtAlt {
+			e.triggerPhrase(a)
+		}
 		a.Flight.Holding.TargetHoldAlt = tgtAlt
 	}
 }
@@ -3451,17 +3452,18 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 		}
 
 		blips = append(blips, server.RadarBlip{
-			Callsign:     ac.Flight.Comms.Callsign,
-			Registration: ac.Registration, // e.g., "BAW308"
-			Aircraft:     typeOrClass,     // e.g., "A20N" or "C"
-			Lat:          ac.Flight.Position.Lat,
-			Lng:          ac.Flight.Position.Long,
-			Altitude:     ac.Flight.Position.Altitude,
-			Heading:      int(ac.Flight.Position.Heading),
-			Phase:        flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
-			Origin:       ac.Flight.Origin,
-			Destination:  ac.Flight.Destination,
-			GroundSpeed:  ac.Flight.GroundSpeed,
+			Callsign:                 ac.Flight.Comms.Callsign,
+			Registration:             ac.Registration, // e.g., "BAW308"
+			AircraftType:             typeOrClass,     // e.g., "A20N" or "C"
+			Lat:                      ac.Flight.Position.Lat,
+			Lng:                      ac.Flight.Position.Long,
+			Altitude:                 ac.Flight.Position.Altitude,
+			Heading:                  int(ac.Flight.Position.Heading),
+			Phase:                    flightphase.FlightPhase(ac.Flight.Phase.Current).String(),
+			Origin:                   ac.Flight.Origin,
+			Destination:              ac.Flight.Destination,
+			GroundSpeed:              ac.Flight.GroundSpeed,
+			ActiveCollisionAvoidance: ac.Flight.ActiveManeuver != nil,
 		})
 
 		if ac.Flight.AssignedRunway != nil {
