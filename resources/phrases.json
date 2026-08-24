@@ -104,7 +104,8 @@
   "traffic_alert": [
     { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING}" },
     { "initiator": "atc", "atc": "{$CALLSIGN}, {@ATC_HEADING} [, vector for traffic]" },
-    { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING} immediately" }
+    { "initiator": "atc", "atc": "{$CALLSIGN}, [traffic alert] {@ATC_HEADING} immediately" },
+    { "initiator": "atc", "pilot": "traffic in sight, {@ATC_HEADING}, {$CALLSIGN}", "atc": "{$CALLSIGN}, traffic insight at {@CONFLICT_CLOCK_POS}, {@ATC_HEADING}" }
   ],
   "traffic_alert_resolved" : [
     { "initiator": "atc", "pilot": "{$FACILITY} resuming own navigation, {$CALLSIGN}.", "atc": "{$CALLSIGN}, clear of traffic, resume own navigation" },

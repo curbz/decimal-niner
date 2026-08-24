@@ -520,6 +520,12 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			}
 			return fmt.Sprintf("turn %s heading %03d", turnDirection, int(math.Round(geometry.NormalizeHeading(ac.Flight.TargetHeading))))
 		},
+		"@CONFLICT_CLOCK_POS": func(args ...string) interface{} {
+			if ac == nil || ac.Flight.ActiveManeuver == nil {
+				return "twelve o'clock"
+			}
+			return conflictClockPosition(ac.Flight.ActiveManeuver.ThreatRelativeBearing)
+		},
 		// --- MISSED APPROACH LOGIC ---
 		"@MA_HEADING": func(args ...string) interface{} {
 			if rwy != nil && rwy.MAHeading > 0 {
@@ -1340,10 +1346,23 @@ func (s *Service) generateHandoffPhrase(ac *Aircraft) string {
 func formatFrequency(freq int) string {
 	freqStr := fmt.Sprintf("%v", float64(freq)/1000.0)
 	if !strings.Contains(freqStr, ".") {
-		freqStr += ".0"
+		freqStr = fmt.Sprintf("%s.0", freqStr)
 	}
 	freqStr = strings.ReplaceAll(freqStr, ".", " decimal ")
 	return freqStr
+}
+
+func conflictClockPosition(threatRelativeBearing float64) string {
+	clockNames := []string{"twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"}
+	angle := math.Mod(threatRelativeBearing+15.0, 360.0)
+	if angle < 0 {
+		angle += 360.0
+	}
+	index := int(math.Floor(angle / 30.0))
+	if index >= len(clockNames) {
+		index = 0
+	}
+	return fmt.Sprintf("%s o'clock", clockNames[index])
 }
 
 func (s *Service) generateValediction(factor int) string {

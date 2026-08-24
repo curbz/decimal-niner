@@ -68,6 +68,7 @@ type Holding struct {
 	TargetApproachAlt float64
 	TargetHoldAlt     float64
 	AssignedHold      *Hold
+	AssignedHoldTime  time.Time
 }
 
 // ManeuverDirection describes the direction of an avoidance turn.

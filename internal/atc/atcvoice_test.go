@@ -637,3 +637,38 @@ func TestPCL_StressFallbacks(t *testing.T) {
 		}
 	})
 }
+
+func TestConflictClockPosition(t *testing.T) {
+	tests := []struct {
+		name    string
+		bearing float64
+		want    string
+	}{
+		{name: "ahead", bearing: 0, want: "twelve o'clock"},
+		{name: "one oclock", bearing: 30, want: "one o'clock"},
+		{name: "two oclock", bearing: 60, want: "two o'clock"},
+		{name: "right side", bearing: 90, want: "three o'clock"},
+		{name: "behind", bearing: 180, want: "six o'clock"},
+		{name: "left side", bearing: -90, want: "nine o'clock"},
+		{name: "left rear", bearing: -150, want: "seven o'clock"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ac := &Aircraft{
+				Registration: "N123",
+				Flight: Flight{
+					Position: Position{Heading: 0},
+					ActiveManeuver: &ManeuverState{
+						ThreatRelativeBearing: tt.bearing,
+					},
+				},
+			}
+			ctx := (&Service{}).newPCLContext(ac, "PILOT")
+			got := ctx["@CONFLICT_CLOCK_POS"]().(string)
+			if got != tt.want {
+				t.Fatalf("@CONFLICT_CLOCK_POS() with bearing %.0f = %q; want %q", tt.bearing, got, tt.want)
+			}
+		})
+	}
+}

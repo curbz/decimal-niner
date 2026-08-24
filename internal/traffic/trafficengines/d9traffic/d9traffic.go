@@ -1246,16 +1246,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 func (e *D9TrafficEngine) sendToHold(ac *atc.Aircraft, airport *atc.Airport) {
 	e.AtcService.AssignHold(ac, airport.ICAO, true)
-
-	// Indefinite/position-driven holding phase transition
 	e.transitionToPhase(ac, flightphase.Holding, 0, 0)
-
-	// Seed initial sub-phase state tracker
-	if ac.Flight.Holding != nil {
-		ac.Flight.Holding.ArrivedAtHoldFix = false
-		ac.Flight.Holding.ExitingHold = false
-	}
-
 	e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 }
 
@@ -1868,14 +1859,14 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 
 	// --- 2. DETERMINISTIC STACK ALTITUDE LOGIC ---
 	var stack []*atc.Aircraft
-	for _, other := range e.ActiveAircraft {
-		if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == hold {
-			stack = append(stack, other)
+	for _, aircraft := range e.ActiveAircraft {
+		if aircraft != nil && flightphase.FlightPhase(aircraft.Flight.Phase.Current) == flightphase.Holding && aircraft.Flight.Holding.AssignedHold == hold {
+			stack = append(stack, aircraft)
 		}
 	}
 
 	sort.Slice(stack, func(i, j int) bool {
-		return stack[i].Flight.Holding.PatternEntryTime.Before(stack[j].Flight.Holding.PatternEntryTime)
+		return stack[i].Flight.Holding.AssignedHoldTime.Before(stack[j].Flight.Holding.AssignedHoldTime)
 	})
 
 	for i, a := range stack {
@@ -1912,14 +1903,13 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	if ac.Flight.Holding.ExitingHold {
 		targetFix := ac.Flight.Holding.TargetApproachFix
 		distToApp := geometry.DistNM(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
-		elapsedSinceEntry := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
+		elapsedSinceEntry := now.Sub(ac.Flight.Holding.AssignedHoldTime).Seconds()
 		heading := geometry.CalculateBearing(ac.Flight.Position.Lat, ac.Flight.Position.Long, targetFix.Lat, targetFix.Lon)
 		ac.Flight.TargetHeading = heading
 		ac.Flight.TargetAltitude = ac.Flight.Holding.TargetApproachAlt
 		if distToApp <= 0.5 && elapsedSinceEntry > 10.0 {
 			ac.Flight.Phase.PositionComplete = true
-			ac.Flight.Holding.ArrivedAtHoldFix = false
-			ac.Flight.Holding.ExitingHold = false
+			ac.Flight.Holding = nil
 			e.transitionToPhase(ac, flightphase.Approach, 0, 0)
 			return
 		}
@@ -1945,10 +1935,10 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	elapsed := now.Sub(ac.Flight.Holding.PatternEntryTime).Seconds()
 
 	var inboundCourse float64
-	if ac.Flight.AssignedRunway != nil {
-		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
-	} else if rwy != nil {
+	if rwy != nil {
 		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, rwy.Lat, rwy.Lon)
+	} else if ac.Flight.AssignedRunway != nil {
+		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.AssignedRunway.Lat, ac.Flight.AssignedRunway.Lon)
 	} else {
 		inboundCourse = geometry.CalculateBearing(hold.Lat, hold.Lon, ac.Flight.Position.Lat, ac.Flight.Position.Long)
 	}
@@ -1958,8 +1948,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	holdSpeed := e.getPhaseGroundSpeedKts(ac.SizeClass, flightphase.Approach)
 	ac.Flight.GroundSpeed = holdSpeed
 
-	legMinutes := 1.0
-	legSeconds := legMinutes * 60.0
+	legSeconds := 60.0
 	turnSeconds := 60.0 // 180 degrees at a standard rate 3 deg/sec takes exactly 60 seconds
 	cycleTime := (2 * legSeconds) + (2 * turnSeconds)
 
@@ -1972,15 +1961,17 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		targetHeading = outboundCourse
 	} else if t < legSeconds+turnSeconds {
 		// Outbound turn to inbound course (Standard Right-Hand Turn)
-		tt := (t - legSeconds) / turnSeconds
-		targetHeading = geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
+		//tt := (t - legSeconds) / turnSeconds
+		//targetHeading = geometry.NormalizeHeading(outboundCourse + (180.0 * tt))
+		targetHeading = geometry.NormalizeHeading(outboundCourse + 180.0)
 	} else if t < (legSeconds + turnSeconds + legSeconds) {
 		// Inbound straight leg
 		targetHeading = inboundCourse
 	} else {
 		// Inbound turn back to outbound course (Standard Right-Hand Turn back to fix)
-		tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
-		targetHeading = geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
+		//tt := (t - (legSeconds + turnSeconds + legSeconds)) / turnSeconds
+		//targetHeading = geometry.NormalizeHeading(inboundCourse + (180.0 * tt))
+		targetHeading = geometry.NormalizeHeading(inboundCourse + 180.0)
 	}
 
 	// 1. Update the aircraft's actual current heading smoothly toward the target heading
@@ -2032,7 +2023,9 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 				}
 
 				// The aircraft must have arrived at the fix and cannot already be exiting
-				if ac.Flight.Holding.AssignedHold != nil && ac.Flight.Holding.ArrivedAtHoldFix && !ac.Flight.Holding.ExitingHold {
+				if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding &&
+					ac.Flight.Holding.AssignedHold != nil && ac.Flight.Holding.ArrivedAtHoldFix &&
+					!ac.Flight.Holding.ExitingHold {
 					if ac.Flight.Destination == icao && ac.Flight.AssignedRunway.Name == rwy.Name {
 
 						// --- THE GUARD STEP ---
@@ -2057,12 +2050,12 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 				continue
 			}
 
-			// FCFS: Sort by altitude ascending (lowest flight has been waiting the longest)
+			// sort by the longest in an assigned hold
 			sort.Slice(candidates, func(i, j int) bool {
-				return candidates[i].Flight.Position.Altitude < candidates[j].Flight.Position.Altitude
+				return candidates[i].Flight.Holding.AssignedHoldTime.Before(candidates[j].Flight.Holding.AssignedHoldTime)
 			})
 
-			// Release the lowest aircraft
+			// Release the longest waiting aircraft
 			releasedAc := candidates[0]
 			releasedHold := releasedAc.Flight.Holding.AssignedHold
 
@@ -2090,7 +2083,7 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 	e.AtcService.AssignHold(ac, airport.ICAO, false)
 	if ac.Flight.Holding.AssignedHold != nil {
 		e.transitionToPhase(ac, flightphase.Holding, 0, 0)
-		e.updateHoldingPosition(ac, ac.Flight.AssignedRunway)
+		e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 	}
 
 	// Resolve target anchors from the holding/exit structure
@@ -2674,33 +2667,35 @@ func (e *D9TrafficEngine) determineInitialArrivalPhase(minsToSchedArr int, f *fl
 }
 
 // reassignHoldStack re-computes stack altitudes for all active aircraft assigned to the given hold.
-// Lowest aircraft receives hold.MinAlt, each subsequent aircraft is +1000ft above.
+// First aircraft assigned to hold receives hold.MinAlt, each subsequent aircraft is +1000ft above.
 func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
 	if h == nil {
 		return
 	}
 	var stack []*atc.Aircraft
-	for _, other := range e.ActiveAircraft {
-		if other != nil && other.Flight.Holding != nil && other.Flight.Holding.AssignedHold == h {
-			stack = append(stack, other)
+	for _, ac := range e.ActiveAircraft {
+		if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding &&
+			ac.Flight.Holding != nil && ac.Flight.Holding.ArrivedAtHoldFix && !ac.Flight.Holding.ExitingHold &&
+			ac.Flight.Holding.AssignedHold == h {
+			stack = append(stack, ac)
 		}
 	}
 	if len(stack) == 0 {
 		return
 	}
 
-	// Sort by the time they entered the hold
+	// Sort by the time they were assigned the hold
 	sort.Slice(stack, func(i, j int) bool {
-		return stack[i].Flight.Holding.PatternEntryTime.Before(stack[j].Flight.Holding.PatternEntryTime)
+		return stack[i].Flight.Holding.AssignedHoldTime.Before(stack[j].Flight.Holding.AssignedHoldTime)
 	})
 
-	for i, a := range stack {
+	for i, ac := range stack {
 		tgtAlt := float64(h.MinAlt + (i * 1000))
-		a.Flight.TargetAltitude = tgtAlt
-		if a.Flight.Holding.TargetHoldAlt != tgtAlt {
-			e.triggerPhrase(a)
+		ac.Flight.TargetAltitude = tgtAlt
+		if ac.Flight.Holding.TargetHoldAlt != tgtAlt {
+			e.triggerPhrase(ac)
 		}
-		a.Flight.Holding.TargetHoldAlt = tgtAlt
+		ac.Flight.Holding.TargetHoldAlt = tgtAlt
 	}
 }
 

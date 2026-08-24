@@ -181,6 +181,12 @@ This document lists the PCL variables and macros available in Decimal Niner phra
   - Template: `{@ATC_HEADING}, {@ALT_CLEARANCE}, {$CALLSIGN}.`
   - Interpolated: `turn right heading 270, descend to 10 thousand, speedbird123.`
 
+### `@CONFLICT_CLOCK_POS`
+- Output: the relative clock position of the active conflict threat, expressed as a clock face value such as `one o'clock`, `three o'clock`, or `twelve o'clock`.
+- Example phrase:
+  - Template: `{$CALLSIGN}, [traffic alert] at {@CONFLICT_CLOCK_POS}.`
+  - Interpolated: `speedbird123, [traffic alert] at two o'clock.`
+
 ### `@BARO`
 - Output:
   - North America: `altimeter ####` with inches of mercury digits

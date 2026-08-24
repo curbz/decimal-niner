@@ -264,7 +264,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 		}
 
 		holding.AssignedHold = bestGlobalHold
-		holding.PatternEntryTime = s.GetCurrentZuluTime() // Set once here!
+		holding.AssignedHoldTime = s.GetCurrentZuluTime() // Set once here!
 		holding.ArrivedAtHoldFix = false
 		holding.ExitingHold = false
 	}
