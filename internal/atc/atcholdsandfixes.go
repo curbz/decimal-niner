@@ -145,6 +145,25 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 	airport := s.GetAirportByICAO(icao)
 	originAp := s.GetAirportByICAO(ac.Flight.Origin)
 
+	applyAssignedHold := func(h *Hold) {
+		if h == nil {
+			return
+		}
+		holding.AssignedHold = h
+		if holding.AssignedHoldTime.IsZero() {
+			holding.AssignedHoldTime = s.GetCurrentZuluTime()
+		}
+		if holding.TargetHoldAlt == 0.0 {
+			holding.TargetHoldAlt = float64(h.MinAlt)
+		}
+		if holding.ArrivedAtHoldFix == false {
+			holding.ArrivedAtHoldFix = false
+		}
+		if holding.ExitingHold == false {
+			holding.ExitingHold = false
+		}
+	}
+
 	// 1. Determine approach fix to use in preparation for hold exit
 	if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit != nil {
 		holding.TargetApproachFix = ac.Flight.AssignedSTAR.Exit.Fix
@@ -220,7 +239,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 			if targetFix != "" {
 				for _, h := range airport.Holds {
 					if h.Ident == targetFix {
-						holding.AssignedHold = h
+						applyAssignedHold(h)
 						return
 					}
 				}
@@ -230,7 +249,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 		// B. Arrival phase - check if defined STAR holding point exists
 		if phase == flightphase.Arrival.Index() {
 			if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
-				holding.AssignedHold = ac.Flight.AssignedSTAR.Exit.Fix.Hold
+				applyAssignedHold(ac.Flight.AssignedSTAR.Exit.Fix.Hold)
 				return
 			}
 		}
@@ -246,7 +265,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 			}
 		}
 		if bestAirportHold != nil {
-			holding.AssignedHold = bestAirportHold
+			applyAssignedHold(bestAirportHold)
 			return
 		}
 	}
@@ -263,8 +282,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 			}
 		}
 
-		holding.AssignedHold = bestGlobalHold
-		holding.AssignedHoldTime = s.GetCurrentZuluTime() // Set once here!
+		applyAssignedHold(bestGlobalHold)
 		holding.ArrivedAtHoldFix = false
 		holding.ExitingHold = false
 	}
