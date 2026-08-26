@@ -97,8 +97,12 @@
         <input type="checkbox" id="toggleCallsignOnly">
     </div>
     <div class="control-group">
-        <label for="toggleRegOnly">Display Reg Only</label>
+        <label for="toggleRegOnly">Display Registration Only</label>
         <input type="checkbox" id="toggleRegOnly">
+    </div>
+    <div class="control-group">
+        <label for="toggleAltOnly">Display Altitude Only</label>
+        <input type="checkbox" id="toggleAltOnly">
     </div>
 </div>
 
@@ -115,12 +119,14 @@
     const toggleGroundInput = document.getElementById('toggleGround');
     const toggleCallsignOnlyInput = document.getElementById('toggleCallsignOnly');
     const toggleRegOnlyInput = document.getElementById('toggleRegOnly');
+    const toggleAltOnlyInput = document.getElementById('toggleAltOnly');
 
     // Control Configuration States
     let showMapBackground = true;
     let showGroundTraffic = true;
     let displayCallsignOnly = false;
     let displayRegOnly = false;
+    let displayAltOnly = false;
 
     // UI Event Listeners
     toggleMapInput.addEventListener('change', (e) => {
@@ -135,7 +141,9 @@
         displayCallsignOnly = e.target.checked;
         if (displayCallsignOnly) {
             displayRegOnly = false;
+            displayAltOnly = false
             toggleRegOnlyInput.checked = false;
+            toggleAltOnly.checked = false;
         }
     });
 
@@ -143,7 +151,19 @@
         displayRegOnly = e.target.checked;
         if (displayRegOnly) {
             displayCallsignOnly = false;
+            displayAltOnly = false;
             toggleCallsignOnlyInput.checked = false;
+            toggleAltOnly.checked = false;
+        }
+    });
+
+    toggleAltOnlyInput.addEventListener('change', (e) => {
+        displayAltOnly = e.target.checked;
+        if (displayAltOnly) {
+            displayCallsignOnly = false;
+            displayRegOnly = false;
+            toggleCallsignOnlyInput.checked = false;
+            toggleRegOnly.checked = false;
         }
     });
 
@@ -391,8 +411,10 @@
             if (displayRegOnly) {
                 identityText = ac.registration || ac.reg || "NO REG";
             }
-
-            if (displayCallsignOnly || displayRegOnly) {
+            if (displayAltOnly) {
+                identityText = String(Math.round(ac.alt / 100)).padStart(3, '0');
+            }
+            if (displayCallsignOnly || displayRegOnly || displayAltOnly) {
                 // MINI MODE
                 ctx.fillText(identityText, textX, pos.y + 4);
             } else {

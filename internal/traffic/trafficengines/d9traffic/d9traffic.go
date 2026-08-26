@@ -1888,7 +1888,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 			ac.Flight.Position.Lat = nextLat
 			ac.Flight.Position.Long = nextLon
 			ac.Flight.TargetHeading = heading
-			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetHoldAlt, deltaTimeSeconds)
+			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetHoldAlt, 1500.0, deltaTimeSeconds)
 			return
 		}
 
@@ -1926,7 +1926,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		ac.Flight.Position.Long = nextLon
 
 		if ac.Flight.Holding.TargetApproachAlt > 0 {
-			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetApproachAlt, deltaTimeSeconds)
+			e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetApproachAlt, 1500.0, deltaTimeSeconds)
 		}
 		return
 	}
@@ -1986,24 +1986,25 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	ac.Flight.TargetHeading = targetHeading
 
 	// Execute steady climb/descent matching the stack layer limits while executing the racetrack curves
-	e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetHoldAlt, deltaTimeSeconds)
+	e.smoothAltitudeAdjustment(ac, ac.Flight.Holding.TargetHoldAlt, 300.0, deltaTimeSeconds)
 }
 
 // Helper method to process aerodynamic changes cleanly over frame gaps
-func (e *D9TrafficEngine) smoothAltitudeAdjustment(ac *atc.Aircraft, targetAlt float64, dt float64) {
-	const climbDescendRateFPM = 1500.0
+func (e *D9TrafficEngine) smoothAltitudeAdjustment(ac *atc.Aircraft, targetAlt float64, verticalRateFPM float64, dt float64) {
+
 	currentAlt := ac.Flight.Position.Altitude
 
 	if currentAlt < targetAlt {
-		climbAmount := (climbDescendRateFPM / 60.0) * dt
+		climbAmount := (verticalRateFPM / 60.0) * dt
 		ac.Flight.Position.Altitude = math.Min(targetAlt, currentAlt+climbAmount)
 	} else if currentAlt > targetAlt {
-		descendAmount := (climbDescendRateFPM / 60.0) * dt
+		descendAmount := (verticalRateFPM / 60.0) * dt
 		ac.Flight.Position.Altitude = math.Max(targetAlt, currentAlt-descendAmount)
 	}
 }
 
 func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
+
 	for _, icao := range relevantIcaos {
 		airport := e.AtcService.GetAirportByICAO(icao)
 		if airport == nil || len(airport.Runways) == 0 {
@@ -2014,6 +2015,8 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 			if rwy == nil {
 				continue
 			}
+
+			released := 0
 
 			// Gather all aircraft currently holding for this runway asset
 			var candidates []*atc.Aircraft
@@ -2037,7 +2040,7 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 						// If the localizer/approach corridor is too busy, remain in hold
 						approachCount, _, _ := e.getArrivalSaturationStats(ac, airport)
-						if approachCount > MAX_APPROACH_ON_APPROACH {
+						if (approachCount + released) > MAX_APPROACH_ON_APPROACH {
 							continue
 						}
 
@@ -2067,6 +2070,7 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 				util.LogDebugWithLabel(releasedAc.Registration, "released from hold fix %s", releasedHold.Ident)
 				e.reassignHoldStack(releasedHold)
 			}
+			released++
 		}
 	}
 }
@@ -2675,7 +2679,7 @@ func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
 	var stack []*atc.Aircraft
 	for _, ac := range e.ActiveAircraft {
 		if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding &&
-			ac.Flight.Holding != nil && ac.Flight.Holding.ArrivedAtHoldFix && !ac.Flight.Holding.ExitingHold &&
+			ac.Flight.Holding != nil && !ac.Flight.Holding.ExitingHold &&
 			ac.Flight.Holding.AssignedHold == h {
 			stack = append(stack, ac)
 		}

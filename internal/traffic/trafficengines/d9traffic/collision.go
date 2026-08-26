@@ -119,8 +119,8 @@ func (e *D9TrafficEngine) turnDirectionConflictsWithAirport(ac *atc.Aircraft, di
 	if originAp == nil && destAp == nil {
 		return false
 	}
-	turnRate := collisionTurnRateDegPerSec(ac.Flight.GroundSpeed)
-	radiusNM := collisionTurnRadiusNM(ac.Flight.GroundSpeed, turnRate)
+	turnRate := collisionTurnRateDegPerSec(ac.Flight.GroundSpeed - 20.0)
+	radiusNM := collisionTurnRadiusNM(ac.Flight.GroundSpeed-20.0, turnRate)
 	centerBearing := ac.Flight.Position.Heading
 	if direction == atc.ManeuverDirectionRight {
 		centerBearing += 90.0
@@ -198,7 +198,7 @@ func (e *D9TrafficEngine) startCollisionManeuver(ac *atc.Aircraft, threat *atc.A
 	ac.Flight.ActiveManeuver = &atc.ManeuverState{
 		Threat:            threat,
 		RemainingDegrees:  360.0,
-		TurnRateDegPerSec: collisionTurnRateDegPerSec(ac.Flight.GroundSpeed),
+		TurnRateDegPerSec: collisionTurnRateDegPerSec(ac.Flight.GroundSpeed - 20.0),
 	}
 	ac.Flight.ActiveManeuver.Direction = e.chooseCollisionTurnDirection(ac)
 }
@@ -238,7 +238,7 @@ func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTim
 		ac.Flight.ActiveManeuver = nil
 	}
 
-	distanceMovedThisTick := ac.Flight.GroundSpeed * (deltaSec / 3600.0)
+	distanceMovedThisTick := (ac.Flight.GroundSpeed - 20.0) * (deltaSec / 3600.0)
 	ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
 	ac.Flight.Phase.LastUpdateTime = currSimZTime
 }
