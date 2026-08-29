@@ -12,14 +12,14 @@ import (
 
 const (
 	collisionMaxDistanceNM         = 2.0
-	collisionMaxVerticalSeparation = 999.0 // 800.0
-	collisionFunnelHalfAngleDeg    = 85.0  // 15.0
+	collisionMaxVerticalSeparation = 999.0
+	collisionFunnelHalfAngleDeg    = 85.0
 	collisionAirportBufferNM       = 3.0
 	collisionBaseTurnRateDegPerSec = 3.0
 	collisionReferenceGroundSpeed  = 200.0
 	collisionMinTurnRateDegPerSec  = 1.5
-	collisionMaxTurnRateDegPerSec  = 6.0
-	collisionManeuverHeadingOffset = 40.0
+	collisionMaxTurnRateDegPerSec  = 4.5
+	collisionManeuverHeadingOffset = 45.0
 )
 
 func isAirbornePhase(phase int) bool {
@@ -91,7 +91,7 @@ func collisionTurnRateDegPerSec(groundSpeed float64) float64 {
 	if groundSpeed <= 0 {
 		groundSpeed = collisionReferenceGroundSpeed
 	}
-	rate := collisionBaseTurnRateDegPerSec * (groundSpeed / collisionReferenceGroundSpeed)
+	rate := collisionBaseTurnRateDegPerSec * (groundSpeed / (collisionReferenceGroundSpeed - 20.0))
 	if rate < collisionMinTurnRateDegPerSec {
 		rate = collisionMinTurnRateDegPerSec
 	}
