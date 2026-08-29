@@ -19,7 +19,8 @@ const (
 	collisionReferenceGroundSpeed  = 200.0
 	collisionMinTurnRateDegPerSec  = 1.5
 	collisionMaxTurnRateDegPerSec  = 4.5
-	collisionManeuverHeadingOffset = 45.0
+	collisionManeuverHeadingOffset = 40.0
+	collisionStraightLegSec        = 40.0 // Straight flight duration after offset turn
 )
 
 func isAirbornePhase(phase int) bool {
@@ -67,7 +68,6 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 			continue
 		}
 		if other.Flight.ActiveManeuver != nil {
-			// If the other aircraft is already maneuvering, we will not initiate a new maneuver for this aircraft.
 			continue
 		}
 		return other
@@ -142,9 +142,6 @@ func (e *D9TrafficEngine) turnDirectionConflictsWithAirport(ac *atc.Aircraft, di
 }
 
 func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.ManeuverDirection {
-
-	// first check if either direction conflicts with the threat aircraft's heading to avoid turning into the threat's path.
-	// we must avoid at all costs, so if one direction is clear and the other is not, we will choose the clear direction.
 	threat := ac.Flight.ActiveManeuver.Threat
 
 	threatBearing := geometry.CalculateBearing(
@@ -154,8 +151,6 @@ func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.Man
 		threat.Flight.Position.Long,
 	)
 
-	// calculate the relative bearing of the threat aircraft from the current aircraft's heading - this can be negative or positive
-	// and will be used to determine if the threat is on the left or right side of the current aircraft's heading.
 	ac.Flight.ActiveManeuver.ThreatRelativeBearing = geometry.BearingDiff(ac.Flight.Position.Heading, threatBearing)
 
 	leftTurnBearing := geometry.NormalizeHeading(ac.Flight.Position.Heading - 90.0)
@@ -170,7 +165,6 @@ func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.Man
 		return atc.ManeuverDirectionLeft
 	}
 
-	// next check if either direction conflicts with airport proximity
 	airportConflictLeft := e.turnDirectionConflictsWithAirport(ac, atc.ManeuverDirectionLeft)
 	airportConflictRight := e.turnDirectionConflictsWithAirport(ac, atc.ManeuverDirectionRight)
 
@@ -180,25 +174,34 @@ func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.Man
 		return atc.ManeuverDirectionLeft
 	}
 
-	// if both directions are clear, choose the direction that is furthest from the threat aircraft's heading.
 	leftTurnDiff := math.Abs(geometry.BearingDiff(leftTurnBearing, threatBearing))
 	rightTurnDiff := math.Abs(geometry.BearingDiff(rightTurnBearing, threatBearing))
 
 	if leftTurnDiff > rightTurnDiff {
 		return atc.ManeuverDirectionLeft
-	} else {
-		return atc.ManeuverDirectionRight
 	}
+	return atc.ManeuverDirectionRight
 }
 
 func (e *D9TrafficEngine) startCollisionManeuver(ac *atc.Aircraft, threat *atc.Aircraft) {
 	if ac == nil {
 		return
 	}
+
+	remainingDegrees := 360.0
+	straightLegSec := 0.0
+
+	// Approach and Holding phases perform a 360° orbit; all other phases turn 45° and fly a short straight leg
+	if ac.Flight.Phase.Current != flightphase.Approach.Index() && ac.Flight.Phase.Current != flightphase.Holding.Index() {
+		remainingDegrees = collisionManeuverHeadingOffset
+		straightLegSec = collisionStraightLegSec
+	}
+
 	ac.Flight.ActiveManeuver = &atc.ManeuverState{
-		Threat:            threat,
-		RemainingDegrees:  360.0,
-		TurnRateDegPerSec: collisionTurnRateDegPerSec(ac.Flight.GroundSpeed - 20.0),
+		Threat:                  threat,
+		RemainingDegrees:        remainingDegrees,
+		StraightLegSecRemaining: straightLegSec,
+		TurnRateDegPerSec:       collisionTurnRateDegPerSec(ac.Flight.GroundSpeed - 20.0),
 	}
 	ac.Flight.ActiveManeuver.Direction = e.chooseCollisionTurnDirection(ac)
 }
@@ -209,36 +212,55 @@ func (e *D9TrafficEngine) advanceCollisionManeuver(ac *atc.Aircraft, currSimZTim
 	}
 	state := ac.Flight.ActiveManeuver
 	deltaSec := currSimZTime.Sub(ac.Flight.Phase.LastUpdateTime).Seconds()
-	// Align collision maneuver timing with frame-based position updates.
-	// Treat extremely small elapsed times as a single standard tick so repeated
-	// immediate test loops and low-resolution updates still make progress.
+
 	if deltaSec <= 0 || deltaSec < 1.0 || deltaSec > 20.0 {
 		deltaSec = 10.0
 	}
-	headingDelta := state.TurnRateDegPerSec * deltaSec
-	if headingDelta > state.RemainingDegrees {
-		headingDelta = state.RemainingDegrees
-	}
-	sign := 1.0
-	if state.Direction == atc.ManeuverDirectionLeft {
-		sign = -1.0
-	}
-	ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading + sign*headingDelta)
-	util.LogDebugWithLabel(ac.Registration, "changed heading to %f", ac.Flight.Position.Heading)
 
-	state.RemainingDegrees -= headingDelta
-	remainingThreshold := 360 - collisionManeuverHeadingOffset
-	if ac.Flight.Phase.Current == flightphase.Approach.Index() {
-		remainingThreshold = 0.0
+	// 1. Turn Phase: Execute remaining degrees of turn
+	turnSecUsed := 0.0
+	if state.RemainingDegrees > 0 {
+		turnSecNeeded := state.RemainingDegrees / state.TurnRateDegPerSec
+		turnSecUsed = math.Min(deltaSec, turnSecNeeded)
+		headingDelta := state.TurnRateDegPerSec * turnSecUsed
+
+		sign := 1.0
+		if state.Direction == atc.ManeuverDirectionLeft {
+			sign = -1.0
+		}
+		ac.Flight.Position.Heading = geometry.NormalizeHeading(ac.Flight.Position.Heading + sign*headingDelta)
+		util.LogDebugWithLabel(ac.Registration, "changed heading to %f", ac.Flight.Position.Heading)
+
+		state.RemainingDegrees -= headingDelta
+		if state.RemainingDegrees < 0.001 {
+			state.RemainingDegrees = 0.0
+		}
 	}
-	if state.RemainingDegrees <= remainingThreshold {
+
+	// 2. Straight Leg Phase: Deduct remaining tick time once turn is complete
+	straightSecThisTick := deltaSec - turnSecUsed
+	if straightSecThisTick > 0 && state.RemainingDegrees <= 0 && state.StraightLegSecRemaining > 0 {
+		state.StraightLegSecRemaining -= straightSecThisTick
+		if state.StraightLegSecRemaining < 0 {
+			state.StraightLegSecRemaining = 0
+		}
+	}
+
+	// 3. Complete Maneuver: Only clear state when both turn and straight leg phases finish
+	if state.RemainingDegrees <= 0 && state.StraightLegSecRemaining <= 0 {
 		ac.Flight.ActiveManeuver.Resolved = true
 		e.triggerPhrase(ac)
 		util.LogDebugWithLabel(ac.Registration, "avoidance action complete")
 		ac.Flight.ActiveManeuver = nil
 	}
 
+	// Project position forward along current heading
 	distanceMovedThisTick := (ac.Flight.GroundSpeed - 20.0) * (deltaSec / 3600.0)
-	ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(ac.Flight.Position.Lat, ac.Flight.Position.Long, ac.Flight.Position.Heading, distanceMovedThisTick)
+	ac.Flight.Position.Lat, ac.Flight.Position.Long = geometry.Project(
+		ac.Flight.Position.Lat,
+		ac.Flight.Position.Long,
+		ac.Flight.Position.Heading,
+		distanceMovedThisTick,
+	)
 	ac.Flight.Phase.LastUpdateTime = currSimZTime
 }
