@@ -44,8 +44,11 @@ func (e *D9TrafficEngine) ServeRadarFrame(radarSrv *server.RadarServer) {
 		if ac.Flight.AssignedRunway != nil {
 			runwaysMap[ac.Flight.AssignedRunway.Name] = *ac.Flight.AssignedRunway
 		}
-		if ac.Flight.Holding != nil && ac.Flight.Holding.AssignedHold != nil {
-			holdsMap[ac.Flight.Holding.AssignedHold.Ident] = *ac.Flight.Holding.AssignedHold
+		if ac.Flight.Holding != nil && ac.Flight.Holding.AssignedHoldIdent != "" {
+			hold := e.AtcService.GetHoldByIdent(ac.Flight.Holding.AssignedHoldIdent)
+			if hold != nil {
+				holdsMap[hold.Ident] = *hold
+			}
 		}
 	}
 

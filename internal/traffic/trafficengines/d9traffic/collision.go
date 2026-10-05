@@ -67,9 +67,6 @@ func (e *D9TrafficEngine) detectCollisionThreat(ac *atc.Aircraft) *atc.Aircraft 
 		if !isWithinFunnel(ac, other, collisionFunnelHalfAngleDeg) {
 			continue
 		}
-		if other.Flight.ActiveManeuver != nil {
-			continue
-		}
 		return other
 	}
 
@@ -142,7 +139,15 @@ func (e *D9TrafficEngine) turnDirectionConflictsWithAirport(ac *atc.Aircraft, di
 }
 
 func (e *D9TrafficEngine) chooseCollisionTurnDirection(ac *atc.Aircraft) atc.ManeuverDirection {
-	threat := ac.Flight.ActiveManeuver.Threat
+	if ac.Flight.ActiveManeuver.ThreatRegistration == "" {
+		return atc.ManeuverDirectionLeft // default
+	}
+
+	// Search for the threat aircraft in active aircraft by registration and flight number
+	threat := e.findThreatAircraft(ac.Flight.ActiveManeuver.ThreatRegistration)
+	if threat == nil {
+		return atc.ManeuverDirectionLeft // default if threat not found
+	}
 
 	threatBearing := geometry.CalculateBearing(
 		ac.Flight.Position.Lat,
@@ -198,7 +203,7 @@ func (e *D9TrafficEngine) startCollisionManeuver(ac *atc.Aircraft, threat *atc.A
 	}
 
 	ac.Flight.ActiveManeuver = &atc.ManeuverState{
-		Threat:                  threat,
+		ThreatRegistration:      threat.Registration,
 		RemainingDegrees:        remainingDegrees,
 		StraightLegSecRemaining: straightLegSec,
 		TurnRateDegPerSec:       collisionTurnRateDegPerSec(ac.Flight.GroundSpeed - 20.0),

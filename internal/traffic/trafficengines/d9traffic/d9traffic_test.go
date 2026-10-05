@@ -696,4 +696,3 @@ func TestCollisionManeuverInitiationAndCompletion(t *testing.T) {
 		t.Logf("note: final heading may differ from start due to phase transitions, got start=%f final=%f diff=%f", startHeading, finalHeading, diff)
 	}
 }
-

@@ -19,6 +19,20 @@ func (e *D9TrafficEngine) isCurrentlyActive(registration string, flightNumber in
 	return exists
 }
 
+// findThreatAircraft searches for an aircraft by registration in the active aircraft map.
+// It iterates through all active aircraft looking for a registration match.
+func (e *D9TrafficEngine) findThreatAircraft(threatRegistration string) *atc.Aircraft {
+	if threatRegistration == "" {
+		return nil
+	}
+	for _, ac := range e.ActiveAircraft {
+		if ac.Registration == threatRegistration {
+			return ac
+		}
+	}
+	return nil
+}
+
 func getLastUpdateDeltaTimeSec(ac *atc.Aircraft, currSimZTime time.Time) float64 {
 
 	var deltaTimeSec float64 = 10.0

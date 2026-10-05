@@ -396,7 +396,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if holding == nil {
 				return ""
 			}
-			holdfix := holding.AssignedHold
+			holdfix := s.GetHoldByIdent(holding.AssignedHoldIdent)
 			if holdfix == nil {
 				return ""
 			} else {
@@ -409,7 +409,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 			if holding == nil {
 				return ""
 			}
-			holdfix := holding.AssignedHold
+			holdfix := s.GetHoldByIdent(holding.AssignedHoldIdent)
 			if holdfix == nil {
 				return ""
 			} else {
@@ -565,7 +565,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 		"@ALT_CLEARANCE": func(args ...string) interface{} {
 			transAlt := s.getTransistionAltitude(ac)
 			transLevel := getTransitionLevel(transAlt, s.Weather.Baro.Sealevel)
-			clearance := determineAltClearance(ac, s.GetAirportByICAO(getAirportICAObyPhaseClass(ac)), rwy)
+			clearance := s.determineAltClearance(ac, s.GetAirportByICAO(getAirportICAObyPhaseClass(ac)), rwy)
 			return generateAltClearance(ac.Flight.Position.Altitude, transLevel, clearance, ac.Flight.Phase)
 		},
 		"@BARO": func(args ...string) interface{} {
@@ -606,7 +606,7 @@ func (s *Service) newPCLContext(ac *Aircraft, role string) pcl.PCLContext {
 				if holding == nil {
 					r = "published hold"
 				} else {
-					holdfix := holding.AssignedHold
+					holdfix := s.GetHoldByIdent(holding.AssignedHoldIdent)
 					if holdfix != nil {
 						if holdfix.FullName != "" {
 							r = holdfix.FullName
@@ -1014,7 +1014,7 @@ func formatAltitude(rawAlt float64, transitionLevel int, phase flightphase.Phase
 	return fmt.Sprintf("%d thousand %d hundred", thousands, hundreds)
 }
 
-func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
+func (s *Service) determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 
 	var clearance int
 
@@ -1052,10 +1052,11 @@ func determineAltClearance(ac *Aircraft, ap *Airport, rwy *Runway) int {
 		case flightphase.Holding.Index():
 			holding := ac.Flight.Holding
 			if holding != nil {
-				if holding.AssignedHold != nil {
-					clearance = ac.Flight.Holding.AssignedHold.MinAlt
+				holdfix := s.GetHoldByIdent(holding.AssignedHoldIdent)
+				if holdfix != nil {
+					clearance = holdfix.MinAlt
 					if clearance == 0 {
-						clearance = ac.Flight.Holding.AssignedHold.MaxAlt
+						clearance = holdfix.MaxAlt
 					}
 				}
 			}

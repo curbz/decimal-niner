@@ -28,12 +28,16 @@ type Hold struct {
 }
 
 type Fix struct {
-	Ident    string
-	Region   string
-	FullName string
-	Lat      float64
-	Lon      float64
-	Hold     *Hold // if this fix is also a hold, this field will be populated otherwise nil
+	Ident             string
+	Region            string
+	FullName          string
+	Lat               float64
+	Lon               float64
+	AssignedHoldIdent string // hold identifier in format "ident_region"; DO NOT convert to *Hold pointer (see warning below)
+	// WARNING: DO NOT convert AssignedHoldIdent to a *Hold pointer. This creates a cyclic reference
+	// that causes stack overflow during deepcopy operations. Use the string identifier and look up
+	// the hold via Service.GetHoldByIdent() when needed.
+	// The identifier format is "ident_region" to match the Service.Holds map key format.
 }
 
 type ProcedureFix struct {
@@ -117,7 +121,7 @@ func resolveHoldCoordinates(allHolds map[string]*Hold, allFixes map[string]*Fix)
 			h.FullName = namedFix.FullName
 			h.Lat = namedFix.Lat
 			h.Lon = namedFix.Lon
-			namedFix.Hold = h
+			namedFix.AssignedHoldIdent = key
 			if h.FullName != "" {
 				namedCnt++
 			}
@@ -149,7 +153,7 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 		if h == nil {
 			return
 		}
-		holding.AssignedHold = h
+		holding.AssignedHoldIdent = h.Ident + "_" + h.Region
 		if holding.AssignedHoldTime.IsZero() {
 			holding.AssignedHoldTime = s.GetCurrentZuluTime()
 		}
@@ -248,9 +252,13 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 
 		// B. Arrival phase - check if defined STAR holding point exists
 		if phase == flightphase.Arrival.Index() {
-			if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit.Fix.Hold != nil {
-				applyAssignedHold(ac.Flight.AssignedSTAR.Exit.Fix.Hold)
-				return
+			if ac.Flight.AssignedSTAR != nil && ac.Flight.AssignedSTAR.Exit.Fix.AssignedHoldIdent != "" {
+				// Look up the hold by identifier
+				h := s.GetHoldByIdent(ac.Flight.AssignedSTAR.Exit.Fix.AssignedHoldIdent)
+				if h != nil {
+					applyAssignedHold(h)
+					return
+				}
 			}
 		}
 
@@ -287,8 +295,8 @@ func (s *Service) AssignHold(ac *Aircraft, icao string, fallbackToGlobalHolds bo
 		holding.ExitingHold = false
 	}
 
-	if holding.AssignedHold != nil {
-		util.LogDebugWithLabel(ac.Registration, "assigned hold %s", holding.AssignedHold.Ident)
+	if holding.AssignedHoldIdent != "" {
+		util.LogDebugWithLabel(ac.Registration, "assigned hold %s", holding.AssignedHoldIdent)
 	} else {
 		util.LogDebugWithLabel(ac.Registration, "no hold assigned")
 	}

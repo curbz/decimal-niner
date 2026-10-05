@@ -67,8 +67,12 @@ type Holding struct {
 	TargetApproachFix *Fix
 	TargetApproachAlt float64
 	TargetHoldAlt     float64
-	AssignedHold      *Hold
+	AssignedHoldIdent string // hold identifier in format "ident_region"; DO NOT convert to *Hold pointer (see warning below)
 	AssignedHoldTime  time.Time
+	// WARNING: DO NOT convert AssignedHoldIdent to a *Hold pointer. This creates a shared reference
+	// issue with deepcopy and makes aircraft snapshots ambiguous about hold ownership. Use the
+	// string identifier and look up the hold via Service.GetHoldByIdent() when needed.
+	// The identifier format is "ident_region" to match the Service.Holds map key format.
 }
 
 // ManeuverDirection describes the direction of an avoidance turn.
@@ -80,8 +84,12 @@ const (
 )
 
 // ManeuverState tracks an in-progress collision avoidance turn.
+// WARNING: DO NOT add a pointer field (like Threat *Aircraft) that references the threat aircraft.
+// This creates a cyclic reference (Aircraft -> Flight.ActiveManeuver -> ManeuverState.Threat -> Aircraft)
+// that causes stack overflow during deepcopy operations. Use ThreatRegistration string instead and
+// look up the aircraft via Service.GetAircraftByRegistration() when needed.
 type ManeuverState struct {
-	Threat                  *Aircraft
+	ThreatRegistration      string // aircraft registration; DO NOT convert to *Aircraft pointer (see warning above)
 	ThreatRelativeBearing   float64
 	Direction               ManeuverDirection
 	RemainingDegrees        float64
@@ -245,6 +253,28 @@ func (s *Service) GetAirlineByName(name string) *AirlineInfo {
 	}
 	// 2. Use the code to get the full info
 	return a
+}
+
+func (s *Service) GetHoldByIdent(ident string) *Hold {
+	if ident == "" {
+		return nil
+	}
+	hold, exists := s.Holds[ident]
+	if !exists {
+		return nil
+	}
+	return hold
+}
+
+func (s *Service) GetAircraftByRegistration(registration string) *Aircraft {
+	if registration == "" {
+		return nil
+	}
+	// Search through all airports' aircraft or the active traffic engine's aircraft
+	// This is a simple implementation that may need optimization for large numbers of aircraft
+	// For now, we'll rely on the traffic engine maintaining active aircraft
+	// The traffic engine should be able to provide this lookup
+	return nil
 }
 
 func (s *Service) GetRandomAirlineByCountry(countryCode string) string {

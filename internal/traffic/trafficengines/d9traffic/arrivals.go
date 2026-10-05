@@ -66,10 +66,22 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	requiredDescentDistNM := speedKts * ((cruiseAlt - targetArrivalAlt) / vrateDescent / 60.0)
 
 	if initialPhase == flightphase.Cruise && generatedDistToDest <= requiredDescentDistNM {
-		util.LogDebugWithLabel(f.AircraftRegistration, "moving initial phase from cruise to arrival - too close to destination: %f NM", generatedDistToDest)
-		initialPhase = flightphase.Arrival
+		// Too close to destination to meet the required descent profile.
+		// Instead of forcing the aircraft into Arrival, move the spawn point
+		// further away so the descent profile can be met and keep the aircraft in Cruise.
+		util.LogDebugWithLabel(f.AircraftRegistration, "spawn too close to destination for descent profile (%f NM <= %f NM); extending spawn outward",
+			generatedDistToDest, requiredDescentDistNM)
+
+		// Add a small buffer so we don't land exactly on the minimum descent distance.
+		const bufferNM = 5.0
+		generatedDistToDest = requiredDescentDistNM + bufferNM
+
+		// Recompute timing based on the new generated distance. Ensure fullDurationSecs
+		// is at least remainingDurSecs to avoid division anomalies.
 		remainingDurSecs = int((generatedDistToDest / speedKts) * 3600.0)
-		fullDurationSecs = int((requiredDescentDistNM / speedKts) * 3600.0)
+		if remainingDurSecs > fullDurationSecs {
+			fullDurationSecs = remainingDurSecs + 60
+		}
 		timeRatio = float64(remainingDurSecs) / float64(fullDurationSecs)
 	}
 
@@ -136,6 +148,10 @@ func (e *D9TrafficEngine) spawnArrivalTraffic(f *flightplan.ScheduledFlight) {
 	if sizeClass == "E" || sizeClass == "F" {
 		sizeClassStr = "Heavy"
 	}
+
+	// Ensure we don't spawn inside another aircraft - push outward if needed
+	minSep := getMinSpawnSeparationNM(sizeClass)
+	e.ensureSafeSpawnPosition(&spawnLat, &spawnLon, minSep)
 
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,

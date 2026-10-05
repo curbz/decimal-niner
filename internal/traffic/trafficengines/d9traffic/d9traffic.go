@@ -459,7 +459,28 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 	currSimZTime := e.AtcService.GetCurrentZuluTime()
 
+	// Prioritise updating aircraft not in Approach or Holding phases first.
+	// This is to ensure aircraft in Approach or Holding phases only take
+	// collision avoidance action after all other aircraft have run their collision detection.
+	// We'd rather aircraft in other phases take avoidance action first if possible.
+	var firstPass []*atc.Aircraft
+	var secondPass []*atc.Aircraft
+
 	for _, ac := range e.ActiveAircraft {
+		if ac == nil || ac.Flight.Schedule == nil {
+			continue
+		}
+		ph := flightphase.FlightPhase(ac.Flight.Phase.Current)
+		if ph == flightphase.Approach || ph == flightphase.Holding {
+			secondPass = append(secondPass, ac)
+		} else {
+			firstPass = append(firstPass, ac)
+		}
+	}
+
+	ordered := append(firstPass, secondPass...)
+
+	for _, ac := range ordered {
 		f := ac.Flight.Schedule
 		if f == nil {
 			continue
@@ -662,7 +683,7 @@ func (e *D9TrafficEngine) updateActiveAircraft(relevantICAOs []string) {
 
 		case flightphase.Holding:
 			// Safety Check: Guard against unassigned or broken holding structures
-			if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHold == nil {
+			if ac.Flight.Holding == nil || ac.Flight.Holding.AssignedHoldIdent == "" {
 				// route straight to approach
 				ac.Flight.Phase.PositionComplete = true
 				e.transitionToPhase(ac, flightphase.Approach, 0, 0)
@@ -1342,12 +1363,18 @@ func (e *D9TrafficEngine) updateTaxiPosition(ac *atc.Aircraft, airport *atc.Airp
 
 func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runway) {
 	holding := ac.Flight.Holding
-	if holding == nil || holding.AssignedHold == nil {
+	if holding == nil || holding.AssignedHoldIdent == "" {
 		util.LogErrWithLabel(ac.Registration, "updateHoldingPosition invoked but no hold assigned - possible bug")
 		return
 	}
 
-	hold := holding.AssignedHold
+	// Look up the hold by identifier
+	hold := e.AtcService.GetHoldByIdent(holding.AssignedHoldIdent)
+	if hold == nil {
+		util.LogErrWithLabel(ac.Registration, "hold %s not found - possible bug", holding.AssignedHoldIdent)
+		return
+	}
+
 	now := e.AtcService.GetCurrentZuluTime()
 
 	// --- 1. DYNAMIC DELTA TIME CALCULATION ---
@@ -1360,7 +1387,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 	// --- 2. DETERMINISTIC STACK ALTITUDE LOGIC ---
 	var stack []*atc.Aircraft
 	for _, aircraft := range e.ActiveAircraft {
-		if aircraft != nil && flightphase.FlightPhase(aircraft.Flight.Phase.Current) == flightphase.Holding && aircraft.Flight.Holding.AssignedHold == hold {
+		if aircraft != nil && flightphase.FlightPhase(aircraft.Flight.Phase.Current) == flightphase.Holding && aircraft.Flight.Holding.AssignedHoldIdent == holding.AssignedHoldIdent {
 			stack = append(stack, aircraft)
 		}
 	}
@@ -1395,7 +1422,7 @@ func (e *D9TrafficEngine) updateHoldingPosition(ac *atc.Aircraft, rwy *atc.Runwa
 		ac.Flight.Holding.ArrivedAtHoldFix = true
 		ac.Flight.Holding.PatternEntryTime = now
 		util.LogDebugWithLabel(ac.Registration, "arrived at hold fix %s alt: %f, targetAlt: %f, targetHoldAt: %f",
-			ac.Flight.Holding.AssignedHold.Ident, ac.Flight.Position.Altitude,
+			ac.Flight.Holding.AssignedHoldIdent, ac.Flight.Position.Altitude,
 			ac.Flight.TargetAltitude, ac.Flight.Holding.TargetHoldAlt)
 	}
 
@@ -1513,7 +1540,7 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 				// The aircraft must have arrived at the fix and cannot already be exiting
 				if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding &&
-					ac.Flight.Holding.AssignedHold != nil && ac.Flight.Holding.ArrivedAtHoldFix &&
+					ac.Flight.Holding.AssignedHoldIdent != "" && ac.Flight.Holding.ArrivedAtHoldFix &&
 					!ac.Flight.Holding.ExitingHold {
 					if ac.Flight.Destination == icao && ac.Flight.AssignedRunway.Name == rwy.Name {
 
@@ -1546,9 +1573,10 @@ func (e *D9TrafficEngine) manageHoldingReleases(relevantIcaos []string) {
 
 			// Release the longest waiting aircraft
 			releasedAc := candidates[0]
-			releasedHold := releasedAc.Flight.Holding.AssignedHold
+			releasedHoldIdent := releasedAc.Flight.Holding.AssignedHoldIdent
+			releasedHold := e.AtcService.GetHoldByIdent(releasedHoldIdent)
 
-			releasedAc.Flight.Holding.AssignedHold = nil
+			releasedAc.Flight.Holding.AssignedHoldIdent = ""
 			releasedAc.Flight.Holding.ExitingHold = true
 
 			// Recalculate stack vertical positions for the remaining holding aircraft
@@ -1571,7 +1599,7 @@ func (e *D9TrafficEngine) updateGoAroundPosition(ac *atc.Aircraft, airport *atc.
 	ac.Flight.Phase.LastUpdateTime = now
 
 	e.AtcService.AssignHold(ac, airport.ICAO, false)
-	if ac.Flight.Holding.AssignedHold != nil {
+	if ac.Flight.Holding.AssignedHoldIdent != "" {
 		e.transitionToPhase(ac, flightphase.Holding, 0, 0)
 		e.updateHoldingPosition(ac, e.AirportConfig[airport.ICAO].Arrival)
 	}
@@ -1939,7 +1967,7 @@ func (e *D9TrafficEngine) reassignHoldStack(h *atc.Hold) {
 	for _, ac := range e.ActiveAircraft {
 		if flightphase.FlightPhase(ac.Flight.Phase.Current) == flightphase.Holding &&
 			ac.Flight.Holding != nil && !ac.Flight.Holding.ExitingHold &&
-			ac.Flight.Holding.AssignedHold == h {
+			ac.Flight.Holding.AssignedHoldIdent == h.Ident+"_"+h.Region {
 			stack = append(stack, ac)
 		}
 	}
@@ -2086,6 +2114,11 @@ func (e *D9TrafficEngine) refreshRunwayConfig(ap *atc.Airport) {
 // If the runway is currently locked by the same aircraft, it will return true to allow them to maintain their lock.
 // If the runway is currently unlocked, it will be locked for the requesting aircraft with the current timestamp.
 func (e *D9TrafficEngine) getRunwayLock(ap *atc.Airport, rwy *atc.Runway, ac *atc.Aircraft) bool {
+
+	if rwy == nil {
+		util.LogWarnWithLabel(ac.Registration, "getRunwayLock called with nil runway at %s", ap.ICAO)
+		return false
+	}
 
 	rwyLockKey := normalizeRunwayKey(ap.ICAO, rwy)
 

@@ -152,6 +152,10 @@ func (e *D9TrafficEngine) spawnDepartureTraffic(f *flightplan.ScheduledFlight) {
 	// backdate transition time
 	transitionTime := currSimZTime.Add(-time.Duration(elapsedOffset) * time.Second)
 
+	// Ensure we don't spawn inside another aircraft - push outward if needed
+	minSep := getMinSpawnSeparationNM(sizeClass)
+	e.ensureSafeSpawnPosition(&spawnLat, &spawnLon, minSep)
+
 	newAc := &atc.Aircraft{
 		Registration: f.AircraftRegistration,
 		SizeClass:    sizeClass,
