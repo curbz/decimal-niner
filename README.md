@@ -1,11 +1,12 @@
 # decimal-niner
-The goal of this project is to provide realistic simulated air traffic control communications between controllers and aircraft flight crew for X-Plane 12 traffic injection plug-ins.
+The goal of this project is to provide realistic simulated air traffic control audible voice communications between controllers and aircraft flight crew for X-Plane 12 traffic injection plug-ins. It does not provide ATC to the sim pilot (X-Plane user).
 
 decimal-niner makes use of Piper TTS (Text-To-Speech) to provide users with an infinte number of configurable ATC phrases and exceptional speech quality across a large number of pre-existing voices, including multiple country and regional accents.
 
 Also included is an internal traffic engine for those who want to experience realistic audible ATC communications in their X-Plane environment without the overhead of visible rendered AI aircraft.
 
 decimal-niner is an add-on for X-Plane and not a plug-in. This means decimal-niner executes completely independently of X-Plane and does not impact X-Plane performance or frame rates. As an add-on, it is generally unaffected by X-Plane version changes (unless Laminar inadvertently break the web API versioning) and will also never be the root cause of an X-Plane application crash.
+
 
 ## Requirements
 
@@ -54,5 +55,3 @@ Search decimal-niner output for "error" to locate critical application errors.
 ----
 
 This application has no affinity or relationship with Laminar Research or supported third party traffic plug-ins.
-
-
