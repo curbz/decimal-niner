@@ -13,6 +13,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/d9traffic"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/vat"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -95,6 +96,8 @@ func main() {
 		te, teErr = trafficglobal.New(cfgPath)
 	case "d9traffic":
 		te, teErr = d9traffic.New(cfgPath)
+	case "vat":
+		te, teErr = vat.New(cfgPath)
 	default:
 		logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
 		return

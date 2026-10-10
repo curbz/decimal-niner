@@ -12,6 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
+	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -75,6 +76,7 @@ type TrafficEngine interface {
 	LoadFlightPlans(string) (map[string][]flightplan.ScheduledFlight, map[string]bool)
 	SetATCService(*Service)
 	RequiresAircraftData() bool // Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
+	HandleAircraftData(datarefs map[int]*xpapimodel.Dataref)
 	Start()
 	CheckForCruiseSectorChange(ac *Aircraft)
 	CheckForSubPhaseChange(ac *Aircraft)

@@ -1,7 +1,11 @@
 package trafficglobal
 
 import (
+	"fmt"
+	"math/rand"
+
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
@@ -40,6 +44,7 @@ type TGconfig struct {
 type TrafficGlobal struct {
 	traffic.CommonTrafficEngine
 	FlightPlanPath string
+	AircraftMap    map[string]*atc.Aircraft
 }
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -147,6 +152,7 @@ func New(cfgPath string) (atc.TrafficEngine, error) {
 
 	te := &TrafficGlobal{
 		FlightPlanPath: cfg.TG.FlightPlanPath,
+		AircraftMap:    make(map[string]*atc.Aircraft),
 	}
 	return te, nil
 }
@@ -238,6 +244,201 @@ func (e *TrafficGlobal) CheckForTOD(ac *atc.Aircraft) {
 		ac.Flight.LastCheckedPosition = ac.Flight.Position
 	}
 
+}
+
+func (tg *TrafficGlobal) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {
+	if datarefs == nil {
+		return
+	}
+	if tg.AircraftMap == nil {
+		tg.AircraftMap = make(map[string]*atc.Aircraft)
+	}
+
+	tailNumbersDR := getDataRefByName(datarefs, simdata.DRTrafficEngineAITailNumber)
+	if tailNumbersDR == nil {
+		logger.Log.Error("error: tail number dataref not found")
+		return
+	}
+	tailNumbers, ok := tailNumbersDR.Value.([]string)
+	if !ok {
+		logger.Log.Error("error: tail number dataref has invalid type")
+		return
+	}
+
+	airlineCodes := []string{}
+	flightNums := []int{}
+	airlineCodesDR := getDataRefByName(datarefs, simdata.DRTrafficEngineAIAirlineCode)
+	flightNumsDR := getDataRefByName(datarefs, simdata.DRTrafficEngineAIFlightNum)
+	if airlineCodesDR == nil || flightNumsDR == nil {
+		logger.Log.Error("error: airline code or flight number dataref not found")
+	} else {
+		airlineCodes, ok = airlineCodesDR.Value.([]string)
+		if !ok {
+			logger.Log.Error("error: airline code dataref has invalid type")
+		}
+		flightNums, ok = flightNumsDR.Value.([]int)
+		if !ok {
+			logger.Log.Error("error: flight number dataref has invalid type")
+		}
+	}
+
+	for index, tailNumber := range tailNumbers {
+		flightNum := 0
+		if index < len(flightNums) {
+			flightNum = flightNums[index]
+		}
+		acKey := fmt.Sprintf("%s_%d", tailNumber, flightNum)
+		aircraft, exists := tg.AircraftMap[acKey]
+		if !exists {
+			airlineCode := "unknown"
+			if index < len(airlineCodes) {
+				airlineCode = airlineCodes[index]
+			}
+			aircraft = tg.createNewAircraft(datarefs, index, flightNum, acKey, tailNumber, airlineCode)
+		}
+
+		flightPhase, err := getDataRefValue(datarefs, simdata.DRTrafficEngineAIFlightPhase, index)
+		if err != nil {
+			logger.Log.Error(err)
+			return
+		}
+		if v, ok := flightPhase.(int); ok {
+			aircraft.Flight.Phase.Current = v
+		} else if vf, okf := flightPhase.(float64); okf {
+			aircraft.Flight.Phase.Current = int(vf)
+		} else {
+			logger.Log.Errorf("unexpected type for flight_phase at index %d: %T", index, flightPhase)
+		}
+
+		lat, errLat := getDataRefValue(datarefs, simdata.DRTrafficEngineAIPositionLat, index)
+		lng, errLng := getDataRefValue(datarefs, simdata.DRTrafficEngineAIPositionLong, index)
+		alt, errAlt := getDataRefValue(datarefs, simdata.DRTrafficEngineAIPositionElev, index)
+		hdg, errHdg := getDataRefValue(datarefs, simdata.DRTrafficEngineAIPositionHeading, index)
+		if errLat != nil || errLng != nil || errAlt != nil || errHdg != nil {
+			logger.Log.Error(errLat)
+			logger.Log.Error(errLng)
+			logger.Log.Error(errAlt)
+			logger.Log.Error(errHdg)
+			return
+		}
+		latF, lok := lat.(float64)
+		lngF, lok2 := lng.(float64)
+		altF, aok := alt.(float64)
+		hdgF, hok := hdg.(float64)
+		if !lok || !lok2 || !aok || !hok {
+			logger.Log.Errorf("unexpected position data types for aircraft %s at index %d", tailNumber, index)
+			continue
+		}
+		aircraft.Flight.Position = atc.Position{Lat: latF, Long: lngF, Altitude: altF * 3.28084, Heading: hdgF}
+	}
+}
+
+func (tg *TrafficGlobal) createNewAircraft(datarefs map[int]*xpapimodel.Dataref, index, flightNumber int, acKey, registration, airlineCode string) *atc.Aircraft {
+	fpUnknown := flightphase.FlightPhase(flightphase.Unknown.Index())
+	aircraft := &atc.Aircraft{
+		Registration: registration,
+		Flight: atc.Flight{
+			Number: flightNumber,
+			Squawk: fmt.Sprintf("%04d", 1200+rand.Intn(5800)),
+			Phase: flightphase.Phase{
+				Class:      flightclass.Unknown,
+				Current:    fpUnknown.Index(),
+				Previous:   fpUnknown.Index(),
+				Transition: tg.AtcService.GetCurrentZuluTime(),
+			},
+		},
+	}
+	tg.AircraftMap[acKey] = aircraft
+	util.LogWithLabel(registration, "New aircraft detected registration %s flight number %d", registration, flightNumber)
+
+	classVal, err := getDataRefValue(datarefs, simdata.DRTrafficEngineAIClass, index)
+	if err != nil {
+		logger.Log.Error(err)
+		return aircraft
+	}
+	sizeClass := 3
+	if v, ok := classVal.(int); ok {
+		sizeClass = v
+	} else if v, ok := classVal.(float64); ok {
+		sizeClass = int(v)
+	}
+	if sizeClass > 5 {
+		sizeClass = 3
+	}
+	aircraft.SizeClass = atc.SizeClass[sizeClass]
+
+	callsign := airlineCode
+	if aircraft.Flight.Comms.Callsign == "" {
+		airlineInfo := tg.AtcService.GetAirlineByCode(airlineCode)
+		if airlineInfo != nil {
+			callsign = airlineInfo.Callsign
+			aircraft.Flight.Comms.CountryCode = airlineInfo.CountryCode
+			aircraft.Flight.Airline = airlineInfo
+		} else {
+			util.LogWarnWithLabel(aircraft.Registration, "no airline information found for code %s", airlineCode)
+			if ccode := tg.AtcService.GetCountryFromRegistration(aircraft.Registration); ccode != "" {
+				aircraft.Flight.Comms.CountryCode = ccode
+				util.LogWithLabel(aircraft.Registration, "aircraft registration used to set country code %s", ccode)
+			} else {
+				util.LogWarnWithLabel(aircraft.Registration, "no country code information found for registration %s - using fallback", aircraft.Registration)
+			}
+		}
+	}
+
+	sizeClassStr := ""
+	if sizeClass > 3 {
+		sizeClassStr = "Heavy"
+	}
+	aircraft.Flight.Comms.Callsign = fmt.Sprintf("%s %d %s", callsign, aircraft.Flight.Number, sizeClassStr)
+	return aircraft
+}
+
+func getDataRefByName(datarefIndicesMap map[int]*xpapimodel.Dataref, s string) *xpapimodel.Dataref {
+	for _, dr := range datarefIndicesMap {
+		if dr.Name == s {
+			return dr
+		}
+	}
+	return nil
+}
+
+func getDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, index int) (any, error) {
+	dr := getDataRefByName(datarefIndicesMap, s)
+	if dr == nil {
+		return nil, fmt.Errorf("error: dataref %s not found in map", s)
+	}
+
+	switch dr.DecodedDataType {
+	case "base64_string_array", "uint32_string_array":
+		values, ok := dr.Value.([]string)
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []string", s)
+		}
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
+		}
+		return values[index], nil
+	case "float_array":
+		values, ok := dr.Value.([]float64)
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []float64", s)
+		}
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
+		}
+		return values[index], nil
+	case "int_array":
+		values, ok := dr.Value.([]int)
+		if !ok {
+			return nil, fmt.Errorf("error: dataref %s is not of expected type []int", s)
+		}
+		if index >= len(values) {
+			return nil, fmt.Errorf("error: requested index %d is greater than length %d of for dataref %s ", index, len(values), s)
+		}
+		return values[index], nil
+	default:
+		return dr.Value, nil
+	}
 }
 
 func (tg *TrafficGlobal) GetFlightPlanPath() string {

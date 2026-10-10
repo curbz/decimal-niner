@@ -450,7 +450,15 @@ func (xpc *XPConnect) handleSubscribedDatarefUpdate(datarefs map[string]any) {
 
 	xpc.updateUserData()
 	if xpc.readAircraftData {
-		xpc.updateAircraftData()
+		if xpc.atcService != nil {
+			if te := xpc.atcService.GetTrafficEngine(); te != nil {
+				te.HandleAircraftData(xpc.memSubscribeDataRefIndexMap)
+			} else {
+				xpc.updateAircraftDataFromArrays()
+			}
+		} else {
+			xpc.updateAircraftDataFromArrays()
+		}
 	}
 	xpc.updateWeatherData()
 
@@ -753,8 +761,8 @@ func (xpc *XPConnect) updateUserData() {
 
 }
 
-// updateAircraftData processes the latest aircraft data using the stored datarefs
-func (xpc *XPConnect) updateAircraftData() {
+// updateAircraftDataFromArrays processes the latest aircraft data using the stored datarefs
+func (xpc *XPConnect) updateAircraftDataFromArrays() {
 
 	// get tail numbers/registrations
 	tailNumbersDR := xpc.getMemDataRefByName(xpc.memSubscribeDataRefIndexMap, simdata.DRTrafficEngineAITailNumber)

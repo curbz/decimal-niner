@@ -59,6 +59,7 @@ var (
 	DRTrafficEngineAIParking         string
 	DRTrafficEngineAIFlightPhase     string
 	DRTrafficEngineAIRunway          string
+	DRVATAircraftJSON                string
 )
 
 var SimTimeDatarefs = []xpapimodel.Dataref{

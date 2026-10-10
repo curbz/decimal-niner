@@ -42,12 +42,13 @@ func (m *MockTrafficEngine) Enrich(a *atc.Aircraft, ap *atc.Airport) {}
 func (m *MockTrafficEngine) LoadFlightPlans(p string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
 	return nil, nil
 }
-func (m *MockTrafficEngine) SetATCService(s *atc.Service)                {}
-func (m *MockTrafficEngine) RequiresAircraftData() bool                  { return true }
-func (m *MockTrafficEngine) Start()                                      {}
-func (m *MockTrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft) {}
-func (m *MockTrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft)     {}
-func (m *MockTrafficEngine) CheckForTOD(ac *atc.Aircraft)                {}
+func (m *MockTrafficEngine) SetATCService(s *atc.Service)                            {}
+func (m *MockTrafficEngine) RequiresAircraftData() bool                              { return true }
+func (m *MockTrafficEngine) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {}
+func (m *MockTrafficEngine) Start()                                                  {}
+func (m *MockTrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft)             {}
+func (m *MockTrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft)                 {}
+func (m *MockTrafficEngine) CheckForTOD(ac *atc.Aircraft)                            {}
 
 // Return a mock traffic engine so xpconnect won't call methods on nil.
 func (m *MockATC) GetTrafficEngine() atc.TrafficEngine {
@@ -104,7 +105,7 @@ func TestAircraftStateTransition(t *testing.T) {
 
 	// EXECUTION
 	for i := 0; i < 5; i++ {
-		xpc.updateAircraftData()
+		xpc.updateAircraftDataFromArrays()
 	}
 
 	// VERIFICATION
@@ -126,7 +127,7 @@ func TestUnknownTransitionPreserved(t *testing.T) {
 		memSubscribeDataRefIndexMap: setupMockDatarefs("G-CLPE", 2731, 1),
 	}
 
-	xpc.updateAircraftData()
+	xpc.updateAircraftDataFromArrays()
 
 	// In xpconnect_test.go
 	expectedUnknown := int(flightphase.Unknown.Index())
