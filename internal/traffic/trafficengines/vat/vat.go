@@ -428,6 +428,8 @@ func vatFlightPhase(state string, previousPhase int) (flightphase.FlightPhase, b
 		return flightphase.Takeoff, true
 	case "cruising":
 		return flightphase.Cruise, true
+	case "landing":
+		return flightphase.Final, true
 	default:
 		return flightphase.Unknown, false
 	}
