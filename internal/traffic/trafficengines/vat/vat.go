@@ -1,7 +1,14 @@
 package vat
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/flightclass"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
@@ -42,6 +49,31 @@ type VATconfig struct {
 type VATTraffic struct {
 	traffic.CommonTrafficEngine
 	RefreshIntervalSeconds float64
+	AircraftMap            map[int]*atc.Aircraft
+	initialized            bool
+}
+
+type vatAircraftData struct {
+	SchemaVersion int        `json:"schemaVersion"`
+	PlaneCount    int        `json:"planeCount"`
+	Planes        []vatPlane `json:"planes"`
+}
+
+type vatPlane struct {
+	PlaneID             int     `json:"planeID"`
+	FlightNumber        string  `json:"flightNumber"`
+	OperatorName        string  `json:"operatorName"`
+	AircraftICAO        string  `json:"aircraftICAO"`
+	SpawnedAircraftICAO string  `json:"spawnedAircraftICAO"`
+	OriginICAO          string  `json:"originICAO"`
+	DestinationICAO     string  `json:"destinationICAO"`
+	State               string  `json:"state"`
+	Latitude            float64 `json:"latitude"`
+	Longitude           float64 `json:"longitude"`
+	AltitudeFt          float64 `json:"altitudeFt"`
+	SpeedKt             float64 `json:"speedKt"`
+	HeadingDeg          float64 `json:"headingDeg"`
+	CruiseAltitudeFt    float64 `json:"cruiseAltitudeFt"`
 }
 
 func New(cfgPath string) (atc.TrafficEngine, error) {
@@ -66,6 +98,7 @@ func New(cfgPath string) (atc.TrafficEngine, error) {
 
 	te := &VATTraffic{
 		RefreshIntervalSeconds: cfg.VAT.RefreshIntervalSeconds,
+		AircraftMap:            make(map[int]*atc.Aircraft),
 	}
 	return te, nil
 }
@@ -84,6 +117,9 @@ func (e *VATTraffic) SetATCService(atcService *atc.Service) {
 // Enrich will apply additional data to the aircraft and should be called by the ATC Service on aircraft phase change
 // TODO review - may not be implementable, potnetially a no-op for VAT
 func (e *VATTraffic) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
+	if ac == nil || ap == nil || ac.Flight.AssignedRunway == nil {
+		return
+	}
 
 	switch flightphase.FlightPhase(ac.Flight.Phase.Current) {
 	case flightphase.Final, flightphase.Braking, flightphase.TaxiIn:
@@ -176,8 +212,215 @@ func (e *VATTraffic) RequiresAircraftData() bool {
 }
 
 func (e *VATTraffic) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {
-	// VAT provides a single JSON aircraft payload rather than the Traffic Global array layout.
-	// This handler is intentionally isolated here so the new JSON format can be parsed without
-	// coupling X-Plane connection code to a specific traffic engine.
-	_ = datarefs
+	if e.AtcService == nil {
+		logger.Log.Error("cannot update VAT aircraft before the ATC service is set")
+		return
+	}
+
+	dataref := getDatarefByName(datarefs, simdata.DRVATAircraftJSON)
+	if dataref == nil {
+		logger.Log.Errorf("VAT aircraft JSON dataref %q was not found", simdata.DRVATAircraftJSON)
+		return
+	}
+
+	snapshot, err := decodeVATAircraftData(dataref.Value)
+	if err != nil {
+		logger.Log.Errorf("could not decode VAT aircraft data: %v", err)
+		return
+	}
+	if snapshot.SchemaVersion != 1 {
+		logger.Log.Errorf("unsupported VAT aircraft data schema version %d", snapshot.SchemaVersion)
+		return
+	}
+	if snapshot.PlaneCount != len(snapshot.Planes) {
+		logger.Log.Errorf("VAT aircraft data plane count mismatch: declared %d, received %d", snapshot.PlaneCount, len(snapshot.Planes))
+		return
+	}
+	if e.AircraftMap == nil {
+		e.AircraftMap = make(map[int]*atc.Aircraft)
+	}
+
+	seen := make(map[int]struct{}, len(snapshot.Planes))
+	for _, plane := range snapshot.Planes {
+		if plane.PlaneID <= 0 {
+			logger.Log.Error("VAT aircraft record has invalid planeID")
+			return
+		}
+		if _, exists := seen[plane.PlaneID]; exists {
+			logger.Log.Errorf("VAT aircraft data contains duplicate planeID %d", plane.PlaneID)
+			return
+		}
+		seen[plane.PlaneID] = struct{}{}
+	}
+
+	now := e.AtcService.GetCurrentZuluTime()
+	updated := make([]*atc.Aircraft, 0, len(snapshot.Planes))
+	for _, plane := range snapshot.Planes {
+		aircraft, exists := e.AircraftMap[plane.PlaneID]
+		if !exists {
+			aircraft = newVATAircraft(plane, now, e.AtcService)
+			e.AircraftMap[plane.PlaneID] = aircraft
+		}
+
+		aircraft.Type = plane.SpawnedAircraftICAO
+		aircraft.Code = plane.AircraftICAO
+		if aircraft.Code == "" {
+			aircraft.Code = plane.SpawnedAircraftICAO
+		}
+		aircraft.Flight.Number = flightNumber(plane.FlightNumber)
+		aircraft.Flight.Origin = plane.OriginICAO
+		aircraft.Flight.Destination = plane.DestinationICAO
+		aircraft.Flight.Position = atc.Position{
+			Lat:      plane.Latitude,
+			Long:     plane.Longitude,
+			Altitude: plane.AltitudeFt,
+			Heading:  plane.HeadingDeg,
+		}
+		aircraft.Flight.GroundSpeed = plane.SpeedKt
+		aircraft.Flight.CruiseAlt = int(plane.CruiseAltitudeFt)
+		aircraft.Flight.Comms.Callsign = plane.FlightNumber
+		setVATAirline(aircraft, plane.OperatorName, e.AtcService)
+
+		if phase, ok := vatFlightPhase(plane.State, aircraft.Flight.Phase.Current); ok {
+			aircraft.Flight.Phase.Current = phase.Index()
+		} else {
+			logger.Log.Warnf("unrecognized VAT aircraft state %q for planeID %d", plane.State, plane.PlaneID)
+		}
+		updated = append(updated, aircraft)
+	}
+
+	for _, aircraft := range updated {
+		if !e.initialized {
+			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+			aircraft.Flight.Phase.Transition = now
+			continue
+		}
+		if aircraft.Flight.Phase.Current != aircraft.Flight.Phase.Previous {
+			e.AtcService.NotifyFlightPhaseChange(aircraft)
+			aircraft.Flight.Phase.Previous = aircraft.Flight.Phase.Current
+			aircraft.Flight.Phase.Transition = now
+		} else {
+			e.CheckForSubPhaseChange(aircraft)
+		}
+	}
+	for planeID := range e.AircraftMap {
+		if _, exists := seen[planeID]; !exists {
+			delete(e.AircraftMap, planeID)
+		}
+	}
+	e.initialized = true
+}
+
+func decodeVATAircraftData(value any) (vatAircraftData, error) {
+	var raw []byte
+	switch v := value.(type) {
+	case string:
+		raw = []byte(v)
+	case []byte:
+		raw = v
+	case json.RawMessage:
+		raw = v
+	default:
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return vatAircraftData{}, fmt.Errorf("marshal dataref value of type %T: %w", value, err)
+		}
+		raw = encoded
+	}
+
+	var data vatAircraftData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return vatAircraftData{}, fmt.Errorf("parse JSON payload: %w", err)
+	}
+	if data.Planes == nil {
+		return vatAircraftData{}, fmt.Errorf("JSON payload has no planes array")
+	}
+	return data, nil
+}
+
+func newVATAircraft(plane vatPlane, now time.Time, service *atc.Service) *atc.Aircraft {
+	registration := fmt.Sprintf("VAT-%d", plane.PlaneID)
+	aircraft := &atc.Aircraft{
+		Registration: registration,
+		Type:         plane.SpawnedAircraftICAO,
+		Code:         plane.AircraftICAO,
+		Flight: atc.Flight{
+			Number: flightNumber(plane.FlightNumber),
+			Squawk: "",
+			Phase: flightphase.Phase{
+				Class:      flightclass.Unknown,
+				Current:    flightphase.Unknown.Index(),
+				Previous:   flightphase.Unknown.Index(),
+				Transition: now,
+			},
+			Comms: atc.Comms{Callsign: plane.FlightNumber},
+		},
+	}
+	setVATAirline(aircraft, plane.OperatorName, service)
+	return aircraft
+}
+
+func setVATAirline(aircraft *atc.Aircraft, operatorCode string, service *atc.Service) {
+	if operatorCode == "" {
+		return
+	}
+	airline := service.GetAirlineByCode(operatorCode)
+	if airline == nil {
+		return
+	}
+	aircraft.Flight.Airline = airline
+	aircraft.Flight.Comms.CountryCode = airline.CountryCode
+}
+
+func flightNumber(callsign string) int {
+	for i := len(callsign) - 1; i >= 0; i-- {
+		if callsign[i] < '0' || callsign[i] > '9' {
+			if i == len(callsign)-1 {
+				return 0
+			}
+			number, err := strconv.Atoi(callsign[i+1:])
+			if err != nil {
+				logger.Log.Warnf("could not parse numeric suffix from VAT flight number %q: %v", callsign, err)
+				return 0
+			}
+			return number
+		}
+	}
+	number, err := strconv.Atoi(callsign)
+	if err != nil {
+		logger.Log.Warnf("could not parse VAT flight number %q: %v", callsign, err)
+		return 0
+	}
+	return number
+}
+
+func vatFlightPhase(state string, previousPhase int) (flightphase.FlightPhase, bool) {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "static", "waiting":
+		return flightphase.Parked, true
+	case "taxiing":
+		switch flightphase.FlightPhase(previousPhase) {
+		case flightphase.Cruise, flightphase.Arrival, flightphase.Holding,
+			flightphase.Approach, flightphase.Final, flightphase.GoAround,
+			flightphase.Braking, flightphase.TaxiIn:
+			return flightphase.TaxiIn, true
+		default:
+			return flightphase.TaxiOut, true
+		}
+	case "taking off":
+		return flightphase.Takeoff, true
+	case "cruising":
+		return flightphase.Cruise, true
+	default:
+		return flightphase.Unknown, false
+	}
+}
+
+func getDatarefByName(datarefs map[int]*xpapimodel.Dataref, name string) *xpapimodel.Dataref {
+	for _, dataref := range datarefs {
+		if dataref != nil && dataref.Name == name {
+			return dataref
+		}
+	}
+	return nil
 }
