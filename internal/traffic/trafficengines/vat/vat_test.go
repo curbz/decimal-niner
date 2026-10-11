@@ -207,6 +207,14 @@ func TestVATFlightPhase(t *testing.T) {
 	}
 }
 
+func TestFlightNumberHandlesMissingCallsign(t *testing.T) {
+	for _, callsign := range []string{"", " ", "\t"} {
+		if got := flightNumber(callsign); got != 0 {
+			t.Errorf("flightNumber(%q) = %d, want 0", callsign, got)
+		}
+	}
+}
+
 func TestEnrichSkipsWhenVATRunwayDataIsUnavailable(t *testing.T) {
 	engine := &VATTraffic{}
 	aircraft := &atc.Aircraft{

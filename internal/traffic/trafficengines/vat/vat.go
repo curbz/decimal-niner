@@ -386,6 +386,10 @@ func setVATAirline(aircraft *atc.Aircraft, operatorCode string, service *atc.Ser
 }
 
 func flightNumber(callsign string) int {
+	if strings.TrimSpace(callsign) == "" {
+		return 0
+	}
+
 	for i := len(callsign) - 1; i >= 0; i-- {
 		if callsign[i] < '0' || callsign[i] > '9' {
 			if i == len(callsign)-1 {
