@@ -1,6 +1,10 @@
 package xpconnect
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -45,6 +49,7 @@ func (m *MockTrafficEngine) LoadFlightPlans(p string) (map[string][]flightplan.S
 func (m *MockTrafficEngine) SetATCService(s *atc.Service)                            {}
 func (m *MockTrafficEngine) RequiresAircraftData() bool                              { return true }
 func (m *MockTrafficEngine) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {}
+func (m *MockTrafficEngine) DatarefsToWrite() []xpapimodel.Dataref                   { return nil }
 func (m *MockTrafficEngine) Start()                                                  {}
 func (m *MockTrafficEngine) CheckForCruiseSectorChange(ac *atc.Aircraft)             {}
 func (m *MockTrafficEngine) CheckForSubPhaseChange(ac *atc.Aircraft)                 {}
@@ -135,5 +140,66 @@ func TestUnknownTransitionPreserved(t *testing.T) {
 	if mockATC.ReceivedPreviousPhase != expectedUnknown {
 		t.Errorf("Logic Error: ATC service saw Previous Phase as %d, expected %d",
 			mockATC.ReceivedPreviousPhase, expectedUnknown)
+	}
+}
+
+func TestWriteDatarefValuesLooksUpIDAndPatchesValue(t *testing.T) {
+	const datarefName = "virtualairtraffic/traffic/planes_freq_s"
+	var requestOrder []string
+	var patchPayload map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/datarefs":
+			requestOrder = append(requestOrder, "lookup")
+			if got := r.URL.Query().Get("filter[name]"); got != datarefName {
+				t.Errorf("dataref lookup filter = %q, want %q", got, datarefName)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"data":[{"id":42,"name":"virtualairtraffic/traffic/planes_freq_s","value_type":"float"}]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v2/datarefs/42/value":
+			requestOrder = append(requestOrder, "write")
+			if got := r.Header.Get("Content-Type"); got != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", got)
+			}
+			if err := json.NewDecoder(r.Body).Decode(&patchPayload); err != nil {
+				t.Errorf("decode PATCH body: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	xpc := &XPConnect{}
+	xpc.config.XPlane.RestBaseURL = server.URL + "/api/v2"
+	if err := xpc.writeDatarefValues([]xpapimodel.Dataref{{Name: datarefName, Value: 5.0}}); err != nil {
+		t.Fatalf("writeDatarefValues returned error: %v", err)
+	}
+	if len(requestOrder) != 2 || requestOrder[0] != "lookup" || requestOrder[1] != "write" {
+		t.Fatalf("request order = %v, want lookup then write", requestOrder)
+	}
+	if patchPayload["data"] != 5.0 {
+		t.Errorf("PATCH data = %v, want 5", patchPayload["data"])
+	}
+}
+
+func TestWriteDatarefValuesReturnsWriteFailure(t *testing.T) {
+	const datarefName = "virtualairtraffic/traffic/planes_freq_s"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"data":[{"id":42,"name":"virtualairtraffic/traffic/planes_freq_s","value_type":"float"}]}`)
+			return
+		}
+		http.Error(w, `{"error_code":"dataref_is_readonly"}`, http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	xpc := &XPConnect{}
+	xpc.config.XPlane.RestBaseURL = server.URL + "/api/v2"
+	if err := xpc.writeDatarefValues([]xpapimodel.Dataref{{Name: datarefName, Value: 5.0}}); err == nil {
+		t.Fatal("expected write failure to be returned")
 	}
 }

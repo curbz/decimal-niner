@@ -84,10 +84,6 @@ func New(cfgPath string) (atc.TrafficEngine, error) {
 		return nil, err
 	}
 
-	// TODO
-	// add a mechanism to write to dataref virtualairtraffic/traffic/planes_freq_s with RefreshIntervalSeconds
-	// this must happen BEFORE the planes_json dataref is subscribed to otherwise planes_json will not be updated
-
 	simdata.DRVATAircraftJSON = "virtualairtraffic/traffic/planes_json"
 
 	subscribeDatarefs := []xpapimodel.Dataref{
@@ -209,6 +205,13 @@ func (e *VATTraffic) LoadFlightPlans(dirPath string) (map[string][]flightplan.Sc
 
 func (e *VATTraffic) RequiresAircraftData() bool {
 	return true
+}
+
+func (e *VATTraffic) DatarefsToWrite() []xpapimodel.Dataref {
+	return []xpapimodel.Dataref{{
+		Name:  "virtualairtraffic/traffic/planes_freq_s",
+		Value: e.RefreshIntervalSeconds,
+	}}
 }
 
 func (e *VATTraffic) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {

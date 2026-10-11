@@ -77,6 +77,7 @@ type TrafficEngine interface {
 	SetATCService(*Service)
 	RequiresAircraftData() bool // Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
 	HandleAircraftData(datarefs map[int]*xpapimodel.Dataref)
+	DatarefsToWrite() []xpapimodel.Dataref
 	Start()
 	CheckForCruiseSectorChange(ac *Aircraft)
 	CheckForSubPhaseChange(ac *Aircraft)

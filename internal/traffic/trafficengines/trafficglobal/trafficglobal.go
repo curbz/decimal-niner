@@ -452,3 +452,7 @@ func (tg *TrafficGlobal) LoadFlightPlans(dirPath string) (map[string][]flightpla
 func (tg *TrafficGlobal) RequiresAircraftData() bool {
 	return true
 }
+
+func (tg *TrafficGlobal) DatarefsToWrite() []xpapimodel.Dataref {
+	return nil
+}

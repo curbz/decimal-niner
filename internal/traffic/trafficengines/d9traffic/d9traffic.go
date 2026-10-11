@@ -213,6 +213,10 @@ func (e *D9TrafficEngine) HandleAircraftData(datarefs map[int]*xpapimodel.Datare
 	_ = datarefs
 }
 
+func (e *D9TrafficEngine) DatarefsToWrite() []xpapimodel.Dataref {
+	return nil
+}
+
 func (e *D9TrafficEngine) GetFlightPlanPath() string {
 	return e.FlightPlanPath
 }

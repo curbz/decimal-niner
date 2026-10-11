@@ -1,6 +1,7 @@
 package xpconnect
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,6 +91,15 @@ func (xpc *XPConnect) Start() {
 		return
 	}
 	xpc.atcService.SyncSimTime(simInitTime, time.Now())
+
+	if xpc.atcService != nil {
+		if te := xpc.atcService.GetTrafficEngine(); te != nil {
+			if err := xpc.writeDatarefValues(te.DatarefsToWrite()); err != nil {
+				logger.Log.Errorf("Failed to configure traffic engine datarefs: %v", err)
+				return
+			}
+		}
+	}
 
 	logger.Log.Info("get dataref incides from x-plane web api")
 	// Get dataref indices via Web API REST
@@ -319,6 +329,69 @@ func (xpc *XPConnect) webGetDataRefValue(datarefId int) (any, error) {
 	}
 
 	return response.Data, nil
+}
+
+func (xpc *XPConnect) writeDatarefValues(datarefs []xpapimodel.Dataref) error {
+	for _, dataref := range datarefs {
+		indices, err := xpc.getDataRefIndices([]xpapimodel.Dataref{{Name: dataref.Name}})
+		if err != nil {
+			return fmt.Errorf("get ID for dataref %q: %w", dataref.Name, err)
+		}
+		if len(indices) != 1 {
+			return fmt.Errorf("expected one ID for dataref %q, received %d", dataref.Name, len(indices))
+		}
+
+		var datarefID int
+		found := false
+		for id, info := range indices {
+			if info.Name == dataref.Name {
+				datarefID = id
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("dataref %q was not returned by X-Plane", dataref.Name)
+		}
+		if err := xpc.webSetDataRefValue(datarefID, dataref.Value); err != nil {
+			return fmt.Errorf("write dataref %q: %w", dataref.Name, err)
+		}
+		logger.Log.Infof("Configured X-Plane dataref %q to %v", dataref.Name, dataref.Value)
+	}
+	return nil
+}
+
+func (xpc *XPConnect) webSetDataRefValue(datarefID int, value any) error {
+	body, err := json.Marshal(struct {
+		Data any `json:"data"`
+	}{Data: value})
+	if err != nil {
+		return fmt.Errorf("encode dataref value: %w", err)
+	}
+
+	fullURL := fmt.Sprintf("%s/datarefs/%d/value", strings.TrimRight(xpc.config.XPlane.RestBaseURL, "/"), datarefID)
+	req, err := http.NewRequest(http.MethodPatch, fullURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create PATCH request for %s: %w", fullURL, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send PATCH request to %s: %w", fullURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		responseBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("X-Plane returned status %d and response body could not be read: %w", resp.StatusCode, readErr)
+		}
+		return fmt.Errorf("X-Plane returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+	return nil
 }
 
 func (xpc *XPConnect) webGetDatarefIndices(drefs []xpapimodel.Dataref) (xpapimodel.APIResponseDatarefs, error) {

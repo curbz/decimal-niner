@@ -103,6 +103,20 @@ func TestHandleAircraftDataPopulatesAndUpdatesAircraft(t *testing.T) {
 	}
 }
 
+func TestDatarefsToWriteConfiguresVATRefreshInterval(t *testing.T) {
+	engine := &VATTraffic{RefreshIntervalSeconds: 5}
+	datarefs := engine.DatarefsToWrite()
+	if len(datarefs) != 1 {
+		t.Fatalf("DatarefsToWrite returned %d refs, want 1", len(datarefs))
+	}
+	if datarefs[0].Name != "virtualairtraffic/traffic/planes_freq_s" {
+		t.Errorf("dataref name = %q, want virtualairtraffic/traffic/planes_freq_s", datarefs[0].Name)
+	}
+	if datarefs[0].Value != float64(5) {
+		t.Errorf("dataref value = %v, want 5", datarefs[0].Value)
+	}
+}
+
 func TestDecodeVATAircraftDataRejectsMalformedOrInconsistentData(t *testing.T) {
 	tests := []struct{ name, payload string }{
 		{name: "malformed JSON", payload: `{"schemaVersion":`},
