@@ -197,6 +197,7 @@ func TestVATFlightPhase(t *testing.T) {
 		{state: "Taking Off", want: flightphase.Takeoff, wantRecognized: true},
 		{state: "Cruising", want: flightphase.Cruise, wantRecognized: true},
 		{state: "Landing", want: flightphase.Final, wantRecognized: true},
+		{state: "Finished", want: flightphase.Shutdown, wantRecognized: true},
 		{state: "Unexpected", want: flightphase.Unknown, wantRecognized: false},
 	}
 	for _, tt := range tests {
