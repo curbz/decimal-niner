@@ -418,6 +418,11 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 		edgeBuffer = []RawEdge{}              // List of all segments for the current airport
 	)
 
+	buildRequiredAirports := false
+	if len(requiredAirports) == 0 {
+		buildRequiredAirports = true
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open airports data file %s: %w", path, err)
@@ -482,7 +487,12 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 				}
 				airportPoints = []aptPoint{}
 
-				_, isRequiredAirport = requiredAirports[curICAO]
+				if buildRequiredAirports {
+					requiredAirports[curICAO] = true
+				} else {
+					_, isRequiredAirport = requiredAirports[curICAO]
+				}
+
 				if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
 					isRequiredAirport = false
 				}
