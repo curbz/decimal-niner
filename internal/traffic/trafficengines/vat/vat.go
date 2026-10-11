@@ -1,6 +1,7 @@
 package vat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -329,6 +330,15 @@ func decodeVATAircraftData(value any) (vatAircraftData, error) {
 			return vatAircraftData{}, fmt.Errorf("marshal dataref value of type %T: %w", value, err)
 		}
 		raw = encoded
+	}
+
+	raw = []byte(strings.TrimSpace(string(raw)))
+	if !json.Valid(raw) {
+		decoded, err := base64.StdEncoding.DecodeString(string(raw))
+		if err != nil {
+			return vatAircraftData{}, fmt.Errorf("dataref value is neither JSON nor valid base64-encoded JSON: %w", err)
+		}
+		raw = decoded
 	}
 
 	var data vatAircraftData

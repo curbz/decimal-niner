@@ -1,6 +1,7 @@
 package vat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -114,6 +115,21 @@ func TestDatarefsToWriteConfiguresVATRefreshInterval(t *testing.T) {
 	}
 	if datarefs[0].Value != float64(5) {
 		t.Errorf("dataref value = %v, want 5", datarefs[0].Value)
+	}
+}
+
+func TestDecodeVATAircraftDataAcceptsBase64EncodedJSON(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte(sampleAircraftJSON))
+	got, err := decodeVATAircraftData(encoded)
+	if err != nil {
+		t.Fatalf("decodeVATAircraftData rejected base64 JSON: %v", err)
+	}
+	if got.SchemaVersion != 1 || got.PlaneCount != 1 || len(got.Planes) != 1 {
+		t.Fatalf("decoded snapshot header = version %d, count %d, planes %d; want 1/1/1",
+			got.SchemaVersion, got.PlaneCount, len(got.Planes))
+	}
+	if got.Planes[0].PlaneID != 21 || got.Planes[0].FlightNumber != "U28391" {
+		t.Errorf("decoded plane = %+v, want planeID 21 and flight U28391", got.Planes[0])
 	}
 }
 
