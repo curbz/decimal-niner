@@ -71,7 +71,7 @@ type AirportProvider interface {
 // traffic engine that the ATC service needs to query. This is declared here to
 // avoid an import cycle with the internal/traffic package.
 type TrafficEngine interface {
-	GetFlightPlanPath() string
+	GetFlightPlanFilePath() string
 	Enrich(*Aircraft, *Airport)
 	LoadFlightPlans(string) (map[string][]flightplan.ScheduledFlight, map[string]bool)
 	SetATCService(*Service)
