@@ -85,7 +85,7 @@ func New(cfgPath string) (atc.TrafficEngine, error) {
 		return nil, err
 	}
 
-	simdata.DRVATAircraftJSON = "virtualairtraffic/traffic/planes_json"
+	simdata.DRVATAircraftJSON = simdata.DRVATPlanesJSON
 
 	subscribeDatarefs := []xpapimodel.Dataref{
 		{Name: simdata.DRVATAircraftJSON,
@@ -210,7 +210,7 @@ func (e *VATTraffic) RequiresAircraftData() bool {
 
 func (e *VATTraffic) DatarefsToWrite() []xpapimodel.Dataref {
 	return []xpapimodel.Dataref{{
-		Name:  "virtualairtraffic/traffic/planes_freq_s",
+		Name:  simdata.DRVATPlanesFrequencySeconds,
 		Value: e.RefreshIntervalSeconds,
 	}}
 }

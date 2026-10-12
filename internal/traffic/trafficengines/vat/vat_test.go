@@ -110,7 +110,7 @@ func TestDatarefsToWriteConfiguresVATRefreshInterval(t *testing.T) {
 	if len(datarefs) != 1 {
 		t.Fatalf("DatarefsToWrite returned %d refs, want 1", len(datarefs))
 	}
-	if datarefs[0].Name != "virtualairtraffic/traffic/planes_freq_s" {
+	if datarefs[0].Name != simdata.DRVATPlanesFrequencySeconds {
 		t.Errorf("dataref name = %q, want virtualairtraffic/traffic/planes_freq_s", datarefs[0].Name)
 	}
 	if datarefs[0].Value != float64(5) {

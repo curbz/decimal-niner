@@ -24,6 +24,29 @@ type DatarefInfo struct {
 	ValueType  string `json:"value_type"`
 }
 
+type mockVATSnapshot struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	PlaneCount    int            `json:"planeCount"`
+	Planes        []mockVATPlane `json:"planes"`
+}
+
+type mockVATPlane struct {
+	PlaneID             int     `json:"planeID"`
+	FlightNumber        string  `json:"flightNumber"`
+	OperatorName        string  `json:"operatorName"`
+	AircraftICAO        string  `json:"aircraftICAO"`
+	SpawnedAircraftICAO string  `json:"spawnedAircraftICAO"`
+	OriginICAO          string  `json:"originICAO"`
+	DestinationICAO     string  `json:"destinationICAO"`
+	State               string  `json:"state"`
+	Latitude            float64 `json:"latitude"`
+	Longitude           float64 `json:"longitude"`
+	AltitudeFt          float64 `json:"altitudeFt"`
+	SpeedKt             float64 `json:"speedKt"`
+	HeadingDeg          float64 `json:"headingDeg"`
+	CruiseAltitudeFt    float64 `json:"cruiseAltitudeFt"`
+}
+
 var (
 	upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	mu       sync.Mutex
@@ -33,6 +56,7 @@ var (
 	// mappings for id -> name and id -> value type (set when /datarefs is queried)
 	idToName      = make(map[int64]string)
 	idToValueType = make(map[int64]string)
+	idToValue     = make(map[int64]any)
 	// known datarefs and their canonical value types
 	datarefDefs = map[string]string{
 
@@ -63,6 +87,9 @@ var (
 		simdata.DRSimWeatherRegionWindDirection:      "float",
 		simdata.DRSimWeatherAircraftBarometer:        "float",
 		simdata.DRSimWeatherRegionSeaLevelPressure:   "double",
+
+		simdata.DRVATPlanesJSON:             "binary[]",
+		simdata.DRVATPlanesFrequencySeconds: "float",
 
 		simdata.DRTrafficEngineAIPositionLat:     "float[]",
 		simdata.DRTrafficEngineAIPositionLong:    "float[]",
@@ -117,6 +144,11 @@ func Start(port string) *http.Server {
 }
 
 func datarefsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Collect requested filters
 	q := r.URL.Query()["filter[name]"]
 	// If none provided, return the sim time datarefs
@@ -137,7 +169,12 @@ func datarefsHandler(w http.ResponseWriter, r *http.Request) {
 		idToValueType[id] = vt
 		mu.Unlock()
 
-		data = append(data, DatarefInfo{ID: id, IsWritable: false, Name: name, ValueType: vt})
+		data = append(data, DatarefInfo{
+			ID:         id,
+			IsWritable: name == simdata.DRVATPlanesFrequencySeconds,
+			Name:       name,
+			ValueType:  vt,
+		})
 	}
 
 	resp := map[string]interface{}{"data": data}
@@ -183,11 +220,42 @@ func datarefValueHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	value := samplePayloadForName(name, vt, 0)
+	switch r.Method {
+	case http.MethodPatch:
+		if name != simdata.DRVATPlanesFrequencySeconds {
+			http.Error(w, "dataref is not writable", http.StatusMethodNotAllowed)
+			return
+		}
+		var request struct {
+			Data *float64 `json:"data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, fmt.Sprintf("invalid dataref value: %v", err), http.StatusBadRequest)
+			return
+		}
+		if request.Data == nil {
+			http.Error(w, "missing dataref value", http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		idToValue[id] = *request.Data
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		return
+	case http.MethodGet:
+		mu.Lock()
+		value, exists := idToValue[id]
+		mu.Unlock()
+		if !exists {
+			value = samplePayloadForName(name, vt, 0)
+		}
 
-	resp := map[string]interface{}{"data": value}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+		resp := map[string]interface{}{"data": value}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -248,10 +316,10 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				ids = append(ids, d.Id)
 			}
 
-			// send a few updates asynchronously
+			// Keep advancing the sample traffic while the client is subscribed.
 			idsCopy := append([]int64(nil), ids...)
 			util.GoSafe(func() {
-				for i := 0; i < 3; i++ {
+				for i := 0; ; i++ {
 					time.Sleep(750 * time.Millisecond)
 					payload := make(map[string]interface{})
 					for _, id := range idsCopy {
@@ -270,7 +338,10 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 						payload[strconv.FormatInt(id, 10)] = samplePayloadForName(name, vt, i)
 					}
 					msg := map[string]interface{}{"type": "dataref_update_values", "data": payload}
-					conn.WriteJSON(msg)
+					if err := conn.WriteJSON(msg); err != nil {
+						logger.Log.Infof("mockserver: stopping dataref updates: %v", err)
+						return
+					}
 				}
 			})
 
@@ -289,6 +360,9 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 	now := time.Now() //.Add(-2 * time.Hour)
 	hours, minutes, seconds := now.Clock()
 	switch name {
+	case simdata.DRVATPlanesJSON:
+		return mockVATAircraftData(iter)
+
 	// com active datarefs
 	case simdata.DRSimATCCom1Active:
 		return 0 // inactive
@@ -446,4 +520,60 @@ func samplePayloadForName(name, vt string, iter int) interface{} {
 		s := fmt.Sprintf("VAL%02d\x00VAL%02d\x00", iter, iter)
 		return base64.StdEncoding.EncodeToString([]byte(s))
 	}
+}
+
+func mockVATAircraftData(iter int) string {
+	states := []string{"Static", "Taxiing", "Taking Off", "Cruising", "Landing", "Taxiing", "Finished"}
+	planes := []mockVATPlane{
+		{
+			PlaneID: 21, FlightNumber: "UAL2391", OperatorName: "UAL",
+			AircraftICAO: "B738", SpawnedAircraftICAO: "B738",
+			OriginICAO: "KDEN", DestinationICAO: "KSLC",
+			CruiseAltitudeFt: 34000, HeadingDeg: 173,
+		},
+		{
+			PlaneID: 22, FlightNumber: "SWA1420", OperatorName: "SWA",
+			AircraftICAO: "B737", SpawnedAircraftICAO: "B737",
+			OriginICAO: "KDEN", DestinationICAO: "KPHX",
+			CruiseAltitudeFt: 36000, HeadingDeg: 220,
+		},
+		{
+			PlaneID: 23, FlightNumber: "SKW5281", OperatorName: "SKW",
+			AircraftICAO: "E175", SpawnedAircraftICAO: "E175",
+			OriginICAO: "KDEN", DestinationICAO: "KCOS",
+			CruiseAltitudeFt: 28000, HeadingDeg: 160,
+		},
+	}
+	for i := range planes {
+		stateIndex := (iter + i*2) % len(states)
+		planes[i].State = states[stateIndex]
+		planes[i].Latitude = 39.861 + float64(i)*0.008
+		planes[i].Longitude = -104.673 + float64(i)*0.01
+		planes[i].AltitudeFt = 5434
+		switch stateIndex {
+		case 1, 5:
+			planes[i].SpeedKt = 12
+		case 2:
+			planes[i].AltitudeFt = 5600
+			planes[i].SpeedKt = 150
+		case 3:
+			planes[i].AltitudeFt = 30000
+			planes[i].SpeedKt = 420
+		case 4:
+			planes[i].AltitudeFt = 9000
+			planes[i].SpeedKt = 180
+		}
+	}
+
+	snapshot := mockVATSnapshot{
+		SchemaVersion: 1,
+		PlaneCount:    len(planes),
+		Planes:        planes,
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		logger.Log.Errorf("mockserver: could not encode VAT aircraft sample: %v", err)
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(raw)
 }

@@ -44,6 +44,9 @@ const (
 	DRSimTimeLocalDateDays = "sim/time/local_date_days"
 	DRSimTimeLocalTimeSec  = "sim/time/local_time_sec"
 	DRSimTimeZuluTimeSec   = "sim/time/zulu_time_sec"
+
+	DRVATPlanesJSON             = "virtualairtraffic/traffic/planes_json"
+	DRVATPlanesFrequencySeconds = "virtualairtraffic/traffic/planes_freq_s"
 )
 
 var (
