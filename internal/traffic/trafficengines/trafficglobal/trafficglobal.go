@@ -441,7 +441,7 @@ func getDataRefValue(datarefIndicesMap map[int]*xpapimodel.Dataref, s string, in
 	}
 }
 
-func (tg *TrafficGlobal) GetFlightPlanPath() string {
+func (tg *TrafficGlobal) GetFlightPlanFilePath() string {
 	return tg.FlightPlanPath
 }
 

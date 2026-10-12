@@ -108,7 +108,7 @@ func main() {
 	}
 
 	// Get flight schedules
-	fScheds, airports := te.LoadFlightPlans(te.GetFlightPlanPath())
+	fScheds, airports := te.LoadFlightPlans(te.GetFlightPlanFilePath())
 
 	// Create ATC service
 	atcService, err := atc.New(cfgPath, fScheds, airports)

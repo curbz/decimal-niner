@@ -217,7 +217,7 @@ func (e *D9TrafficEngine) DatarefsToWrite() []xpapimodel.Dataref {
 	return nil
 }
 
-func (e *D9TrafficEngine) GetFlightPlanPath() string {
+func (e *D9TrafficEngine) GetFlightPlanFilePath() string {
 	return e.FlightPlanPath
 }
 

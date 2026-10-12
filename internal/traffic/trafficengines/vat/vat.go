@@ -20,25 +20,8 @@ import (
 	"github.com/mohae/deepcopy"
 )
 
-// TODO review: flight phases for VAT will not fully align with the phases in the flightphase package,
-// so we may need to create a new set of flight phases for VAT and then map them to the flightphase package phases for compatibility with the rest of the system.
 const (
 	LastCheckedPositionVerticalThreshold = 1000.0 // altitude in feet that the aircraft must have descended since the last check to trigger cruise top of descent logic
-
-	FP_Unknown  int = iota - 1
-	FP_Cruise       // 0 - Normal cruise phase.
-	FP_Approach     // 1 - Positioning from cruise to the runway.
-	FP_Final        // 2 - Gear down on final approach.
-	FP_TaxiIn       // 3 - Any ground movement after touchdown.
-	FP_Shutdown     // 4 - Short period of spooling down engines/electrics.
-	FP_Parked       // 5 - Long period parked.
-	FP_Startup      // 6 - Short period of spooling up engines/electrics.
-	FP_TaxiOut      // 7 - Any ground movement from the gate to the runway.
-	FP_Depart       // 8 - Initial ground roll and first part of climb.
-	FP_GoAround     // 9 - Unplanned transition from approach to cruise.
-	FP_Climbout     // 10 - Remainder of climb, gear up.
-	FP_Braking      // 11 - Short period from touchdown to when fast-taxi speed is reached.
-	FP_Holding      // 12 - Holding (waiting for a flow to complete changing)
 )
 
 type VATconfig struct {
@@ -112,7 +95,6 @@ func (e *VATTraffic) SetATCService(atcService *atc.Service) {
 }
 
 // Enrich will apply additional data to the aircraft and should be called by the ATC Service on aircraft phase change
-// TODO review - may not be implementable, potnetially a no-op for VAT
 func (e *VATTraffic) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
 	if ac == nil || ap == nil || ac.Flight.AssignedRunway == nil {
 		return
@@ -144,7 +126,6 @@ func (e *VATTraffic) Enrich(ac *atc.Aircraft, ap *atc.Airport) {
 	}
 }
 
-// TODO review - may not be implementable, potnetially a no-op for VAT
 func (e *VATTraffic) CheckForSubPhaseChange(ac *atc.Aircraft) {
 
 	// if last check position has not yet been set, set it now so that we have something to compare against and return
@@ -195,7 +176,8 @@ func (e *VATTraffic) CheckForTOD(ac *atc.Aircraft) {
 
 }
 
-func (e *VATTraffic) GetFlightPlanPath() string {
+func (e *VATTraffic) GetFlightPlanFilePath() string {
+	// not applicable for VAT, return empty string to satisfy interface
 	return ""
 }
 

@@ -41,7 +41,7 @@ func (m *MockATC) SetDataProvider(dp simdata.SimDataProvider)          {}
 // so tests can call CheckForSubPhaseChange without a nil pointer.
 type MockTrafficEngine struct{}
 
-func (m *MockTrafficEngine) GetFlightPlanPath() string               { return "" }
+func (m *MockTrafficEngine) GetFlightPlanFilePath() string           { return "" }
 func (m *MockTrafficEngine) Enrich(a *atc.Aircraft, ap *atc.Airport) {}
 func (m *MockTrafficEngine) LoadFlightPlans(p string) (map[string][]flightplan.ScheduledFlight, map[string]bool) {
 	return nil, nil
