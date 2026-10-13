@@ -101,7 +101,7 @@ func (xpc *XPConnect) Start() {
 		}
 	}
 
-	logger.Log.Info("get dataref incides from x-plane web api")
+	logger.Log.Info("get dataref indices from x-plane web api")
 	// Get dataref indices via Web API REST
 	xpc.memSubscribeDataRefIndexMap, err = xpc.getDataRefIndices(simdata.SubscribeDatarefs)
 	if err != nil {

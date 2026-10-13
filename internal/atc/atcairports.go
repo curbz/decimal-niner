@@ -345,6 +345,7 @@ func (s *Service) AssignRunwayAccessPoint(ac *Aircraft, ap *Airport, arrOrDep in
 func loadAirports(dir string, airports map[string]*Airport, requiredAirports map[string]bool,
 	airportHolds map[string][]*Hold, allHolds map[string]*Hold, allFixes map[string]*Fix) error {
 
+	errCnt := 0
 	for icao := range requiredAirports {
 
 		ap, exists := airports[icao]
@@ -365,8 +366,7 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		var pathErr *fs.PathError
 		if err != nil {
 			if errors.As(err, &pathErr) {
-				// if error is io/fs.PathError then prefix log message with WARN: otherwise report as error
-				logger.Log.Warn("CIFP file not found for airport ", icao, ": ", err)
+				errCnt++
 			} else {
 				logger.Log.Error("error parsing CIFP file for airport ", icao, ": ", err)
 			}
@@ -404,6 +404,10 @@ func loadAirports(dir string, airports map[string]*Airport, requiredAirports map
 		}
 	}
 
+	if errCnt > 0 {
+		logger.Log.Warnf("Total airport CIFP files not found: %d of %d", errCnt, len(requiredAirports))
+	}
+
 	return nil
 }
 
@@ -412,6 +416,9 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 	var allcontrollers, apcontrollers []*Controller
 	airports := make(map[string]*Airport)
+	if requiredAirports == nil {
+		requiredAirports = make(map[string]bool)
+	}
 
 	var (
 		nodeBuffer = make(map[int]Coordinate) // NodeID -> Lat/Lon
@@ -489,9 +496,8 @@ func parseApt(path string, requiredAirports map[string]bool) ([]*Controller, map
 
 				if buildRequiredAirports {
 					requiredAirports[curICAO] = true
-				} else {
-					_, isRequiredAirport = requiredAirports[curICAO]
 				}
+				_, isRequiredAirport = requiredAirports[curICAO]
 
 				if strings.HasPrefix(curICAO, "[H]") || strings.HasPrefix(curICAO, "[X]") {
 					isRequiredAirport = false

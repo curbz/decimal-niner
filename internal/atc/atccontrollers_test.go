@@ -1,6 +1,7 @@
 package atc
 
 import (
+	"os"
 	"testing"
 
 	d9 "github.com/curbz/decimal-niner/internal"
@@ -69,6 +70,7 @@ func TestLocateControllerGlobal(t *testing.T) {
 		"NZAA": true, "FACT": true,
 	}
 
+	d9.Resources = "resources"
 	atcService, _ := New("config.yaml", nil, requiredAirports)
 
 	tests := []struct {
@@ -274,6 +276,7 @@ func TestLocateControllerTierLogic(t *testing.T) {
 
 func TestUnicomFallbackLogic(t *testing.T) {
 
+	d9.Resources = "resources"
 	s, _ := New("config.yaml", nil, map[string]bool{"EGTF": true})
 	lat, lon := 51.35, -0.56
 
@@ -314,5 +317,60 @@ func TestNormaliseFreq(t *testing.T) {
 				t.Fatalf("normaliseFreq(%d) = %d; want %d", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLocateControllerWithNoRequiredAirports(t *testing.T) {
+	atcData := `
+CONTROLLER
+NAME KDEN Tower
+ICAO KDEN
+ROLE twr
+FREQ 132350
+POINT 39.861667 -104.673167
+CONTROLLER_END
+
+CONTROLLER
+NAME KDEN Ground
+ICAO KDEN
+ROLE gnd
+FREQ 121850
+POINT 39.861667 -104.673167
+CONTROLLER_END
+`
+	f, err := os.CreateTemp(t.TempDir(), "atc.dat")
+	if err != nil {
+		t.Fatalf("CreateTemp() error: %v", err)
+	}
+	if _, err := f.WriteString(atcData); err != nil {
+		t.Fatalf("WriteString() error: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	controllers, err := parseATCdatFiles(f.Name(), false, nil)
+	if err != nil {
+		t.Fatalf("parseATCdatFiles() error: %v", err)
+	}
+	if len(controllers) != 2 {
+		t.Fatalf("expected 2 controllers from the temp ATC database, got %d", len(controllers))
+	}
+
+	s := &Service{Controllers: controllers, Airports: map[string]*Airport{}}
+	controller := s.locateController("KDEN tower test", 132350, RoleNone, 39.861667, -104.673167, 5433.727208, "")
+	if controller == nil {
+		t.Fatal("expected a controller match for KDEN tower frequency, got nil")
+	}
+	if controller.RoleID != 3 || controller.ICAO != "KDEN" {
+		t.Fatalf("expected KDEN tower controller, got ICAO=%s role=%d", controller.ICAO, controller.RoleID)
+	}
+
+	ground := s.locateController("KDEN ground test", 121850, RoleNone, 39.861667, -104.673167, 5433.727208, "")
+	if ground == nil {
+		t.Fatal("expected a controller match for KDEN ground frequency, got nil")
+	}
+	if ground.RoleID != 2 || ground.ICAO != "KDEN" {
+		t.Fatalf("expected KDEN ground controller, got ICAO=%s role=%d", ground.ICAO, ground.RoleID)
 	}
 }

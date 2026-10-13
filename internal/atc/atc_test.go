@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/flightphase"
 	"github.com/curbz/decimal-niner/internal/logger"
 )
@@ -12,6 +13,9 @@ import (
 func init() {
 
 	logger.Log.Info("running prerequisite atc package init function")
+
+	// Set the shared resource directory expected by voice initialization.
+	d9.Resources = "resources"
 
 	// Check for custom config file location
 	configPath := os.Getenv("D9_CONFIG_PATH")
