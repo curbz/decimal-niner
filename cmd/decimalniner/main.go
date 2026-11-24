@@ -9,6 +9,7 @@ import (
 
 	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/configui"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/d9traffic"
@@ -32,6 +33,10 @@ func main() {
 
 	// mock server to emulate X-Plane REST+WebSocket
 	mock := flag.Bool("mock", false, "start mock X-Plane server locally")
+
+	// loopback configuration UI
+	ui := flag.Bool("ui", false, "enable loopback configuration UI")
+	uiAddr := flag.String("ui-addr", "127.0.0.1:8097", "configuration UI listen address")
 
 	flag.Parse()
 
@@ -133,6 +138,18 @@ func main() {
 	}
 
 	xpc.Start()
+
+	// Start the loopback configuration UI if enabled
+	if *ui {
+		logger.Log.Infof("Starting loopback configuration UI on %s", *uiAddr)
+		uiServer := configui.New(cfgPath, "web")
+		started, err := uiServer.Start(*uiAddr)
+		if err != nil {
+			logger.Log.Errorf("failed to start configuration UI: %v", err)
+		} else {
+			defer func() { _ = started.Close() }()
+		}
+	}
 
 	// Wait for interrupt signal to gracefully shutdown
 	interrupt := make(chan os.Signal, 1)
