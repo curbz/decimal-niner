@@ -12,9 +12,15 @@ go run ./cmd/decimalniner -ui
 
 Use `-ui-addr` to select another loopback address, for example `-ui-addr 127.0.0.1:8100`. The UI should remain bound to loopback rather than `0.0.0.0`.
 
+The application opens the UI in the default browser automatically. Use `-no-open-browser` to start the server without opening a browser.
+
 The UI reads the same YAML file selected by `-config` or `D9_CONFIG_PATH`. Saved values are written atomically. Unknown YAML fields and comments are preserved when updating existing fields.
 
 Changes require restarting decimal-niner; the application does not hot-reload configuration.
+
+Running `-ui` starts only the configuration server. It does not load or initialize the ATC, traffic, X-Plane, or mock services, so it can be used on first run or when required configuration values are missing.
+
+Stop the configuration UI with `Ctrl+C`, then launch decimal-niner normally once the configuration is complete.
 
 ## How rendering works
 

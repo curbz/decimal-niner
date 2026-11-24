@@ -37,6 +37,7 @@ func main() {
 	// loopback configuration UI
 	ui := flag.Bool("ui", false, "enable loopback configuration UI")
 	uiAddr := flag.String("ui-addr", "127.0.0.1:8097", "configuration UI listen address")
+	noBrowser := flag.Bool("no-open-browser", false, "do not open the configuration UI in a browser")
 
 	flag.Parse()
 
@@ -54,6 +55,28 @@ func main() {
 		} else {
 			log.Println("loading configuration from custom location", cfgPath)
 		}
+	}
+
+	// When the configuration UI is requested, run only the local editor.
+	// This allows setup and repair of missing or incomplete configuration values.
+	if *ui {
+		uiServer := configui.New(cfgPath, "web")
+		started, err := uiServer.Start(*uiAddr)
+		if err != nil {
+			log.Fatalf("failed to start configuration UI: %v", err)
+		}
+
+		log.Printf("configuration UI listening at http://%s", *uiAddr)
+		if !*noBrowser {
+			if err := configui.OpenBrowser(*uiAddr); err != nil {
+				log.Printf("could not open browser automatically: %v", err)
+			}
+		}
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt)
+		<-interrupt
+		_ = started.Close()
+		return
 	}
 
 	cfg, err := util.LoadConfig[d9config](cfgPath)
@@ -138,18 +161,6 @@ func main() {
 	}
 
 	xpc.Start()
-
-	// Start the loopback configuration UI if enabled
-	if *ui {
-		logger.Log.Infof("Starting loopback configuration UI on %s", *uiAddr)
-		uiServer := configui.New(cfgPath, "web")
-		started, err := uiServer.Start(*uiAddr)
-		if err != nil {
-			logger.Log.Errorf("failed to start configuration UI: %v", err)
-		} else {
-			defer func() { _ = started.Close() }()
-		}
-	}
 
 	// Wait for interrupt signal to gracefully shutdown
 	interrupt := make(chan os.Signal, 1)
