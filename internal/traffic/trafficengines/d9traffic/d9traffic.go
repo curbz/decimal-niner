@@ -17,6 +17,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/server"
 	"github.com/curbz/decimal-niner/internal/traffic"
+	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/geometry"
 	"github.com/curbz/decimal-niner/pkg/util"
 	"github.com/mohae/deepcopy"
@@ -207,7 +208,16 @@ func (e *D9TrafficEngine) RequiresAircraftData() bool {
 	return false
 }
 
-func (e *D9TrafficEngine) GetFlightPlanPath() string {
+func (e *D9TrafficEngine) HandleAircraftData(datarefs map[int]*xpapimodel.Dataref) {
+	// D9 traffic does not consume per-aircraft X-Plane datarefs.
+	_ = datarefs
+}
+
+func (e *D9TrafficEngine) DatarefsToWrite() []xpapimodel.Dataref {
+	return nil
+}
+
+func (e *D9TrafficEngine) GetFlightPlanFilePath() string {
 	return e.FlightPlanPath
 }
 

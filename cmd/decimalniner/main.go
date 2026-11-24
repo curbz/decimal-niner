@@ -9,10 +9,12 @@ import (
 
 	d9 "github.com/curbz/decimal-niner/internal"
 	"github.com/curbz/decimal-niner/internal/atc"
+	"github.com/curbz/decimal-niner/internal/configui"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/mockserver"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/d9traffic"
 	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/trafficglobal"
+	"github.com/curbz/decimal-niner/internal/traffic/trafficengines/vat"
 	"github.com/curbz/decimal-niner/internal/xplaneapi/xpconnect"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
@@ -32,6 +34,11 @@ func main() {
 	// mock server to emulate X-Plane REST+WebSocket
 	mock := flag.Bool("mock", false, "start mock X-Plane server locally")
 
+	// loopback configuration UI
+	ui := flag.Bool("ui", false, "enable loopback configuration UI")
+	uiAddr := flag.String("ui-addr", "127.0.0.1:8097", "configuration UI listen address")
+	noBrowser := flag.Bool("no-open-browser", false, "do not open the configuration UI in a browser")
+
 	flag.Parse()
 
 	var cfgPath string
@@ -48,6 +55,28 @@ func main() {
 		} else {
 			log.Println("loading configuration from custom location", cfgPath)
 		}
+	}
+
+	// When the configuration UI is requested, run only the local editor.
+	// This allows setup and repair of missing or incomplete configuration values.
+	if *ui {
+		uiServer := configui.New(cfgPath, "web")
+		started, err := uiServer.Start(*uiAddr)
+		if err != nil {
+			log.Fatalf("failed to start configuration UI: %v", err)
+		}
+
+		log.Printf("configuration UI listening at http://%s", *uiAddr)
+		if !*noBrowser {
+			if err := configui.OpenBrowser(*uiAddr); err != nil {
+				log.Printf("could not open browser automatically: %v", err)
+			}
+		}
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt)
+		<-interrupt
+		_ = started.Close()
+		return
 	}
 
 	cfg, err := util.LoadConfig[d9config](cfgPath)
@@ -95,6 +124,8 @@ func main() {
 		te, teErr = trafficglobal.New(cfgPath)
 	case "d9traffic":
 		te, teErr = d9traffic.New(cfgPath)
+	case "vat":
+		te, teErr = vat.New(cfgPath)
 	default:
 		logger.Log.Fatalf("unsupported traffic engine specified in decimal-niner configuration: %s", cfg.D9.TrafficEngine)
 		return
@@ -105,7 +136,7 @@ func main() {
 	}
 
 	// Get flight schedules
-	fScheds, airports := te.LoadFlightPlans(te.GetFlightPlanPath())
+	fScheds, airports := te.LoadFlightPlans(te.GetFlightPlanFilePath())
 
 	// Create ATC service
 	atcService, err := atc.New(cfgPath, fScheds, airports)

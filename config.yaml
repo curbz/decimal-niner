@@ -2,7 +2,7 @@
 d9:
   resources_path: "resources"
   logging_level: "info"
-  traffic_engine: "d9traffic"  # trafficglobal or d9traffic currently supported
+  traffic_engine: "vat"  # trafficglobal, vat or d9traffic currently supported
 
 # X-Plane Connection Settings
 xplane_api:
@@ -41,3 +41,5 @@ trafficglobal:
 d9traffic:
   #flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane"   # uses traffic global bgl
   flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"  # uses regents pack
+vat:
+  refresh_interval_seconds: 2.5

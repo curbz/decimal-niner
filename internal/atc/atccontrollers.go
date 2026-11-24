@@ -132,6 +132,9 @@ func parseATCdatFiles(path string, isRegion bool, requiredICAOs map[string]bool)
 			}
 			la, _ := strconv.ParseFloat(p[1], 64)
 			lo, _ := strconv.ParseFloat(p[2], 64)
+			if cur != nil {
+				cur.IsPoint = true
+			}
 			if curPoly != nil {
 				curPoly.Points = append(curPoly.Points, [2]float64{la, lo})
 			}

@@ -52,8 +52,8 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 	start := time.Now()
 
 	// Initialize the master storage once
-	masterSchedules := make(map[string][]ScheduledFlight)
-	masterAirports := make(map[string]bool)
+	planSchedules := make(map[string][]ScheduledFlight)
+	planAirports := make(map[string]bool)
 
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -66,7 +66,7 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 		if !file.IsDir() && strings.HasSuffix(strings.ToLower(file.Name()), ".bgl") {
 			fullPath := filepath.Join(dirPath, file.Name())
 			airlineName := cleanAirlineName(file.Name())
-			err := bglReader(fullPath, airlineName, masterSchedules, masterAirports)
+			err := bglReader(fullPath, airlineName, planSchedules, planAirports)
 			if err != nil {
 				logger.Log.Warnf("Skipping %s: %v", file.Name(), err)
 				continue
@@ -76,9 +76,9 @@ func LoadFlightPlans(dirPath string) (map[string][]ScheduledFlight, map[string]b
 	}
 
 	logger.Log.Infof("Loaded %d BGL flight plan file(s). Total: %d schedules, %d airports in %v",
-		fileCount, len(masterSchedules), len(masterAirports), time.Since(start))
+		fileCount, len(planSchedules), len(planAirports), time.Since(start))
 
-	return masterSchedules, masterAirports
+	return planSchedules, planAirports
 }
 
 func bglReader(filePath, airline string, masterSchedules map[string][]ScheduledFlight, masterAirports map[string]bool) error {

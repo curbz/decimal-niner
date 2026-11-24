@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>decimal-niner Configuration</title>
+  <link rel="stylesheet" href="/config.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">decimal-niner</p>
+        <h1>Application configuration</h1>
+      </div>
+      <button id="save" type="button">Save configuration</button>
+    </header>
+
+    <aside id="status" role="status">Loading configuration…</aside>
+    <div id="notice">Changes are saved to <code id="config-path"></code>. Restart decimal-niner for changes to take effect.</div>
+
+    <div id="sections"></div>
+  </main>
+
+  <dialog id="browser">
+    <form method="dialog">
+      <header class="dialog-header">
+        <strong id="browser-title">Select a path</strong>
+        <button value="cancel" aria-label="Close">×</button>
+      </header>
+      <div id="browser-path" class="browser-path"></div>
+      <div id="browser-entries"></div>
+      <footer>
+        <button id="browser-select" value="default">Select</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="/config.js"></script>
+</body>
+</html>

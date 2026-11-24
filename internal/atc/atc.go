@@ -12,6 +12,7 @@ import (
 	"github.com/curbz/decimal-niner/internal/flightplan"
 	"github.com/curbz/decimal-niner/internal/logger"
 	"github.com/curbz/decimal-niner/internal/simdata"
+	xpapimodel "github.com/curbz/decimal-niner/internal/xplaneapi/xpapimodel"
 	"github.com/curbz/decimal-niner/pkg/util"
 )
 
@@ -70,11 +71,13 @@ type AirportProvider interface {
 // traffic engine that the ATC service needs to query. This is declared here to
 // avoid an import cycle with the internal/traffic package.
 type TrafficEngine interface {
-	GetFlightPlanPath() string
+	GetFlightPlanFilePath() string
 	Enrich(*Aircraft, *Airport)
 	LoadFlightPlans(string) (map[string][]flightplan.ScheduledFlight, map[string]bool)
 	SetATCService(*Service)
 	RequiresAircraftData() bool // Indicates whether the traffic engine needs to read aircraft data from X-Plane to function
+	HandleAircraftData(datarefs map[int]*xpapimodel.Dataref)
+	DatarefsToWrite() []xpapimodel.Dataref
 	Start()
 	CheckForCruiseSectorChange(ac *Aircraft)
 	CheckForSubPhaseChange(ac *Aircraft)
