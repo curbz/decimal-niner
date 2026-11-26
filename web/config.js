@@ -23,7 +23,9 @@ const overrides = {
   "vat.refresh_interval_seconds": { type: "number", step: 0.1, min: 0.1 },
   "trafficglobal.plugin_directory": { type: "directory" },
   "d9traffic.flight_plan_directory": { type: "directory" },
-  "d9.resources_path": { type: "directory" }
+  "d9.resources_path": { type: "directory" },
+  "ui.autostart_application": { type: "checkbox" },
+  "ui.open_in_browser": { type: "checkbox" }
 };
 
 function prettyName(key) {
@@ -120,7 +122,7 @@ function collect() {
   for (const row of document.querySelectorAll(".array[data-path]")) {
     const values = [...row.querySelectorAll(".array-input")].map(input => {
       if (row.dataset.itemType === "integer") return parseInt(input.value, 10);
-      if (row.dataset.itemType === "number") return parseFloat(input.value);
+      if (row.dataset.itemType === "number" ) return parseFloat(input.value);
       return input.value;
     });
     setAtPath(copy, row.dataset.path, values);
@@ -207,6 +209,9 @@ async function loadConfig() {
     state.config = data.config;
     state.path = data.path;
     $("#config-path").textContent = data.path;
+    if (data.config.d9 && data.config.d9.traffic_engine) {
+      $("#traffic-engine").textContent = data.config.d9.traffic_engine.toUpperCase();
+    }
     renderSections(state.config);
     status.textContent = "Configuration loaded";
   } catch (error) {
@@ -264,9 +269,78 @@ async function browse(path) {
   }
 }
 
+async function refreshApplicationStatus() {
+  try {
+    const response = await fetch("/api/application", { cache: "no-store" });
+    if (!response.ok) throw new Error("Status request failed");
+    const status = await response.json();
+    const badge = $("#app-state");
+    const toggle = $("#app-toggle");
+    const running = status.state === "running";
+    const transient = status.state === "starting" || status.state === "stopping";
+
+    badge.textContent = running ? "Running" : status.state === "error" ? `Error: ${status.error || "unknown"}` : status.state === "starting" ? "Starting" : status.state === "stopping" ? "Stopping" : "Stopped";
+    badge.className = `state ${status.state || "stopped"}`;
+    $("#traffic-engine").textContent = status.traffic_engine ? status.traffic_engine.toUpperCase() : "Not configured";
+
+    toggle.textContent = running ? "Stop" : "Start";
+    toggle.className = running ? "toggle-button stop" : "toggle-button";
+    toggle.disabled = transient;
+  } catch (_) {
+    $("#app-state").textContent = "Unavailable";
+  }
+}
+
+async function toggleApplication() {
+  const isRunning = $("#app-state").classList.contains("running") || $("#app-state").classList.contains("starting");
+  const action = isRunning ? "stop" : "start";
+  const response = await fetch("/api/application", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    $("#control-status").className = "error";
+    $("#control-status").textContent = result.error || `Could not ${action} application`;
+  } else {
+    $("#control-status").textContent = "";
+  }
+  await refreshApplicationStatus();
+}
+
+async function checkRadar() {
+  const frame = $("#radar-frame");
+  const status = $("#radar-status");
+  try {
+    const response = await fetch("http://127.0.0.1:8096/", { mode: "no-cors" });
+    frame.src = "http://127.0.0.1:8096/";
+    frame.hidden = false;
+    status.hidden = true;
+  } catch (_) {
+    frame.hidden = true;
+    status.hidden = false;
+  }
+}
+
+for (const tab of document.querySelectorAll(".tab")) {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.remove("active"));
+    tab.classList.add("active");
+    $("#tab-" + tab.dataset.tab).classList.add("active");
+    if (tab.dataset.tab === "radar") checkRadar();
+  });
+}
+
 $("#save").addEventListener("click", saveConfig);
 $("#browser-select").addEventListener("click", () => {
   if (state.browserTarget) state.browserTarget.value = state.browserPath;
 });
+$("#app-toggle").addEventListener("click", toggleApplication);
+$("#radar-retry").addEventListener("click", checkRadar);
 
 loadConfig();
+refreshApplicationStatus();
+setInterval(refreshApplicationStatus, 2000);
+checkRadar();

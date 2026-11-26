@@ -63,3 +63,22 @@ For executable and file fields use `{ type: "file" }`. For directories use `{ ty
 ## Security
 
 The UI is intended for local administration. Keep `-ui-addr` set to `127.0.0.1` unless a deliberately controlled network deployment requires a different binding. The file browser should not be exposed beyond loopback.
+
+## Application dashboard
+
+Decimal-niner starts the local dashboard on every launch. The dashboard displays application status, provides Start and Stop controls, links to the configuration editor, and links to the radar page when D9 traffic is running.
+
+The dashboard itself remains available even when application startup fails. Use Start after correcting the configuration.
+
+The default configuration contains:
+
+```yaml
+ui:
+  autostart_application: false
+  open_in_browser: true
+```
+
+- `autostart_application: true` starts the application child process after the dashboard server starts.
+- `open_in_browser: false` prevents automatic browser launch.
+- `-no-open-browser` overrides browser opening from the command line.
+- `-ui` remains accepted as a backward-compatible dashboard flag.

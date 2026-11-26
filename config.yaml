@@ -43,3 +43,6 @@ d9traffic:
   flight_plan_directory: "/home/dmorris/decimal-niner/X-Plane/Resources/plugins/Traffic Global"  # uses regents pack
 vat:
   refresh_interval_seconds: 2.5
+ui:
+  autostart_application: false
+  open_in_browser: true

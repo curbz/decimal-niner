@@ -19,6 +19,7 @@ type Server struct {
 	configPath string
 	webDir     string
 	mu         sync.Mutex
+	lifecycle  Lifecycle
 }
 
 func New(configPath, webDir string) *Server {
@@ -44,10 +45,13 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/config", s.configAPI)
 	mux.HandleFunc("/api/files", s.filesAPI)
+	mux.HandleFunc("/api/application", s.applicationAPI)
 	mux.HandleFunc("/config.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, filepath.Join(s.webDir, "config.css"))
 	})
 	mux.HandleFunc("/config.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, filepath.Join(s.webDir, "config.js"))
 	})
 	mux.HandleFunc("/", s.page)
@@ -59,10 +63,12 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeFile(w, r, filepath.Join(s.webDir, "config.html"))
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
@@ -123,6 +129,9 @@ func (s *Server) configAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) loadNode() (*yaml.Node, error) {
 	data, err := os.ReadFile(s.configPath)
+	if os.IsNotExist(err) {
+		return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -143,6 +152,10 @@ func (s *Server) saveNode(root *yaml.Node) error {
 	}
 
 	dir := filepath.Dir(s.configPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
 	tmp, err := os.CreateTemp(dir, ".config-*.yaml")
 	if err != nil {
 		return fmt.Errorf("create temporary config: %w", err)
@@ -356,4 +369,50 @@ func (s *Server) filesAPI(w http.ResponseWriter, r *http.Request) {
 		result = append(result, item{Name: entry.Name(), Path: filepath.Join(clean, entry.Name()), Dir: info.IsDir()})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": clean, "entries": result})
+}
+
+func (s *Server) applicationAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if s.lifecycle == nil {
+			writeJSON(w, http.StatusOK, LifecycleStatus{State: "stopped"})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.lifecycle.Status())
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.lifecycle == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "application lifecycle is unavailable"})
+		return
+	}
+	var action struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	var err error
+	switch action.Action {
+	case "start":
+		err = s.lifecycle.Start()
+	case "stop":
+		err = s.lifecycle.Stop()
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be start or stop"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.lifecycle.Status())
+}
+
+func (s *Server) SetLifecycle(lifecycle Lifecycle) {
+	s.lifecycle = lifecycle
 }
