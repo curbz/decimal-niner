@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>decimal-niner Configuration</title>
+  <title>decimal-niner Dashboard</title>
   <link rel="stylesheet" href="/config.css">
 </head>
 <body>
@@ -11,15 +11,50 @@
     <header>
       <div>
         <p class="eyebrow">decimal-niner</p>
-        <h1>Application configuration</h1>
+        <h1>Dashboard</h1>
       </div>
-      <button id="save" type="button">Save configuration</button>
     </header>
 
-    <aside id="status" role="status">Loading configuration…</aside>
-    <div id="notice">Changes are saved to <code id="config-path"></code>. Restart decimal-niner for changes to take effect.</div>
+    <nav class="tabs" aria-label="Dashboard sections">
+      <button class="tab active" type="button" data-tab="control">CONTROL</button>
+      <button class="tab" type="button" data-tab="config">CONFIG</button>
+      <button class="tab" type="button" data-tab="radar">RADAR</button>
+    </nav>
 
-    <div id="sections"></div>
+    <section id="tab-control" class="tab-panel active">
+      <div class="control-card">
+        <div>
+          <p class="control-label">Traffic engine</p>
+          <strong id="traffic-engine">Loading…</strong>
+        </div>
+        <div>
+          <p class="control-label">Application status</p>
+          <span id="app-state" class="state stopped">Stopped</span>
+        </div>
+        <button id="app-toggle" class="toggle-button" type="button">Start</button>
+      </div>
+      <aside id="control-status" role="status"></aside>
+    </section>
+
+    <section id="tab-config" class="tab-panel">
+      <div class="config-toolbar">
+        <div>
+          <aside id="status" role="status">Loading configuration…</aside>
+          <div id="notice">Saved to <code id="config-path"></code>. Restart the application after changes.</div>
+        </div>
+        <button id="save" type="button">Save configuration</button>
+      </div>
+      <div id="sections"></div>
+    </section>
+
+    <section id="tab-radar" class="tab-panel">
+      <div id="radar-status" class="radar-status">
+        <strong>Radar is unavailable</strong>
+        <span>Start decimal-niner with a radar-enabled traffic engine, such as D9 Traffic.</span>
+        <button id="radar-retry" type="button">Retry connection</button>
+      </div>
+      <iframe id="radar-frame" title="decimal-niner radar" hidden></iframe>
+    </section>
   </main>
 
   <dialog id="browser">

@@ -25,6 +25,10 @@ type d9config struct {
 		TrafficEngine string `yaml:"traffic_engine"`
 		Resources     string `yaml:"resources_path"`
 	} `yaml:"d9"`
+	UI struct {
+		AutostartApplication *bool `yaml:"autostart_application"`
+		OpenInBrowser        *bool `yaml:"open_in_browser"`
+	} `yaml:"ui"`
 }
 
 func main() {
@@ -39,7 +43,11 @@ func main() {
 	uiAddr := flag.String("ui-addr", "127.0.0.1:8097", "configuration UI listen address")
 	noBrowser := flag.Bool("no-open-browser", false, "do not open the configuration UI in a browser")
 
+	applicationChild := flag.Bool("application-child", false, "run as an application child process")
+
 	flag.Parse()
+
+	_ = ui
 
 	var cfgPath string
 
@@ -57,26 +65,49 @@ func main() {
 		}
 	}
 
-	// When the configuration UI is requested, run only the local editor.
-	// This allows setup and repair of missing or incomplete configuration values.
-	if *ui {
-		uiServer := configui.New(cfgPath, "web")
-		started, err := uiServer.Start(*uiAddr)
-		if err != nil {
-			log.Fatalf("failed to start configuration UI: %v", err)
-		}
+	// The dashboard is the default parent mode. Application services run in a
+	// separately controlled child process unless -application-child is used.
+	if !*applicationChild {
+		// When the configuration UI is requested, run only the local editor.
+		// This allows setup and repair of missing or incomplete configuration values.
+		{
+			uiConfig, _ := util.LoadConfig[d9config](cfgPath)
 
-		log.Printf("configuration UI listening at http://%s", *uiAddr)
-		if !*noBrowser {
-			if err := configui.OpenBrowser(*uiAddr); err != nil {
-				log.Printf("could not open browser automatically: %v", err)
+			lifecycle := configui.NewProcessLifecycle(cfgPath, *mock)
+			uiServer := configui.New(cfgPath, "web")
+			uiServer.SetLifecycle(lifecycle)
+			started, err := uiServer.Start(*uiAddr)
+			if err != nil {
+				log.Fatalf("failed to start configuration UI: %v", err)
 			}
+
+			autostart := uiConfig != nil && uiConfig.UI.AutostartApplication != nil && *uiConfig.UI.AutostartApplication
+			if *mock {
+				autostart = true
+			}
+			lifecycle.SetAutostarted(autostart)
+
+			if autostart {
+				if err := lifecycle.Start(); err != nil {
+					log.Printf("could not autostart application: %v", err)
+				}
+			}
+
+			openBrowser := uiConfig == nil || uiConfig.UI.OpenInBrowser == nil || *uiConfig.UI.OpenInBrowser
+			log.Printf("configuration UI listening at http://%s", *uiAddr)
+			if openBrowser && !*noBrowser {
+				if err := configui.OpenBrowser(*uiAddr); err != nil {
+					log.Printf("could not open browser automatically: %v", err)
+				}
+			}
+
+			interrupt := make(chan os.Signal, 1)
+			signal.Notify(interrupt, os.Interrupt)
+			<-interrupt
+			_ = lifecycle.Stop()
+			_ = started.Close()
+			return
 		}
-		interrupt := make(chan os.Signal, 1)
-		signal.Notify(interrupt, os.Interrupt)
-		<-interrupt
-		_ = started.Close()
-		return
 	}
 
 	cfg, err := util.LoadConfig[d9config](cfgPath)
